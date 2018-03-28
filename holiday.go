@@ -147,7 +147,35 @@ func dayCount(counters Counters, st, ed string) (int, bool) {
 	return 0, false
 }
 
+func dayCountCommon(counters Counters, res http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	res.Header().Set("Content-Type", "text/text; charset=utf-8")
+	st, ok1 := req.Form["st"]
+	ed, ok2 := req.Form["ed"]
+	if ok1 && ok2 {
+		cnt, ok := dayCount(counters, st[0], ed[0])
+		if ok {
+			fmt.Fprintln(res, cnt)
+			return
+		}
+	}
+	fmt.Fprintln(res, "查询不在当前配置范围内！")
+	helpInfo(res, req)
+}
+
 func holidayCount(res http.ResponseWriter, req *http.Request) {
+	dayCountCommon(HolidayCount, res, req)
+}
+
+func weekendCount(res http.ResponseWriter, req *http.Request) {
+	dayCountCommon(WeekendCount, res, req)
+}
+
+func festivalCount(res http.ResponseWriter, req *http.Request) {
+	dayCountCommon(FestivalCount, res, req)
+}
+
+func workdayCount(res http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
 	res.Header().Set("Content-Type", "text/text; charset=utf-8")
 	st, ok1 := req.Form["st"]
@@ -155,8 +183,16 @@ func holidayCount(res http.ResponseWriter, req *http.Request) {
 	if ok1 && ok2 {
 		cnt, ok := dayCount(HolidayCount, st[0], ed[0])
 		if ok {
-			fmt.Fprintln(res, cnt)
-			return
+			layout := "20060102"
+			dst, err1 := time.Parse(layout, st[0])
+			ded, err2 := time.Parse(layout, ed[0])
+			if nil == err1 && nil == err2 {
+				hours := ded.Sub(dst).Hours()
+				log.Println(dst, ded, hours)
+				days := int(hours / 24)
+				fmt.Fprintln(res, days-cnt)
+				return
+			}
 		}
 	}
 	fmt.Fprintln(res, "查询不在当前配置范围内！")
@@ -167,6 +203,9 @@ func initWeb() {
 	http.HandleFunc("/", helpInfo)
 	http.HandleFunc("/holiday", holiday)
 	http.HandleFunc("/holidayCount", holidayCount)
+	http.HandleFunc("/weekendCount", weekendCount)
+	http.HandleFunc("/festivalCount", festivalCount)
+	http.HandleFunc("/workdayCount", workdayCount)
 	err := http.ListenAndServe(":9091", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
