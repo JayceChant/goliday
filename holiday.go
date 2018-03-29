@@ -21,6 +21,8 @@ Usage:
 6. /workdayCount    同 3，仅统计工作日(0)，相当于总天数减掉 3 的结果
 `
 
+const layout = "20060102"
+
 type YearCounter map[string]int
 type Counters map[string]YearCounter
 
@@ -49,6 +51,22 @@ func dateType(dateStr string, day time.Weekday) int {
 		return 1
 	}
 	return 0
+}
+
+func parseDateStr(date string) (time.Time, error) {
+	return time.Parse(layout, date)
+}
+
+func daysBetween(st, ed string) (int, bool) {
+	dst, err1 := parseDateStr(st)
+	ded, err2 := parseDateStr(ed)
+	if nil != err1 || nil != err2 {
+		log.Println("time parse errors:", err1, ", ", err2)
+		return 0, false
+	}
+	hours := ded.Sub(dst).Hours()
+	log.Println(dst, ded, hours)
+	return int(hours / 24), true
 }
 
 func loadFestival() {
@@ -147,13 +165,18 @@ func dayCount(counters Counters, st, ed string) (int, bool) {
 	return 0, false
 }
 
+func getStartEnd(req *http.Request) (string, string, bool) {
+	st, ok1 := req.Form["st"]
+	ed, ok2 := req.Form["ed"]
+	return st[0], ed[0], ok1 && ok2
+}
+
 func dayCountCommon(counters Counters, res http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
 	res.Header().Set("Content-Type", "text/text; charset=utf-8")
-	st, ok1 := req.Form["st"]
-	ed, ok2 := req.Form["ed"]
-	if ok1 && ok2 {
-		cnt, ok := dayCount(counters, st[0], ed[0])
+	st, ed, ok := getStartEnd(req)
+	if ok {
+		cnt, ok := dayCount(counters, st, ed)
 		if ok {
 			fmt.Fprintln(res, cnt)
 			return
@@ -178,18 +201,12 @@ func festivalCount(res http.ResponseWriter, req *http.Request) {
 func workdayCount(res http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
 	res.Header().Set("Content-Type", "text/text; charset=utf-8")
-	st, ok1 := req.Form["st"]
-	ed, ok2 := req.Form["ed"]
-	if ok1 && ok2 {
-		cnt, ok := dayCount(HolidayCount, st[0], ed[0])
+	st, ed, ok := getStartEnd(req)
+	if ok {
+		cnt, ok := dayCount(HolidayCount, st, ed)
 		if ok {
-			layout := "20060102"
-			dst, err1 := time.Parse(layout, st[0])
-			ded, err2 := time.Parse(layout, ed[0])
-			if nil == err1 && nil == err2 {
-				hours := ded.Sub(dst).Hours()
-				log.Println(dst, ded, hours)
-				days := int(hours / 24)
+			days, ok := daysBetween(st, ed)
+			if ok {
 				fmt.Fprintln(res, days-cnt)
 				return
 			}
