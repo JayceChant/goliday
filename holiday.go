@@ -21,7 +21,11 @@ Usage:
 6. /workdayCount    同 3，仅统计工作日(0)，相当于总天数减掉 3 的结果
 `
 
-const layout = "20060102"
+const (
+	layout    = "20060102"
+	plaintext = "text/plain; charset=utf-8"
+	jsontext  = "text/json; charset=utf-8"
+)
 
 type YearCounter map[string]int
 type Counters map[string]YearCounter
@@ -30,10 +34,14 @@ var FestivalAmend YearCounter
 var HolidayType map[string]interface{} = make(map[string]interface{})
 var WeekendCount Counters = make(Counters)
 var FestivalCount Counters = make(Counters)
-var HolidayCount Counters = make(Counters)
+
+func outputResponse(res *http.ResponseWriter, contentType string, a ...interface{}) {
+	(*res).Header().Set("Content-Type", contentType)
+	fmt.Fprintln(*res, a...)
+}
 
 func helpInfo(res http.ResponseWriter, req *http.Request) {
-	fmt.Fprintln(res, HelpText)
+	outputResponse(&res, plaintext, HelpText)
 }
 
 func tomorrow(date *time.Time) time.Time {
@@ -91,7 +99,6 @@ func enumYear(year int) {
 	ht := make(map[string]string)
 	wc := make(map[string]int)
 	fc := make(map[string]int)
-	hc := make(map[string]int)
 	date := time.Date(year, time.January, 1, 0, 0, 0, 0, time.UTC)
 	yearDays := time.Date(year+1, time.January, 0, 0, 0, 0, 0, time.UTC).YearDay()
 	wkCnt, ftCnt := 0, 0
@@ -100,7 +107,6 @@ func enumYear(year int) {
 		// 为了实现查询区间左闭，计数器不包含当天，记录元旦到前一天的累计
 		wc[dateStr] = wkCnt
 		fc[dateStr] = ftCnt
-		hc[dateStr] = wkCnt + ftCnt
 		flag := dateType(dateStr, date.Weekday())
 		if 1 == flag {
 			wkCnt++
@@ -114,11 +120,9 @@ func enumYear(year int) {
 	// 因为记录不包含当天，全年的计数以年位可以储存
 	wc[yearStr] = wkCnt
 	fc[yearStr] = ftCnt
-	hc[yearStr] = wkCnt + ftCnt
 	HolidayType[yearStr] = ht
 	WeekendCount[yearStr] = wc
 	FestivalCount[yearStr] = fc
-	HolidayCount[yearStr] = hc
 }
 
 func enumYears(stYear int) {
@@ -129,17 +133,16 @@ func enumYears(stYear int) {
 
 func holiday(res http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
-	res.Header().Set("Content-Type", "text/json; charset=utf-8")
 	y, ok := req.Form["y"]
 	if ok {
 		// y 参数只能传递一个，多余的忽略
 		year, ok := HolidayType[y[0]]
 		if ok {
 			j, _ := json.Marshal(year)
-			fmt.Fprintf(res, "%s\n", j)
+			outputResponse(&res, jsontext, fmt.Sprintf("%s", j))
 			return
 		} else {
-			fmt.Fprintln(res, "当前配置没有包含该年份！")
+			outputResponse(&res, plaintext, "当前配置没有包含该年份！")
 		}
 	}
 
@@ -166,14 +169,13 @@ func dayCount(counters Counters, st, ed string) (int, bool) {
 }
 
 func getStartEnd(req *http.Request) (string, string, bool) {
+	req.ParseForm()
 	st, ok1 := req.Form["st"]
 	ed, ok2 := req.Form["ed"]
 	return st[0], ed[0], ok1 && ok2
 }
 
 func dayCountCommon(counters Counters, res http.ResponseWriter, req *http.Request) {
-	req.ParseForm()
-	res.Header().Set("Content-Type", "text/text; charset=utf-8")
 	st, ed, ok := getStartEnd(req)
 	if ok {
 		cnt, ok := dayCount(counters, st, ed)
@@ -182,12 +184,24 @@ func dayCountCommon(counters Counters, res http.ResponseWriter, req *http.Reques
 			return
 		}
 	}
-	fmt.Fprintln(res, "查询不在当前配置范围内！")
+	outputResponse(&res, plaintext, "查询不在当前配置范围内！")
 	helpInfo(res, req)
 }
 
 func holidayCount(res http.ResponseWriter, req *http.Request) {
-	dayCountCommon(HolidayCount, res, req)
+	st, ed, ok := getStartEnd(req)
+	if ok {
+		wc, ok1 := dayCount(WeekendCount, st, ed)
+		fc, ok2 := dayCount(FestivalCount, st, ed)
+		if ok1 && ok2 {
+			if ok {
+				outputResponse(&res, plaintext, wc+fc)
+				return
+			}
+		}
+	}
+	outputResponse(&res, plaintext, "查询不在当前配置范围内！")
+	helpInfo(res, req)
 }
 
 func weekendCount(res http.ResponseWriter, req *http.Request) {
@@ -199,20 +213,19 @@ func festivalCount(res http.ResponseWriter, req *http.Request) {
 }
 
 func workdayCount(res http.ResponseWriter, req *http.Request) {
-	req.ParseForm()
-	res.Header().Set("Content-Type", "text/text; charset=utf-8")
 	st, ed, ok := getStartEnd(req)
 	if ok {
-		cnt, ok := dayCount(HolidayCount, st, ed)
-		if ok {
+		wc, ok1 := dayCount(WeekendCount, st, ed)
+		fc, ok2 := dayCount(FestivalCount, st, ed)
+		if ok1 && ok2 {
 			days, ok := daysBetween(st, ed)
 			if ok {
-				fmt.Fprintln(res, days-cnt)
+				outputResponse(&res, plaintext, days-wc-fc)
 				return
 			}
 		}
 	}
-	fmt.Fprintln(res, "查询不在当前配置范围内！")
+	outputResponse(&res, plaintext, "查询不在当前配置范围内！")
 	helpInfo(res, req)
 }
 
@@ -231,7 +244,7 @@ func initWeb() {
 
 func main() {
 	loadFestival()
-	enumYears(2018)
+	enumYears(2016)
 	initWeb()
 	//test()
 }
@@ -242,7 +255,5 @@ func test() {
 	j, _ = json.Marshal(WeekendCount)
 	fmt.Printf("%s\n", j)
 	j, _ = json.Marshal(FestivalCount)
-	fmt.Printf("%s\n", j)
-	j, _ = json.Marshal(HolidayCount)
 	fmt.Printf("%s\n", j)
 }
