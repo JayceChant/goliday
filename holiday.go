@@ -27,6 +27,8 @@ const (
 	jsontext  = "text/json; charset=utf-8"
 )
 
+var startYear = 2016
+
 type YearCounter map[string]int
 type Counters map[string]YearCounter
 
@@ -65,11 +67,16 @@ func parseDateStr(date string) (time.Time, error) {
 	return time.Parse(layout, date)
 }
 
+func getDateStr(date *time.Time) string {
+	y, m, d := date.Date()
+	return fmt.Sprintf("%04d%02d%02d", y, m, d)
+}
+
 func daysBetween(st, ed string) (int, bool) {
 	dst, err1 := parseDateStr(st)
 	ded, err2 := parseDateStr(ed)
 	if nil != err1 || nil != err2 {
-		log.Println("time parse errors:", err1, ", ", err2)
+		log.Printf("time parse errors: %s:%s, %s:%s", st, err1, ed, err2)
 		return 0, false
 	}
 	hours := ded.Sub(dst).Hours()
@@ -88,11 +95,6 @@ func loadFestival() {
 	if nil != err {
 		log.Println("Unmarshal:", err)
 	}
-}
-
-func getDateStr(date *time.Time) string {
-	y, m, d := date.Date()
-	return fmt.Sprintf("%04d%02d%02d", y, m, d)
 }
 
 func enumYear(year int) {
@@ -156,16 +158,49 @@ func holiday(res http.ResponseWriter, req *http.Request) {
 	helpInfo(res, req)
 }
 
-func dayCount(counters Counters, st, ed string) (int, bool) {
-	year, ok := counters[st[:4]]
+func dayTypeCountYear(counters Counters, year, st, ed string) (int, bool) {
+	yCnt, ok := counters[year]
 	if ok {
-		hcst, ok1 := year[st]
-		hced, ok2 := year[ed]
+		hcst, ok1 := yCnt[st]
+		hced, ok2 := yCnt[ed]
 		if ok1 && ok2 {
 			return hced - hcst, true
 		}
 	}
 	return 0, false
+}
+
+func dayTypeCount(counters Counters, stDate, edDate string) (int, bool) {
+	stYear, err1 := strconv.Atoi(stDate[:4])
+	edYear, err2 := strconv.Atoi(edDate[:4])
+	if nil != err1 || nil != err2 {
+		log.Printf("year parse errors: %s:%s, %s:%s", stDate, err1, edDate, err2)
+		return 0, false
+	}
+
+	var st, ed string
+	result := 0
+	for year := stYear; year <= edYear; year++ {
+		yearStr := strconv.Itoa(year)
+		if year != stYear {
+			st = yearStr + "0101"
+		} else {
+			st = stDate
+		}
+		if year != edYear {
+			ed = yearStr
+		} else {
+			ed = edDate
+		}
+
+		cnt, ok := dayTypeCountYear(counters, yearStr, st, ed)
+
+		if !ok {
+			return 0, false
+		}
+		result += cnt
+	}
+	return result, true
 }
 
 func getStartEnd(req *http.Request) (string, string, bool) {
@@ -178,7 +213,7 @@ func getStartEnd(req *http.Request) (string, string, bool) {
 func dayCountCommon(counters Counters, res http.ResponseWriter, req *http.Request) {
 	st, ed, ok := getStartEnd(req)
 	if ok {
-		cnt, ok := dayCount(counters, st, ed)
+		cnt, ok := dayTypeCount(counters, st, ed)
 		if ok {
 			fmt.Fprintln(res, cnt)
 			return
@@ -191,8 +226,8 @@ func dayCountCommon(counters Counters, res http.ResponseWriter, req *http.Reques
 func holidayCount(res http.ResponseWriter, req *http.Request) {
 	st, ed, ok := getStartEnd(req)
 	if ok {
-		wc, ok1 := dayCount(WeekendCount, st, ed)
-		fc, ok2 := dayCount(FestivalCount, st, ed)
+		wc, ok1 := dayTypeCount(WeekendCount, st, ed)
+		fc, ok2 := dayTypeCount(FestivalCount, st, ed)
 		if ok1 && ok2 {
 			if ok {
 				outputResponse(&res, plaintext, wc+fc)
@@ -215,8 +250,8 @@ func festivalCount(res http.ResponseWriter, req *http.Request) {
 func workdayCount(res http.ResponseWriter, req *http.Request) {
 	st, ed, ok := getStartEnd(req)
 	if ok {
-		wc, ok1 := dayCount(WeekendCount, st, ed)
-		fc, ok2 := dayCount(FestivalCount, st, ed)
+		wc, ok1 := dayTypeCount(WeekendCount, st, ed)
+		fc, ok2 := dayTypeCount(FestivalCount, st, ed)
 		if ok1 && ok2 {
 			days, ok := daysBetween(st, ed)
 			if ok {
@@ -244,7 +279,8 @@ func initWeb() {
 
 func main() {
 	loadFestival()
-	enumYears(2016)
+	enumYears(startYear)
+	//fmt.Println(dayTypeCount(WeekendCount, "20160101", "20181231"))
 	initWeb()
 	//test()
 }
