@@ -31,8 +31,9 @@ var startYear = 2016
 
 type YearCounter map[string]int
 type Counters map[string]YearCounter
+type TypeMap map[string]string
 
-var HolidayType map[string]interface{} = make(map[string]interface{})
+var HolidayType map[string]TypeMap = make(map[string]TypeMap)
 var WeekendCount Counters = make(Counters)
 var FestivalCount Counters = make(Counters)
 
@@ -69,7 +70,7 @@ func daysBetween(st, ed string) (int, bool) {
 	dst, err1 := parseDateStr(st)
 	ded, err2 := parseDateStr(ed)
 	if nil != err1 || nil != err2 {
-		log.Printf("time parse errors: %s:%s, %s:%s", st, err1, ed, err2)
+		log.Printf("time parse errors: %s:%s, %s:%s\n", st, err1, ed, err2)
 		return 0, false
 	}
 	hours := ded.Sub(dst).Hours()
@@ -138,28 +139,44 @@ func loadYears(stYear int) {
 	}
 }
 
+func toJsonStr(o interface{}) string {
+	buf, err := json.Marshal(o)
+	if nil != err {
+		fmt.Println("Marshal error:", err, o)
+	}
+	return fmt.Sprintf("%s", buf)
+}
+
 func holiday(res http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
 	y, ok := req.Form["y"]
 	if ok {
 		// y 参数只能传递一个，多余的忽略
-		year, ok := HolidayType[y[0]]
+		yType, ok := HolidayType[y[0]]
 		if ok {
-			j, _ := json.Marshal(year)
-			outputResponse(&res, jsontext, fmt.Sprintf("%s", j))
+			outputResponse(&res, jsontext, toJsonStr(yType))
 			return
 		} else {
 			outputResponse(&res, plaintext, "当前配置没有包含该年份！")
 		}
 	}
 
-	//	m, ok := req.Form["m"]
-	//	if ok {
-	//		// m 参数只能传递一个，多余的忽略
-	//		root[m[0]] = enumYear(m[0])
-	//		fmt.Fprintln(res, root)
-	//		return
-	//	}
+	d, ok := req.Form["d"]
+	if ok {
+		daysMap := make(TypeMap)
+		for _, date := range d {
+			yType, ok := HolidayType[date[:4]]
+			if ok {
+				dType, ok := yType[date]
+				if ok {
+					daysMap[date] = dType
+				}
+			}
+		}
+		outputResponse(&res, jsontext, toJsonStr(daysMap))
+		return
+	}
+
 	helpInfo(res, req)
 }
 
@@ -179,7 +196,7 @@ func dayTypeCount(counters Counters, stDate, edDate string) (int, bool) {
 	stYear, err1 := strconv.Atoi(stDate[:4])
 	edYear, err2 := strconv.Atoi(edDate[:4])
 	if nil != err1 || nil != err2 {
-		log.Printf("year parse errors: %s:%s, %s:%s", stDate, err1, edDate, err2)
+		log.Printf("year parse errors: %s:%s, %s:%s\n", stDate, err1, edDate, err2)
 		return 0, false
 	}
 
