@@ -32,7 +32,6 @@ var startYear = 2016
 type YearCounter map[string]int
 type Counters map[string]YearCounter
 
-var FestivalAmend YearCounter
 var HolidayType map[string]interface{} = make(map[string]interface{})
 var WeekendCount Counters = make(Counters)
 var FestivalCount Counters = make(Counters)
@@ -50,13 +49,7 @@ func tomorrow(date *time.Time) time.Time {
 	return date.AddDate(0, 0, 1)
 }
 
-func dateType(dateStr string, day time.Weekday) int {
-	if nil != FestivalAmend {
-		flag, ok := FestivalAmend[dateStr]
-		if ok {
-			return flag
-		}
-	}
+func dateType(day time.Weekday) int {
 	if time.Saturday == day || time.Sunday == day {
 		return 1
 	}
@@ -84,24 +77,27 @@ func daysBetween(st, ed string) (int, bool) {
 	return int(hours / 24), true
 }
 
-func loadFestival() {
+func loadFestival() YearCounter {
+	var festivalAmend YearCounter
 	buf, err := ioutil.ReadFile("festival.json")
 	if nil != err {
 		log.Println("ReadFile:", err)
-		return
+		return nil
 	}
 
-	err = json.Unmarshal(buf, &FestivalAmend)
+	err = json.Unmarshal(buf, &festivalAmend)
 	if nil != err {
 		log.Println("Unmarshal:", err)
 	}
+	return festivalAmend
 }
 
-func enumYear(year int) {
+func loadYear(year int, amend YearCounter) {
 	ht := make(map[string]string)
 	wc := make(map[string]int)
 	fc := make(map[string]int)
 	date := time.Date(year, time.January, 1, 0, 0, 0, 0, time.UTC)
+	// 获取明年 1月0日，亦即今年最后一天在今年的总日序，绕过闰年判断
 	yearDays := time.Date(year+1, time.January, 0, 0, 0, 0, 0, time.UTC).YearDay()
 	wkCnt, ftCnt := 0, 0
 	for i := 1; i <= yearDays; i++ {
@@ -109,7 +105,15 @@ func enumYear(year int) {
 		// 为了实现查询区间左闭，计数器不包含当天，记录元旦到前一天的累计
 		wc[dateStr] = wkCnt
 		fc[dateStr] = ftCnt
-		flag := dateType(dateStr, date.Weekday())
+		var flag int
+		ok := false
+		if nil != amend {
+			flag, ok = amend[dateStr]
+		}
+		if !ok {
+			flag = dateType(date.Weekday())
+		}
+
 		if 1 == flag {
 			wkCnt++
 		} else if 2 == flag {
@@ -127,9 +131,10 @@ func enumYear(year int) {
 	FestivalCount[yearStr] = fc
 }
 
-func enumYears(stYear int) {
+func loadYears(stYear int) {
+	amend := loadFestival()
 	for y := stYear; y <= time.Now().Year(); y++ {
-		enumYear(y)
+		loadYear(y, amend)
 	}
 }
 
@@ -278,8 +283,7 @@ func initWeb() {
 }
 
 func main() {
-	loadFestival()
-	enumYears(startYear)
+	loadYears(startYear)
 	//fmt.Println(dayTypeCount(WeekendCount, "20160101", "20181231"))
 	initWeb()
 	//test()
