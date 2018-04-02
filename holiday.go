@@ -78,6 +78,21 @@ func daysBetween(st, ed string) (int, bool) {
 	return int(hours / 24), true
 }
 
+func toJsonStr(o interface{}) string {
+	buf, err := json.Marshal(o)
+	if nil != err {
+		fmt.Println("Marshal error:", err, o)
+	}
+	return fmt.Sprintf("%s", buf)
+}
+
+func fromJsonStr(data []byte, vptr interface{}) {
+	err := json.Unmarshal(data, vptr)
+	if nil != err {
+		log.Println("Unmarshal:", err)
+	}
+}
+
 func loadFestival() YearCounter {
 	var festivalAmend YearCounter
 	buf, err := ioutil.ReadFile("festival.json")
@@ -85,11 +100,7 @@ func loadFestival() YearCounter {
 		log.Println("ReadFile:", err)
 		return nil
 	}
-
-	err = json.Unmarshal(buf, &festivalAmend)
-	if nil != err {
-		log.Println("Unmarshal:", err)
-	}
+	fromJsonStr(buf, &festivalAmend)
 	return festivalAmend
 }
 
@@ -137,14 +148,6 @@ func loadYears(stYear int) {
 	for y := stYear; y <= time.Now().Year(); y++ {
 		loadYear(y, amend)
 	}
-}
-
-func toJsonStr(o interface{}) string {
-	buf, err := json.Marshal(o)
-	if nil != err {
-		fmt.Println("Marshal error:", err, o)
-	}
-	return fmt.Sprintf("%s", buf)
 }
 
 func holiday(res http.ResponseWriter, req *http.Request) {
@@ -330,7 +333,6 @@ func initWeb() {
 
 func main() {
 	loadYears(startYear)
-	//fmt.Println(dayTypeCount(WeekendCount, "20160101", "20181231"))
 	initWeb()
 	//test()
 }
@@ -342,4 +344,5 @@ func test() {
 	fmt.Printf("%s\n", j)
 	j, _ = json.Marshal(FestivalCount)
 	fmt.Printf("%s\n", j)
+	fmt.Println(dayTypeCount(WeekendCount, "20160101", "20181231"))
 }
