@@ -158,6 +158,37 @@ func holiday(res http.ResponseWriter, req *http.Request) {
 			return
 		} else {
 			outputResponse(&res, plaintext, "当前配置没有包含该年份！")
+			helpInfo(res, req)
+			return
+		}
+	}
+
+	m, ok := req.Form["m"]
+	if ok {
+		// m 参数只能传递一个，多余的忽略
+		st, err := parseDateStr(m[0] + "01")
+		if nil != err {
+			log.Println("parse month param error:", err)
+			helpInfo(res, req)
+			return
+		}
+		yType, ok := HolidayType[m[0][:4]]
+		if ok {
+			daysMap := make(TypeMap)
+			date := st
+			for i := 1; i <= 31; i++ {
+				dStr := getDateStr(&date)
+				dType, ok := yType[dStr]
+				if ok {
+					daysMap[dStr] = dType
+				}
+				date = tomorrow(&date)
+				if date.Month() != st.Month() {
+					break
+				}
+			}
+			outputResponse(&res, jsontext, toJsonStr(daysMap))
+			return
 		}
 	}
 
@@ -176,8 +207,6 @@ func holiday(res http.ResponseWriter, req *http.Request) {
 		outputResponse(&res, jsontext, toJsonStr(daysMap))
 		return
 	}
-
-	helpInfo(res, req)
 }
 
 func dayTypeCountYear(counters Counters, year, st, ed string) (int, bool) {
