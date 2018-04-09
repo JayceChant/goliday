@@ -22,9 +22,11 @@ Usage:
 `
 
 const (
-	layout    = "20060102"
-	plaintext = "text/plain; charset=utf-8"
-	jsontext  = "text/json; charset=utf-8"
+	configdir  = "config/"
+	festConfig = configdir + "festival.json"
+	layout     = "20060102"
+	plaintext  = "text/plain; charset=utf-8"
+	jsontext   = "text/json; charset=utf-8"
 )
 
 var startYear = 2016
@@ -95,7 +97,7 @@ func fromJsonStr(data []byte, vptr interface{}) {
 
 func loadFestival() YearCounter {
 	var festivalAmend YearCounter
-	buf, err := ioutil.ReadFile("festival.json")
+	buf, err := ioutil.ReadFile(festConfig)
 	if nil != err {
 		log.Println("ReadFile:", err)
 		return nil
