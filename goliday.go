@@ -326,7 +326,7 @@ func initWeb() {
 	http.HandleFunc("/weekendCount", weekendCount)
 	http.HandleFunc("/festivalCount", festivalCount)
 	http.HandleFunc("/workdayCount", workdayCount)
-	log.Panicln("========== map_route_handler finished. Ready to start server. ==========")
+	log.Println("========== map_route_handler finished. Ready to start server. ==========")
 	err := http.ListenAndServe(":9091", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
