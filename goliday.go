@@ -107,9 +107,9 @@ func loadFestival() YearCounter {
 }
 
 func loadYear(year int, amend YearCounter) {
-	ht := make(map[string]string)
-	wc := make(map[string]int)
-	fc := make(map[string]int)
+	ht := make(TypeMap)
+	wc := make(YearCounter)
+	fc := make(YearCounter)
 	date := time.Date(year, time.January, 1, 0, 0, 0, 0, time.UTC)
 	// 获取明年 1月0日，亦即今年最后一天在今年的总日序，绕过闰年判断
 	yearDays := time.Date(year+1, time.January, 0, 0, 0, 0, 0, time.UTC).YearDay()
