@@ -1,0 +1,284 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"testing"
+
+	"goliday"
+)
+
+// newTestHandler 从 ../../testdata 加载配置，构造与 main 一致的处理链。
+func newTestHandler(t *testing.T) http.Handler {
+	t.Helper()
+	store, err := goliday.LoadDir("../../testdata")
+	if err != nil {
+		t.Fatalf("加载测试配置失败: %v", err)
+	}
+	return newHandler(store, goliday.NewCalendar(store))
+}
+
+// doRequest 发送请求并断言响应体为合法 JSON 对象，返回状态码与解析结果。
+func doRequest(t *testing.T, h http.Handler, method, target string) (int, map[string]any) {
+	t.Helper()
+	req := httptest.NewRequest(method, target, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("%s %s 响应不是合法 JSON（状态码 %d）: %v\n响应体: %s", method, target, rec.Code, err, rec.Body.String())
+	}
+	return rec.Code, body
+}
+
+// wantNum 断言 JSON 数值字段（解析为 float64）。
+func wantNum(t *testing.T, name string, got any, want float64) {
+	t.Helper()
+	if got != want {
+		t.Errorf("%s = %#v, want %v", name, got, want)
+	}
+}
+
+// wantStr 断言 JSON 字符串字段。
+func wantStr(t *testing.T, name string, got any, want string) {
+	t.Helper()
+	if got != want {
+		t.Errorf("%s = %#v, want %q", name, got, want)
+	}
+}
+
+// dayAt 取响应 days 数组的第 i 个元素。
+func dayAt(t *testing.T, body map[string]any, i int) map[string]any {
+	t.Helper()
+	days, ok := body["days"].([]any)
+	if !ok {
+		t.Fatalf("响应缺少 days 数组: %#v", body["days"])
+	}
+	if i >= len(days) {
+		t.Fatalf("days 长度为 %d，越界访问 %d", len(days), i)
+	}
+	d, ok := days[i].(map[string]any)
+	if !ok {
+		t.Fatalf("days[%d] 不是 JSON 对象: %#v", i, days[i])
+	}
+	return d
+}
+
+// statsOf 取响应 stats 对象。
+func statsOf(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+	st, ok := body["stats"].(map[string]any)
+	if !ok {
+		t.Fatalf("响应缺少 stats 对象: %#v", body["stats"])
+	}
+	return st
+}
+
+// 1. 单日粗粒度。
+func TestSingleDayCoarse(t *testing.T) {
+	h := newTestHandler(t)
+	code, body := doRequest(t, h, http.MethodGet, "/api/v1/days?date=2026-02-20")
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, want 200", code)
+	}
+	wantStr(t, "date", body["date"], "2026-02-20")
+	wantNum(t, "type", body["type"], 28)
+	wantStr(t, "type_label", body["type_label"], "holiday")
+}
+
+// 2. 单日细粒度。
+func TestSingleDayDetailed(t *testing.T) {
+	h := newTestHandler(t)
+	cases := []struct {
+		date      string
+		wantType  float64
+		wantLabel string
+	}{
+		{"2026-02-20", 16, "adjusted"},
+		{"2026-02-17", 24, "festival|adjusted"},
+		{"2026-02-28", 6, "compensate|weekend"},
+		{"2026-04-05", 12, "weekend|festival"},
+	}
+	for _, c := range cases {
+		code, body := doRequest(t, h, http.MethodGet, "/api/v1/days?date="+c.date+"&detailed=true")
+		if code != http.StatusOK {
+			t.Fatalf("date=%s 状态码 = %d, want 200", c.date, code)
+		}
+		wantStr(t, "date("+c.date+")", body["date"], c.date)
+		wantNum(t, "type("+c.date+")", body["type"], c.wantType)
+		wantStr(t, "type_label("+c.date+")", body["type_label"], c.wantLabel)
+	}
+}
+
+// 3. 区间查询与粗粒度统计。
+func TestRangeQuery(t *testing.T) {
+	h := newTestHandler(t)
+	code, body := doRequest(t, h, http.MethodGet, "/api/v1/days?start=2026-02-14&end=2026-02-17")
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, want 200", code)
+	}
+	wantStr(t, "mode", body["mode"], "range")
+	wantStr(t, "start", body["start"], "2026-02-14")
+	wantStr(t, "end", body["end"], "2026-02-17")
+	wantNum(t, "total_days", body["total_days"], 3)
+
+	d0 := dayAt(t, body, 0)
+	wantStr(t, "days[0].date", d0["date"], "2026-02-14")
+	wantNum(t, "days[0].type", d0["type"], 6) // 02-14 补班：Compensate|Weekend
+	d2 := dayAt(t, body, 2)
+	wantStr(t, "days[2].date", d2["date"], "2026-02-16")
+	wantNum(t, "days[2].type", d2["type"], 16) // 02-16 调休：Adjusted
+
+	// detailed 默认 false：粗粒度统计。
+	st := statsOf(t, body)
+	wantNum(t, "stats.workday", st["workday"], 1) // 02-14 补班归上班日
+	wantNum(t, "stats.holiday", st["holiday"], 2) // 02-15 周末、02-16 调休
+}
+
+// 4. 离散日期列表：去重升序。
+func TestDatesListDedupSorted(t *testing.T) {
+	h := newTestHandler(t)
+	code, body := doRequest(t, h, http.MethodGet,
+		"/api/v1/days?dates=2026-02-16,2026-02-28,2026-02-17,2026-02-16")
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, want 200", code)
+	}
+	wantStr(t, "mode", body["mode"], "list")
+	wantNum(t, "total_days", body["total_days"], 3)
+	want := []string{"2026-02-16", "2026-02-17", "2026-02-28"}
+	days, ok := body["days"].([]any)
+	if !ok {
+		t.Fatalf("响应缺少 days 数组: %#v", body["days"])
+	}
+	if len(days) != len(want) {
+		t.Fatalf("days 长度 = %d, want %d: %#v", len(days), len(want), days)
+	}
+	for i, w := range want {
+		wantStr(t, fmt.Sprintf("days[%d].date", i), dayAt(t, body, i)["date"], w)
+	}
+}
+
+// 5. 区间与列表混合：并集。
+func TestMixedRangeAndDates(t *testing.T) {
+	h := newTestHandler(t)
+	code, body := doRequest(t, h, http.MethodGet,
+		"/api/v1/days?start=2026-02-01&end=2026-02-03&dates=2026-03-08")
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, want 200", code)
+	}
+	wantStr(t, "mode", body["mode"], "list")
+	wantNum(t, "total_days", body["total_days"], 3)
+	want := []string{"2026-02-01", "2026-02-02", "2026-03-08"}
+	for i, w := range want {
+		wantStr(t, fmt.Sprintf("days[%d].date", i), dayAt(t, body, i)["date"], w)
+	}
+}
+
+// 6. 细粒度统计交叉计数：组合日对各标志位各计 1。
+func TestFineStatsCrossCount(t *testing.T) {
+	h := newTestHandler(t)
+	code, body := doRequest(t, h, http.MethodGet,
+		"/api/v1/days?dates=2026-02-17,2026-02-28&detailed=true")
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, want 200", code)
+	}
+	st := statsOf(t, body)
+	wantNum(t, "stats.festival", st["festival"], 1)
+	wantNum(t, "stats.adjusted", st["adjusted"], 1)
+	wantNum(t, "stats.compensate", st["compensate"], 1)
+	wantNum(t, "stats.weekend", st["weekend"], 1)
+	wantNum(t, "stats.ordinary", st["ordinary"], 0)
+}
+
+// 7. stats 与 days 接口口径一致，且 stats 响应无 days 字段。
+func TestStatsMatchesDays(t *testing.T) {
+	h := newTestHandler(t)
+	query := "start=2026-02-14&end=2026-02-17"
+	_, daysBody := doRequest(t, h, http.MethodGet, "/api/v1/days?"+query)
+	code, statsBody := doRequest(t, h, http.MethodGet, "/api/v1/stats?"+query)
+	if code != http.StatusOK {
+		t.Fatalf("stats 状态码 = %d, want 200", code)
+	}
+	if !reflect.DeepEqual(daysBody["stats"], statsBody["stats"]) {
+		t.Errorf("stats 不一致: days 接口 %#v, stats 接口 %#v", daysBody["stats"], statsBody["stats"])
+	}
+	if daysBody["total_days"] != statsBody["total_days"] {
+		t.Errorf("total_days 不一致: days 接口 %#v, stats 接口 %#v",
+			daysBody["total_days"], statsBody["total_days"])
+	}
+	if _, ok := statsBody["days"]; ok {
+		t.Errorf("stats 响应不应包含 days 字段: %#v", statsBody["days"])
+	}
+}
+
+// 8. 参数错误统一 400。
+func TestBadRequest(t *testing.T) {
+	h := newTestHandler(t)
+	cases := []struct {
+		target   string
+		wantCode string
+	}{
+		{"/api/v1/days?date=2026-02-30", "invalid_date"},
+		{"/api/v1/days?start=2026-03-05&end=2026-03-01", "invalid_range"},
+		{"/api/v1/days?start=2026-01-01&end=2027-06-01", "invalid_range"},
+		{"/api/v1/days", "missing_query"},
+		{"/api/v1/days?dates=abc", "invalid_date"},
+	}
+	for _, c := range cases {
+		code, body := doRequest(t, h, http.MethodGet, c.target)
+		if code != http.StatusBadRequest {
+			t.Errorf("%s 状态码 = %d, want 400", c.target, code)
+		}
+		errObj, ok := body["error"].(map[string]any)
+		if !ok {
+			t.Errorf("%s 响应缺少 error 对象: %v", c.target, body)
+			continue
+		}
+		wantStr(t, "error.code("+c.target+")", errObj["code"], c.wantCode)
+	}
+}
+
+// 9. 健康检查与 404/405。
+func TestHealthzAndRouting(t *testing.T) {
+	h := newTestHandler(t)
+
+	code, body := doRequest(t, h, http.MethodGet, "/healthz")
+	if code != http.StatusOK {
+		t.Fatalf("healthz 状态码 = %d, want 200", code)
+	}
+	wantStr(t, "status", body["status"], "ok")
+	years, ok := body["years"].([]any)
+	if !ok {
+		t.Fatalf("healthz 响应缺少 years 数组: %#v", body["years"])
+	}
+	got := make(map[float64]bool, len(years))
+	for _, y := range years {
+		if f, ok := y.(float64); ok {
+			got[f] = true
+		}
+	}
+	for _, want := range []float64{2025, 2026} {
+		if !got[want] {
+			t.Errorf("years 缺少 %v: %v", want, years)
+		}
+	}
+
+	code, body = doRequest(t, h, http.MethodGet, "/api/v1/nope")
+	if code != http.StatusNotFound {
+		t.Errorf("未匹配路径状态码 = %d, want 404", code)
+	}
+	if _, ok := body["error"].(map[string]any); !ok {
+		t.Errorf("404 响应应为 JSON 错误格式: %v", body)
+	}
+
+	code, body = doRequest(t, h, http.MethodPost, "/api/v1/days")
+	if code != http.StatusMethodNotAllowed {
+		t.Errorf("方法不符状态码 = %d, want 405", code)
+	}
+	if _, ok := body["error"].(map[string]any); !ok {
+		t.Errorf("405 响应应为 JSON 错误格式: %v", body)
+	}
+}

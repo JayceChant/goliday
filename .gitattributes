@@ -1,0 +1,7 @@
+# 统一换行为 LF，保证 WSL/Windows 跨平台一致
+* text=auto eol=lf
+
+# 二进制例外
+*.png binary
+*.jpg binary
+*.ico binary
