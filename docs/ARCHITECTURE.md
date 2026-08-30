@@ -21,14 +21,21 @@ goliday/
 ├── store_test.go                   # 目录加载测试
 ├── calendar_test.go                # 判定/区间/统计测试
 ├── cmd/
-│   ├── goliday-server/             # HTTP 服务（可执行入口）
-│   │   ├── main.go                 # flag 解析、加载配置、注册路由、ListenAndServe
+│   ├── goliday-server/             # HTTP + gRPC 服务（可执行入口）
+│   │   ├── main.go                 # flag 解析、加载配置、启动/优雅关闭 HTTP 与 gRPC
 │   │   ├── handlers.go             # /api/v1/days、/api/v1/stats、/healthz 处理器与中间件
-│   │   └── handlers_test.go        # 处理器测试（httptest）
+│   │   ├── handlers_test.go        # 处理器测试（httptest）
+│   │   ├── grpc.go                 # GolidayService 实现（GetDay/QueryDays/QueryStats）+ 标准健康检查
+│   │   └── grpc_test.go            # gRPC 测试（bufconn）
 │   └── goliday-tool/               # 配置工具（可执行入口）
 │       ├── main.go                 # 子命令分发：validate（校验）与 gen（公告→TOML 草稿）
 │       ├── gen.go                  # gen 实现：公告解析、节日推断、草稿渲染与自检
 │       └── gen_test.go             # 解析与子命令测试
+├── proto/
+│   └── goliday/v1/
+│       ├── goliday.proto           # gRPC 接口定义（package goliday.v1，供调用方引用）
+│       ├── goliday.pb.go           # 生成代码（入库，调用方无需 protoc）
+│       └── goliday_grpc.pb.go      # 生成代码（入库）
 ├── configs/                        # 生产年度配置 <year>.toml（2025.toml、2026.toml）
 ├── testdata/                       # 测试数据
 │   ├── 2025.toml                   # 官方方案
@@ -50,7 +57,7 @@ goliday/
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  cmd/goliday-server        cmd/goliday-tool             │  可执行入口层
-│  HTTP API（仅标准库）       gen / validate CLI           │
+│  HTTP + gRPC 双协议         gen / validate CLI           │
 └───────────────┬─────────────────────┬───────────────────┘
                 │         仅依赖根包    │
 ┌───────────────▼─────────────────────▼───────────────────┐
@@ -62,24 +69,27 @@ goliday/
 └─────────────────────────────────────────────────────────┘
 ```
 
-- **根包 `goliday` 是核心库**：纯逻辑、无 I/O 副作用（除 `LoadDir`/`LoadYear` 读文件），不导入 `net/http`，可被任何 Go 程序直接嵌入。内部依赖单向：`calendar → store → config → daytype`。
-- **`cmd/goliday-server`**：HTTP 服务入口。仅标准库 `net/http`（Go 1.22+ `ServeMux`「方法 + 路径」路由模式）+ `flag`；中间件（请求日志、panic 恢复）以函数装饰器实现；`/days` 与 `/stats` 复用同一处理器逻辑。
+另有一个独立的生成代码包 `proto/goliday/v1`（包名 `golidayv1`）：由 `goliday.proto` 生成，仅被 `cmd/goliday-server` 引用，不反向依赖根包以外的模块。
+
+- **根包 `goliday` 是核心库**：纯逻辑、无 I/O 副作用（除 `LoadDir`/`LoadYear` 读文件），不导入 `net/http` 与任何 gRPC/protobuf 包，可被任何 Go 程序直接嵌入。内部依赖单向：`calendar → store → config → daytype`。
+- **`cmd/goliday-server`**：双协议服务入口。HTTP 侧仅标准库 `net/http`（Go 1.22+ `ServeMux`「方法 + 路径」路由模式）；gRPC 侧实现 `GolidayService`（`GetDay/QueryDays/QueryStats`，语义与 HTTP 一致，校验/查询逻辑复用同一套内部函数）并注册 gRPC 标准健康检查；中间件（请求日志、panic 恢复）以函数装饰器实现。
 - **`cmd/goliday-tool`**：运维工具入口。`gen`（公告文本 → 年度 TOML 草稿）与 `validate`（与加载一致的校验）两个子命令。
-- 依赖方向严格单向：`cmd/* → 根包`；根包不感知任何入口。
+- 依赖方向严格单向：`cmd/* → 根包`（server 另依赖 `proto/goliday/v1`）；根包不感知任何入口。
 
 ---
 
-## 3. 依赖约束
+## 3. 依赖约束（按包分级）
 
 | 项 | 约束 |
 |---|---|
 | Go 版本 | `go 1.27` |
-| 三方依赖 | **全项目唯一一个**：`github.com/BurntSushi/toml v1.6.0`（根包解析 TOML 使用） |
-| HTTP 服务 | 仅标准库（`net/http`、`flag`、`log` 等），不引入任何 Web 框架 |
+| 根包（核心库） | 仅一个三方依赖：`github.com/BurntSushi/toml v1.6.0`（TOML 解析）；**不得导入 gRPC/protobuf** |
+| gRPC 三件套 | `google.golang.org/grpc`、`google.golang.org/protobuf`（+ 其传递依赖如 `genproto/googleapis/rpc`、`golang.org/x/*`），**仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包** |
+| HTTP 处理 | 仅标准库（`net/http`、`flag`、`log` 等），不引入任何 Web 框架 |
 | 工具 | 仅标准库 + 经根包使用 toml |
-| 审计方式 | `go list -m all` 应只见 `goliday` 与 `github.com/BurntSushi/toml` |
+| 审计方式 | `go list -deps . | grep google.golang.org` 应无输出（根包零 gRPC）；`go.mod` 直接依赖仅 toml + gRPC 三件套 |
 
-零框架、零 ORM、零数据库：配置纯内存、启动时一次性加载，换来极小的二进制与部署面。
+零框架、零 ORM、零数据库：配置纯内存、启动时一次性加载，换来极小的二进制与部署面。gRPC 运行时被隔离在服务入口与生成代码中，核心库的依赖面不受影响。
 
 ---
 
@@ -132,8 +142,10 @@ JSON 序列化返回
 
 ---
 
-## 5. 后续规划（TODO，本次未实现）
+## 5. gRPC 接口（已实现）
 
-- **gRPC 接口**：在现有核心包之上实现 gRPC 服务（与 HTTP 服务同进程，或独立 `cmd/goliday-grpc`），接口语义与 HTTP API 一致：单日查询、区间/离散查询、统计，粗/细两级粒度。
-- **proto 定义**：提供 `proto/goliday/v1/goliday.proto`（package `goliday.v1`）及生成说明，方便调用方直接引用。`DayType` 掩码在 proto 中以 **`uint32`** 表达并附位含义注释，取值与位定义和 HTTP API 掩码表（见 [API.md](./API.md) 第 6 节）保持一致。
-- 本次变更**不引入** gRPC / protobuf 相关依赖；上述内容作为后续 spec 另行立项。
+原 TODO 项已落地：
+
+- **gRPC 服务**：与 HTTP 同进程（`-grpc-addr`，默认 `:50051`，空字符串禁用），实现 `GolidayService` 三方法（`GetDay/QueryDays/QueryStats`），语义与 HTTP API 完全一致，并注册 gRPC 标准健康检查；优雅关闭同时覆盖双协议。
+- **proto 定义**：`proto/goliday/v1/goliday.proto`（package `goliday.v1`）供调用方直接引用；`DayType` 掩码以 **`uint32`** 表达并附位含义注释，取值与位定义和 HTTP API 掩码表（见 [API.md](./API.md) 第 6 节）保持一致。生成代码入库于 `proto/goliday/v1/`，调用方无需本地 protoc；再生成命令与参考版本见 [API.md](./API.md) 第 7.5 节。
+- 接口契约、错误语义与调用示例详见 [API.md](./API.md) 第 7 节。

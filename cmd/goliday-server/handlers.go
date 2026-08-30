@@ -115,6 +115,16 @@ type errorEnvelope struct {
 	Error errorBody `json:"error"`
 }
 
+// HTTP 与 gRPC 共用的参数错误，code 与 message 文案即两个协议的错误契约
+// （gRPC 侧映射为 codes.InvalidArgument + 相同 message）。
+var (
+	errInvalidDetailed = &apiError{http.StatusBadRequest, "invalid_detailed", "参数 detailed 须为布尔值"}
+	errMissingQuery    = &apiError{http.StatusBadRequest, "missing_query", "缺少查询参数：date、start+end 或 dates"}
+	errRangeUnpaired   = &apiError{http.StatusBadRequest, "invalid_range", "start 与 end 须成对出现"}
+	errRangeOrder      = &apiError{http.StatusBadRequest, "invalid_range", "end 不得早于 start"}
+	errRangeTooWide    = &apiError{http.StatusBadRequest, "invalid_range", fmt.Sprintf("区间跨度超过 %d 天", maxRangeDays)}
+)
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -204,7 +214,7 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 	if v := q.Get("detailed"); v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
-			return nil, &apiError{http.StatusBadRequest, "invalid_detailed", "参数 detailed 须为布尔值"}
+			return nil, errInvalidDetailed
 		}
 		detailed = b
 	}
@@ -228,58 +238,14 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 		resp.Type = int(shown)
 		resp.TypeLabel = shown.String()
 	} else {
-		startStr, endStr, datesStr := q.Get("start"), q.Get("end"), q.Get("dates")
-		if startStr == "" && endStr == "" && datesStr == "" {
-			return nil, &apiError{http.StatusBadRequest, "missing_query", "缺少查询参数：date、start+end 或 dates"}
+		mq, aerr := resolveMultiQuery(q.Get("start"), q.Get("end"), splitDatesParam(q.Get("dates")))
+		if aerr != nil {
+			return nil, aerr
 		}
-
-		var rangeDays []time.Time
-		var start, end time.Time
-		hasRange := false
-		if startStr != "" || endStr != "" {
-			if startStr == "" || endStr == "" {
-				return nil, &apiError{http.StatusBadRequest, "invalid_range", "start 与 end 须成对出现"}
-			}
-			var aerr *apiError
-			if start, aerr = parseDate(startStr); aerr != nil {
-				return nil, aerr
-			}
-			if end, aerr = parseDate(endStr); aerr != nil {
-				return nil, aerr
-			}
-			if end.Before(start) {
-				return nil, &apiError{http.StatusBadRequest, "invalid_range", "end 不得早于 start"}
-			}
-			if int(end.Sub(start).Hours()/24) > maxRangeDays {
-				return nil, &apiError{http.StatusBadRequest, "invalid_range", fmt.Sprintf("区间跨度超过 %d 天", maxRangeDays)}
-			}
-			rangeDays = eachDay(start, end)
-			hasRange = true
-		}
-
-		var listDays []time.Time
-		if datesStr != "" {
-			ds, aerr := parseDateList(datesStr)
-			if aerr != nil {
-				return nil, aerr
-			}
-			listDays = ds
-		}
-
-		switch {
-		case hasRange && listDays != nil:
-			// start+end 与 dates 并存：取并集去重升序。
-			dates = mergeUnique(rangeDays, listDays)
-			resp.Mode = "list"
-		case hasRange:
-			dates = rangeDays
-			resp.Mode = "range"
-			resp.Start = start.Format(dateLayout)
-			resp.End = end.Format(dateLayout)
-		default:
-			dates = listDays
-			resp.Mode = "list"
-		}
+		resp.Mode = mq.mode
+		resp.Start = mq.start
+		resp.End = mq.end
+		dates = mq.dates
 
 		if wantDays {
 			resp.Days = make([]dayEntry, len(dates))
@@ -310,6 +276,79 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 	return resp, nil
 }
 
+// multiQuery 多日查询（区间/离散/混合）的归一化结果：dates 为去重升序的
+// 日期集合；mode 区分仅区间（range）与离散/混合（list）；start/end 仅在
+// range 模式回显，与 HTTP 响应的省略行为一致。
+type multiQuery struct {
+	mode  string
+	start string
+	end   string
+	dates []time.Time
+}
+
+// resolveMultiQuery 校验并归一化多日查询入参（HTTP 与 gRPC 共用）：
+//
+//   - start/end 须成对出现、均为合法日期、end>=start 且跨度不超过 maxRangeDays；
+//   - dateStrs 为离散日期字符串列表（HTTP 逗号分列后、gRPC repeated 字段原样
+//     传入），逐项解析后去重升序，任一非法即报错；
+//   - 区间与列表并存时取并集（mode=list），仅区间 mode=range；
+//   - 全部缺省返回 missing_query。
+func resolveMultiQuery(startStr, endStr string, dateStrs []string) (*multiQuery, *apiError) {
+	if startStr == "" && endStr == "" && len(dateStrs) == 0 {
+		return nil, errMissingQuery
+	}
+
+	var rangeDays []time.Time
+	var start, end time.Time
+	hasRange := false
+	if startStr != "" || endStr != "" {
+		if startStr == "" || endStr == "" {
+			return nil, errRangeUnpaired
+		}
+		var aerr *apiError
+		if start, aerr = parseDate(startStr); aerr != nil {
+			return nil, aerr
+		}
+		if end, aerr = parseDate(endStr); aerr != nil {
+			return nil, aerr
+		}
+		if end.Before(start) {
+			return nil, errRangeOrder
+		}
+		if int(end.Sub(start).Hours()/24) > maxRangeDays {
+			return nil, errRangeTooWide
+		}
+		rangeDays = eachDay(start, end)
+		hasRange = true
+	}
+
+	var listDays []time.Time
+	if len(dateStrs) > 0 {
+		ds, aerr := dedupDateList(dateStrs)
+		if aerr != nil {
+			return nil, aerr
+		}
+		listDays = ds
+	}
+
+	mq := &multiQuery{}
+	switch {
+	case hasRange && listDays != nil:
+		// start+end 与 dates 并存：取并集去重升序。
+		mq.dates = mergeUnique(rangeDays, listDays)
+		mq.mode = "list"
+	case hasRange:
+		mq.dates = rangeDays
+		mq.mode = "range"
+		mq.start = start.Format(dateLayout)
+		mq.end = end.Format(dateLayout)
+	default:
+		mq.dates = listDays
+		mq.mode = "list"
+	}
+	return mq, nil
+}
+
 // ---- 参数解析 helper ----
 
 // parseDate 严格解析 YYYY-MM-DD。time.Parse 对不存在的日期（如 2026-02-30）
@@ -325,9 +364,18 @@ func parseDate(s string) (time.Time, *apiError) {
 	return t, nil
 }
 
-// parseDateList 解析逗号分隔的日期列表，去重后升序返回。
-func parseDateList(s string) ([]time.Time, *apiError) {
-	parts := strings.Split(s, ",")
+// splitDatesParam 将 HTTP dates 参数按逗号分列；参数缺省（空串）时返回 nil，
+// 表示未提供离散列表。
+func splitDatesParam(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
+}
+
+// dedupDateList 逐项解析日期字符串列表（HTTP 逗号分列结果或 gRPC repeated
+// 字段原值），去重后升序返回。
+func dedupDateList(parts []string) ([]time.Time, *apiError) {
 	seen := make(map[time.Time]struct{}, len(parts))
 	out := make([]time.Time, 0, len(parts))
 	for _, p := range parts {

@@ -19,15 +19,17 @@
   - 节日定义 `[[festival]]` 仅含名称与节日当天日期（农历节日每年漂移，无法由标准库获得）。
   - 判断顺序：work 命中 → 补班；off 命中 → 调休；节日当天 → 附加 Festival 标志；否则退回标准库周休判断；无该年文件整年退回周休。
 - 生成工具与文档：`docs/generate_prompt.md` 提示词模板；`cmd/goliday-tool` 提供 `gen`（公告文本 → 年度 TOML 草稿）与 `validate`（校验）子命令。
-- 依赖策略：核心包仅引入一个 TOML 解析库（`github.com/BurntSushi/toml`）；HTTP 服务**仅标准库**（`net/http` + Go 1.22 `ServeMux` 路由模式）；生成工具仅标准库 + TOML 库。
+- gRPC 接口与 proto 文档：`proto/goliday/v1/goliday.proto`（package `goliday.v1`）定义 `GolidayService`（GetDay/QueryDays/QueryStats），语义与 HTTP API 一致；生成代码入库于 `proto/goliday/v1/`；`cmd/goliday-server` 同进程提供 gRPC 服务（`-grpc-addr`）。
+- 依赖策略：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**；HTTP 处理仅标准库；gRPC 相关（`google.golang.org/grpc`、`google.golang.org/protobuf`、`google.golang.org/genproto/googleapis/rpc`）仅允许出现在 proto 生成代码包与 `cmd/` 子包。
 - API 契约与配置格式、选型、目录结构、示例配置见 `docs/API.md`、`docs/CONFIG_FORMAT.md`、`docs/ARCHITECTURE.md`、`docs/holiday_config_example.toml`。
 
 ## Impact
 - Affected specs: 全部为本变更新增（无既有 spec 受影响）。
 - Affected code（均为新建）：
   - 根包：`daytype.go`、`config.go`、`store.go`、`calendar.go` 及对应 `*_test.go`
-  - 服务子包：`cmd/goliday-server/{main.go,handlers.go,handlers_test.go}`
+  - 服务子包：`cmd/goliday-server/{main.go,handlers.go,handlers_test.go,grpc.go,grpc_test.go}`
   - 工具子包：`cmd/goliday-tool/main.go`
+  - proto：`proto/goliday/v1/goliday.proto` 及生成代码 `proto/goliday/v1/goliday.pb.go`、`goliday_grpc.pb.go`
   - 文档：`docs/{API.md,CONFIG_FORMAT.md,ARCHITECTURE.md,generate_prompt.md,holiday_config_example.toml}`
   - 测试数据：`testdata/{2025.toml,2026.toml,invalid/*.toml}`
   - 工程：`go.mod`、`.gitignore`
@@ -35,11 +37,11 @@
 ## ADDED Requirements
 
 ### Requirement: 模块结构与依赖约束
-系统 SHALL 在仓库根创建 Go module（module 名 `goliday`，go 指令 1.27）；核心逻辑 SHALL 位于根包 `goliday`；服务与工具 SHALL 分别位于 `cmd/goliday-server`、`cmd/goliday-tool`。依赖约束：整个项目 SHALL 仅引入一个第三方依赖 `github.com/BurntSushi/toml`（核心包解析 TOML 使用），HTTP 服务与工具不得引入其他第三方模块。
+系统 SHALL 在仓库根创建 Go module（module 名 `goliday`，go 指令 1.27）；核心逻辑 SHALL 位于根包 `goliday`；服务与工具 SHALL 分别位于 `cmd/goliday-server`、`cmd/goliday-tool`。依赖约束：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**；HTTP 处理仅标准库；gRPC 相关依赖（`google.golang.org/grpc`、`google.golang.org/protobuf`、`google.golang.org/genproto/googleapis/rpc`）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包，不得进入根包。
 
 #### Scenario: 依赖审计通过
-- **WHEN** 运行 `go list -m all`
-- **THEN** 除 `goliday` 与 `github.com/BurntSushi/toml` 外无任何第三方模块
+- **WHEN** 运行 `go list -deps .`（根包）与 `go list -m all`
+- **THEN** 根包导入中无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 `github.com/BurntSushi/toml`、`google.golang.org/grpc`、`google.golang.org/protobuf`，其余第三方模块（`genproto/googleapis/rpc`、`golang.org/x/*` 等）均为 gRPC 的传递依赖
 
 ### Requirement: DayType 位掩码枚举
 系统 SHALL 定义 `type DayType uint8` 与可组合位标志常量，细粒度值可通过位运算映射为粗粒度段值（uint8 足够容纳 5 个细粒度位及组合）。
@@ -266,13 +268,47 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **WHEN** `goliday-tool validate testdata/2026.toml` 与对 `testdata/invalid/*.toml`
 - **THEN** 分别退出 0 与非 0
 
-## TODO（后续规划，不在本次实现范围）
-- **gRPC 接口**：后续在现有核心包之上实现 gRPC 服务（与 HTTP 服务同进程或独立 `cmd/goliday-grpc`），接口与 HTTP API 语义一致（单日查询、区间/离散查询、统计，粗/细粒度）。
-- **proto 文档**：同时提供 `.proto` 定义（建议 `proto/goliday/v1/goliday.proto`，package `goliday.v1`）及生成说明，方便调用方直接引用；`DayType` 掩码在 proto 中以 `uint32` 表达并附注释，粗/细粒度与位含义与本 spec 枚举取值保持一致。
-- 本次变更不引入 gRPC/proto 相关依赖；上述内容作为后续 spec 立项。
+### Requirement: proto 定义与生成代码
+系统 SHALL 提供 `proto/goliday/v1/goliday.proto`（syntax proto3，package `goliday.v1`，`option go_package = "goliday/proto/goliday/v1;golidayv1"`），供调用方直接引用；生成的 Go 代码 SHALL 入库于 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}`（调用方无需本地 protoc）。
+
+proto 内容约定：
+- `DayType` 掩码以 `uint32` 表达并附注释（proto3 enum 无法表达位组合），注释标明细粒度位值（1/2/4/8/16）、粗粒度段值（3/28）与 6 种合法组合（1/4/6/12/16/24），与根包 `DayType` 完全一致；
+- 消息：`Day{date,type,type_label}`、`Stats{workday,holiday,ordinary,compensate,weekend,festival,adjusted}`（粗粒度字段恒填充，细粒度字段仅 `detailed=true` 时填充，组合日交叉计数语义与 HTTP 一致）、`GetDayRequest{date,detailed}`、`GetDayResponse{date,type,type_label,total_days,stats}`、`QueryDaysRequest{start,end,dates[],detailed}`、`QueryDaysResponse{mode,start,end,total_days,days[],stats}`、`StatsResponse{mode,start,end,total_days,stats}`；
+- 服务 `GolidayService`：`GetDay`（单日）、`QueryDays`（区间/离散/混合并集，含明细）、`QueryStats`（同 QueryDays 入参，不含 days 明细）——语义与 HTTP `/api/v1/days`、`/api/v1/stats` 一一对应；
+- 日期一律 `YYYY-MM-DD` 字符串；`mode` 取 `range`/`list`；
+- proto 头注释写明再生成命令（需 protoc 与 protoc-gen-go、protoc-gen-go-grpc 在 PATH）。
+
+#### Scenario: proto 可供调用方引用
+- **WHEN** 调用方获取本仓库后查找 `proto/goliday/v1/goliday.proto` 与生成代码
+- **THEN** 无需 protoc 即可 `import "goliday/proto/goliday/v1"`（同模块）或复制 .proto 生成其他语言桩代码
+
+#### Scenario: 再生成
+- **WHEN** 在仓库根按 proto 头注释的 protoc 命令重新生成
+- **THEN** 生成文件落盘于 `proto/goliday/v1/` 且 `gofmt`/`go build` 通过
+
+### Requirement: gRPC 服务（与 HTTP 同进程）
+`cmd/goliday-server` SHALL 在同进程内提供 gRPC 服务：新增 flag `-grpc-addr`（默认 `":50051"`，空字符串禁用 gRPC），注册 `GolidayService` 与 gRPC 标准健康检查服务（`grpc.health.v1`）；优雅关闭 SHALL 同时覆盖 HTTP 与 gRPC。
+
+gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：单日 `detailed` 粗/细切换、多日明细恒细粒度、区间左闭右开且跨度 ≤366 天、离散去重升序、区间+离散并集 `mode=list`、`date` 与其他参数并存时 `date` 优先；参数错误 SHALL 映射为 `codes.InvalidArgument`，错误 `message` 文案与 HTTP 一致（含 `invalid_date`/`invalid_range`/`missing_query`/`invalid_detailed` 等标识）。
+
+#### Scenario: 启用与禁用
+- **WHEN** 以默认参数启动
+- **THEN** HTTP 监听 `:8080`、gRPC 监听 `:50051`；以 `-grpc-addr=""` 启动时仅 HTTP，日志说明 gRPC 已禁用
+
+#### Scenario: 语义一致性
+- **WHEN** 同一输入分别调用 gRPC `GetDay/QueryDays/QueryStats` 与 HTTP 对应接口
+- **THEN** 日期类型数值、`type_label`、`total_days`、stats 计数完全一致
+
+#### Scenario: 参数错误
+- **WHEN** gRPC 请求 `date="2026-02-30"` 或 `end<start`
+- **THEN** 返回 `codes.InvalidArgument`，message 与 HTTP 同类错误一致
 
 ## MODIFIED Requirements
-（无——全新能力。）
+
+### Requirement: 模块结构与依赖约束（本次修订）
+依赖约束由「全项目仅一个三方依赖」调整为：**根包（核心包）保持仅 `github.com/BurntSushi/toml`**（零 gRPC 依赖）；gRPC 三件套（`google.golang.org/grpc`、`google.golang.org/protobuf`、`google.golang.org/genproto/googleapis/rpc`）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包。
+**Reason**: 实现 TODO 项 gRPC 接口与 proto 文档，需引入 gRPC 运行时；为守住"核心包最小依赖"初衷，将约束细化为按包分级。
+**Migration**: 根包源码不得 import gRPC/protobuf 包；HTTP 处理仍仅标准库；依赖审计命令相应更新（见该 Requirement 的 Scenario）。
 
 ## REMOVED Requirements
 （无。）

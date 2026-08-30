@@ -58,7 +58,21 @@
 - Task 6 依赖 Task 4 与 Task 5（测试数据）
 - Task 7 依赖 Task 3（复用校验）、Task 5（公告样例与 testdata）
 - Task 8 依赖 Task 2~7 定型接口，可与 Task 7 部分并行
+- 追加任务（gRPC TODO 落地）：Task 9 → Task 10 → Task 11；Task 12 依赖 Task 10
 
-# TODO（后续立项，本次不实现）
-- gRPC 接口：在核心包之上实现 gRPC 服务，接口语义与 HTTP API 一致
-- proto 文档：提供 `proto/goliday/v1/goliday.proto`（package `goliday.v1`）及生成说明，`DayType` 以 `uint32` 表达，方便调用方引用
+# 追加任务（gRPC TODO 落地）
+- [x] Task 9: 编写 proto 定义并生成代码入库
+  - [x] 9.1 `proto/goliday/v1/goliday.proto`（package `goliday.v1`、go_package、DayType uint32 位注释、GolidayService 三方法、消息契约见 spec）
+  - [x] 9.2 工具链：protoc（用户级安装，不入库）+ protoc-gen-go/protoc-gen-go-grpc（`go install`）
+  - [x] 9.3 生成 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}` 入库，`go build ./...` 通过
+- [x] Task 10: 实现 gRPC 服务（`cmd/goliday-server/grpc.go`，同进程）
+  - [x] 10.1 `-grpc-addr` flag（默认 `:50051`，空串禁用）、注册 GolidayService 与 grpc 标准健康检查、优雅关闭覆盖双协议
+  - [x] 10.2 查询逻辑与 HTTP 复用/对齐（单日/区间/离散/混合、detailed、跨度校验），参数错误 → `codes.InvalidArgument`，message 文案与 HTTP 一致
+  - [x] 10.3 `grpc_test.go`（bufconn）覆盖：单日粗/细、区间左闭右开、离散去重排序、混合并集、QueryStats 无明细、与 HTTP 结果一致性、InvalidArgument 错误
+- [x] Task 11: 更新文档（`docs/`）
+  - [x] 11.1 `docs/API.md` 新增 gRPC 章节（proto 路径、服务与方法、-grpc-addr、再生成命令）
+  - [x] 11.2 `docs/ARCHITECTURE.md` 更新依赖约束（按包分级）与目录树（proto/）
+- [ ] Task 12: 全量验证与提交
+  - [x] 12.1 `go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .` 全绿；根包依赖审计（无 gRPC 导入）
+  - [x] 12.2 冒烟：gRPC 端口监听/禁用行为、健康检查
+  - [ ] 12.3 按 AGENTS.md 规范 git commit（中文 Conventional Commits）

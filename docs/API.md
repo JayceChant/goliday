@@ -1,6 +1,6 @@
-# goliday HTTP API
+# goliday HTTP & gRPC API
 
-goliday-server 提供中国法定节假日日期类型查询服务：单日、区间（左闭右开）、离散列表与混合查询，粗/细两级粒度，以及统计接口。服务仅使用 Go 标准库，配置为纯内存、启动时一次性加载。
+goliday-server 提供中国法定节假日日期类型查询服务：单日、区间（左闭右开）、离散列表与混合查询，粗/细两级粒度，以及统计接口。同时提供语义一致的 **gRPC 接口**（见第 7 节）。HTTP 处理仅使用 Go 标准库，配置为纯内存、启动时一次性加载。
 
 相关文档：[CONFIG_FORMAT.md](./CONFIG_FORMAT.md)（配置格式与 DayType 掩码详解）、[ARCHITECTURE.md](./ARCHITECTURE.md)。
 
@@ -9,16 +9,17 @@ goliday-server 提供中国法定节假日日期类型查询服务：单日、�
 ## 1. 启动服务
 
 ```bash
-go run ./cmd/goliday-server -addr :8080 -config-dir ./configs
+go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 ```
 
 | flag | 默认值 | 说明 |
 |---|---|---|
 | `-addr` | `":8080"` | HTTP 监听地址 |
+| `-grpc-addr` | `":50051"` | gRPC 监听地址；空字符串 `""` 禁用 gRPC |
 | `-config-dir` | `"./configs"` | 年度配置目录（`<year>.toml`，格式见 [CONFIG_FORMAT.md](./CONFIG_FORMAT.md)） |
 | `-v` | — | 输出 `goliday-server version 0.1.0` 后退出 |
 
-启动时全量加载配置目录；任一文件解析或校验失败则启动失败并打印带文件路径的错误。加载成功后输出已加载年份列表日志。
+启动时全量加载配置目录；任一文件解析或校验失败则启动失败并打印带文件路径的错误。加载成功后输出已加载年份列表日志。收到 SIGINT/SIGTERM 后依次优雅关闭 HTTP 与 gRPC。
 
 路由一览（Go 1.22+ `ServeMux`「方法 + 路径」模式）：
 
@@ -291,3 +292,61 @@ curl "http://localhost:8080/healthz"
 细→粗映射：含 `Compensate` 位 → `Workday`（补班优先归上班日，即使当天是周末）；否则含 `Weekend/Festival/Adjusted` 任一位 → `Holiday`。
 
 > `type_label` 由 `DayType.String()` 生成：组合值按细粒度位**从低到高**以 `|` 连接小写名。故 `Festival|Weekend`（8|4 = 12）输出 `weekend|festival`（`weekend` 位更低排在前），而 `Festival|Adjusted`（8|16 = 24）输出 `festival|adjusted`。
+
+---
+
+## 7. gRPC 接口
+
+gRPC 与 HTTP 同进程提供（`-grpc-addr`，默认 `:50051`，空字符串禁用），并注册 gRPC 标准健康检查服务（`grpc.health.v1`，空服务名 `""` 报告 `SERVING`）。
+
+### 7.1 proto 定义与生成代码
+
+| 项 | 位置 |
+|---|---|
+| proto 文件 | `proto/goliday/v1/goliday.proto`（package `goliday.v1`） |
+| 生成代码（已入库） | `proto/goliday/v1/goliday.pb.go`、`goliday_grpc.pb.go`（包名 `golidayv1`） |
+
+调用方无需本地 protoc：同模块直接 `import "goliday/proto/goliday/v1"`；跨语言可复制 `.proto` 自行生成桩代码。`DayType` 掩码在 proto 中以 `uint32` 表达并附位注释（proto3 enum 无法表达位组合），取值与第 6 节掩码表完全一致。
+
+### 7.2 服务与方法
+
+`GolidayService` 三方法与 HTTP 一一对应，语义完全一致（单日 `detailed` 粗/细切换、多日明细恒细粒度、区间左闭右开 ≤366 天、离散去重升序、区间+离散并集 `mode=list`、`date` 优先、细粒度统计交叉计数）：
+
+| rpc 方法 | 对应 HTTP | 说明 |
+|---|---|---|
+| `GetDay(GetDayRequest)` | `GET /api/v1/days?date=...` | 单日，`GetDayResponse{date,type,type_label,total_days,stats}` |
+| `QueryDays(QueryDaysRequest)` | `GET /api/v1/days?start=...&end=...&dates=...` | 区间/离散/混合，含 `days` 明细 |
+| `QueryStats(QueryDaysRequest)` | `GET /api/v1/stats` | 同 QueryDays 入参，无 `days` 明细 |
+
+`QueryDaysRequest{start, end, repeated dates, detailed}` 中日期均为 `YYYY-MM-DD` 字符串；`Stats` 消息恒填 `workday/holiday`（粗粒度），仅 `detailed=true` 时填 `ordinary/compensate/weekend/festival/adjusted`（细粒度交叉计数）。
+
+### 7.3 错误语义
+
+参数错误统一返回 `codes.InvalidArgument`，message 格式为 `"<code>: <中文说明>"`，code 与 HTTP 完全一致（`invalid_date` / `invalid_range` / `missing_query` / `invalid_detailed`）。
+
+### 7.4 Go 调用示例
+
+```go
+conn, err := grpc.NewClient("localhost:50051",
+    grpc.WithTransportCredentials(insecure.NewCredentials()))
+if err != nil { panic(err) }
+defer conn.Close()
+
+client := golidayv1.NewGolidayServiceClient(conn)
+resp, err := client.GetDay(ctx, &golidayv1.GetDayRequest{
+    Date: "2026-02-17", Detailed: true,
+})
+// resp.Type == 24（Festival|Adjusted），resp.TypeLabel == "festival|adjusted"
+```
+
+### 7.5 proto 再生成
+
+修改 `.proto` 后在仓库根重新生成（需 `protoc` 与两个插件在 PATH，生成文件随仓库提交）：
+
+```bash
+protoc --go_out=. --go_opt=module=goliday \
+       --go-grpc_out=. --go-grpc_opt=module=goliday \
+       proto/goliday/v1/goliday.proto
+```
+
+参考版本：protoc v29.3、protoc-gen-go v1.36.5、protoc-gen-go-grpc v1.5.1。

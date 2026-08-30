@@ -43,5 +43,16 @@
 - [x] `docs/holiday_config_example.toml` 完整注释示例；`docs/API.md`、`docs/ARCHITECTURE.md` 与实现一致（17 处偏差已按代码修正）
 
 ## TODO 项登记（本次不实现，仅记录）
-- [x] 登记：后续实现 gRPC 接口（语义与 HTTP API 一致）
-- [x] 登记：后续提供 `proto/goliday/v1/goliday.proto` proto 文档及生成说明，供调用方引用（`DayType` 以 `uint32` 表达）
+- [x] ~~登记：后续实现 gRPC 接口（语义与 HTTP API 一致）~~（已由追加任务 Task 9~12 落地）
+- [x] ~~登记：后续提供 `proto/goliday/v1/goliday.proto` proto 文档及生成说明（`DayType` 以 `uint32` 表达）~~（已落地）
+
+## 追加验收（gRPC TODO 落地）
+- [x] `proto/goliday/v1/goliday.proto` 存在：package `goliday.v1`、`go_package` 正确、DayType 以 uint32 位注释表达、GolidayService（GetDay/QueryDays/QueryStats）
+- [x] 生成代码 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}` 入库，无需 protoc 即可编译
+- [x] `-grpc-addr`（默认 `:50051`，空串禁用）生效；gRPC 与 HTTP 同进程；注册标准健康检查；优雅关闭覆盖双协议
+- [x] gRPC 查询语义与 HTTP 一致（单日/区间/离散/混合、detailed、跨度 ≤366、明细恒细粒度、stats 交叉计数）
+- [x] 参数错误 → `codes.InvalidArgument`，message 文案与 HTTP 一致
+- [x] grpc_test.go（bufconn）覆盖语义一致性与错误场景
+- [x] 根包依赖审计：根包导入无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 BurntSushi/toml + grpc/protobuf（genproto/rpc、x/* 等均为 gRPC 传递依赖）
+- [x] `docs/API.md` 新增 gRPC 章节、`docs/ARCHITECTURE.md` 依赖分级与目录树更新
+- [x] 全量验证通过 + 中文 Conventional Commits 提交

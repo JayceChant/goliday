@@ -1,0 +1,100 @@
+// goliday v1 API —— 节假日查询 gRPC 接口定义。
+//
+// 语义与 HTTP API 一致（见 docs/API.md）：
+//   - 日期一律为 "YYYY-MM-DD" 字符串；
+//   - 单日查询 detailed 切换粗/细粒度；多日明细 days 恒为细粒度数值；
+//   - 区间为左闭右开 [start, end)，跨度上限 366 天；
+//   - 离散列表自动去重并升序，与区间同时提供时取并集（mode=list）；
+//   - 细粒度统计对组合日按标志位交叉计数（各键之和可大于 total_days）。
+//
+// 再生成（需 protoc 与两个插件在 PATH，在仓库根执行）：
+//   protoc --go_out=. --go_opt=module=goliday \
+//         --go-grpc_out=. --go-grpc_opt=module=goliday \
+//         proto/goliday/v1/goliday.proto
+// 参考版本：protoc v29.3、protoc-gen-go v1.36.5、protoc-gen-go-grpc v1.5.1。
+syntax = "proto3";
+
+package goliday.v1;
+
+option go_package = "goliday/proto/goliday/v1;golidayv1";
+
+// DayType 为位掩码（proto3 enum 无法表达位组合，以 uint32 表达，附取值注释）。
+//
+// 细粒度位：
+//   1  ORDINARY   普通工作日
+//   2  COMPENSATE 补班（归工作日段）
+//   4  WEEKEND    周末（归节假日段）
+//   8  FESTIVAL   节日（归节假日段）
+//   16 ADJUSTED   调休（归节假日段）
+// 粗粒度段值：
+//   3  WORKDAY  = ORDINARY|COMPENSATE 工作日
+//   28 HOLIDAY  = WEEKEND|FESTIVAL|ADJUSTED 节假日
+// 细粒度合法组合全集：1 / 4 / 6 / 12 / 16 / 24（如 6=补班逢周末、24=节日当天调休）。
+// 与核心包 goliday.DayType 完全一致。
+message Day {
+  string date = 1;        // YYYY-MM-DD
+  uint32 type = 2;        // DayType 掩码数值
+  string type_label = 3;  // 可读标签，如 "workday"、"festival|adjusted"
+}
+
+// 统计结果。workday/holiday 恒填充（粗粒度）；
+// ordinary/compensate/weekend/festival/adjusted 仅 detailed=true 时填充（细粒度交叉计数）。
+message Stats {
+  int32 workday = 1;
+  int32 holiday = 2;
+  int32 ordinary = 3;
+  int32 compensate = 4;
+  int32 weekend = 5;
+  int32 festival = 6;
+  int32 adjusted = 7;
+}
+
+// 单日查询，对应 HTTP GET /api/v1/days?date=...
+message GetDayRequest {
+  string date = 1;      // YYYY-MM-DD，必填
+  bool detailed = 2;    // 默认 false（粗粒度）
+}
+
+message GetDayResponse {
+  string date = 1;
+  uint32 type = 2;           // detailed=false 为粗粒度值（3/28），true 为细粒度掩码
+  string type_label = 3;
+  int32 total_days = 4;      // 恒为 1
+  Stats stats = 5;
+}
+
+// 区间/离散/混合查询，对应 HTTP GET /api/v1/days?start=...&end=...&dates=...
+message QueryDaysRequest {
+  string start = 1;          // 区间起点（含），YYYY-MM-DD
+  string end = 2;            // 区间终点（不含），YYYY-MM-DD
+  repeated string dates = 3; // 离散日期列表（自动去重升序，与区间并集）
+  bool detailed = 4;         // 默认 false（stats 粗粒度）
+}
+
+message QueryDaysResponse {
+  string mode = 1;        // "range"（仅区间）或 "list"（离散/混合）
+  string start = 2;       // 区间模式回显
+  string end = 3;
+  int32 total_days = 4;
+  repeated Day days = 5;  // 恒为细粒度数值，升序
+  Stats stats = 6;
+}
+
+// 统计查询，对应 HTTP GET /api/v1/stats，入参同 QueryDaysRequest，不含 days 明细。
+message StatsResponse {
+  string mode = 1;
+  string start = 2;
+  string end = 3;
+  int32 total_days = 4;
+  Stats stats = 5;
+}
+
+// 节假日查询服务。参数错误统一返回 InvalidArgument，错误文案与 HTTP 一致。
+service GolidayService {
+  // 单日查询。
+  rpc GetDay(GetDayRequest) returns (GetDayResponse);
+  // 区间/离散/混合查询（含逐日明细）。
+  rpc QueryDays(QueryDaysRequest) returns (QueryDaysResponse);
+  // 统计查询（无逐日明细）。
+  rpc QueryStats(QueryDaysRequest) returns (StatsResponse);
+}
