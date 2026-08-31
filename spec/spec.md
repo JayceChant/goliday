@@ -21,10 +21,11 @@
 - 生成工具与文档：`docs/generate_prompt.md` 提示词模板；`cmd/goliday-tool` 提供 `gen`（公告文本 → 年度 TOML 草稿）与 `validate`（校验）子命令。
 - gRPC 接口与 proto 文档：`proto/goliday/v1/goliday.proto`（package `goliday.v1`）定义 `GolidayService`（GetDay/QueryDays/QueryStats），语义与 HTTP API 一致；生成代码入库于 `proto/goliday/v1/`；`cmd/goliday-server` 同进程提供 gRPC 服务（`-grpc-addr`）。
 - 依赖策略：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**；HTTP 处理仅标准库；gRPC 相关（`google.golang.org/grpc`、`google.golang.org/protobuf`、`google.golang.org/genproto/googleapis/rpc`）仅允许出现在 proto 生成代码包与 `cmd/` 子包。
+- 测试分层：单元测试区分**白盒**（与被测包同名的内部测试包，如 `package goliday`、`package main`，可访问未导出标识符）与**黑盒**（根包外部测试包 `package goliday_test`，仅经导出 API 验证对外契约）；并按被测目标归属提供原生 **fuzz 测试**（标准库 `testing.F`，种子语料内联），目标清单见「测试分层（白盒/黑盒）与 fuzz 测试」Requirement。
 - API 契约与配置格式、选型、目录结构、示例配置见 `docs/API.md`、`docs/CONFIG_FORMAT.md`、`docs/ARCHITECTURE.md`、`docs/holiday_config_example.toml`。
 
 ## Impact
-- Affected specs: 全部为本变更新增（无既有 spec 受影响）。
+- Affected specs: 全部为本变更新增（无既有 spec 受影响；「测试分层与 fuzz 测试」为追加 Requirement，不修改既有行为）。
 - Affected code（均为新建）：
   - 根包：`daytype.go`、`config.go`、`store.go`、`calendar.go` 及对应 `*_test.go`
   - 服务子包：`cmd/goliday-server/{main.go,handlers.go,handlers_test.go,grpc.go,grpc_test.go}`
@@ -302,6 +303,45 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 #### Scenario: 参数错误
 - **WHEN** gRPC 请求 `date="2026-02-30"` 或 `end<start`
 - **THEN** 返回 `codes.InvalidArgument`，message 与 HTTP 同类错误一致
+
+### Requirement: 测试分层（白盒/黑盒）与 fuzz 测试
+系统 SHALL 将单元测试按可见性分层。**白盒测试**位于与被测包同名的内部测试包，允许访问未导出标识符，覆盖分支、边界与错误路径；每个测试文件头 SHALL 以注释标注「白盒/黑盒」及测试视角。**黑盒测试** SHALL 位于根包外部测试包 `package goliday_test`，仅引用 `goliday` 导出 API（`LoadYear`/`LoadDir`/`Store`/`NewCalendar`/`Calendar`/`YearConfig.Validate`/`DayType` 常量与方法），不引用任何未导出标识符，以使用方视角验证对外行为契约（判断算法、粗细映射、区间/列表/统计口径、无配置年回退）。文件布局：
+
+| 包 | 文件 | 视角 |
+|---|---|---|
+| 根包 `goliday` | `config_test.go`（未导出 `parseDate` 的严格解析 + `FuzzParseDate`） | 白盒 |
+| 根包 `goliday_test` | `daytype_test.go`（枚举契约 + 256 值穷举不变量） | 黑盒 |
+| 根包 `goliday_test` | `calendar_test.go`（判定/区间/统计契约 + `FuzzQueryConsistency`） | 黑盒 |
+| 根包 `goliday_test` | `config_blackbox_test.go`（LoadYear/LoadDir/Validate 契约 + `FuzzLoadYearTOML`，含黑盒公用 helper 与内联 TOML 常量） | 黑盒 |
+| 根包 `goliday_test` | `store_test.go`（目录加载契约） | 黑盒 |
+| `cmd/goliday-server`（`package main`） | `handlers_test.go`、`grpc_test.go`、`handlers_fuzz_test.go`（`FuzzDaysHandler`） | 白盒 |
+| `cmd/goliday-tool`（`package main`） | `gen_test.go`、`gen_fuzz_test.go`（`FuzzGenDraft`） | 白盒 |
+
+系统 SHALL 提供原生 fuzz 测试（Go 标准 `testing.F`），种子语料内联于测试（不落盘语料目录），并保证 `go test`（非 fuzz 模式）仅执行种子即全部通过：
+
+| Fuzz 目标 | 所属 | 性质 | 不变量 |
+|---|---|---|---|
+| `FuzzParseDate` | 根包 `package goliday`（白盒） | 输入校验 | 任意字符串：解析成功 ⇔ `time.Parse("2006-01-02", s)` 接受且 `Format` 回环一致；成功值再解析幂等；失败必须返回非 nil error |
+| `FuzzQueryConsistency` | 根包 `package goliday_test`（黑盒） | 语义等价 | 任意年/月/日/时/分构造的 `time.Time`：`Query` 结果 ∈ 合法细粒度组合全集 {1,4,6,12,16,24}；`QueryCoarse == Query().Coarse()`；`IsWorkday/IsHoliday` 与之互斥一致；同一日不同时刻（+5h/+23h）、UTC 与 +08:00 表示结果不变；无配置年份结果仅 {Ordinary, Weekend} |
+| `FuzzLoadYearTOML` | 根包 `package goliday_test`（黑盒） | 输入校验 | 任意年份 + TOML 文本：`LoadYear` 成功 ⟹ `Validate()` 幂等通过、off 全为周一~五、work 全为周六/日、两集合互斥无重复、全部日期在 `year` 年内；经 `LoadDir` 构造的 `Calendar` 对 off 日含 `Adjusted` 位、work 日为 `Compensate|Weekend` |
+| `FuzzDaysHandler` | `cmd/goliday-server` `package main`（白盒） | 鲁棒性 | 任意查询串打到 `/api/v1/days` 与 `/api/v1/stats`：不 panic、状态码仅 200/400、响应恒为合法 JSON；200 且含 `days` 时升序唯一、`total_days == len(days)`；粗粒度 stats 之和 == `total_days`，细粒度（交叉计数）之和 ≥ `total_days`；单日模式 `total_days == 1` |
+| `FuzzGenDraft` | `cmd/goliday-tool` `package main`（白盒） | 不变量 | 任意年份 + 公告文本：解析条目区间有效且在年内；草稿 off 全为周一~五、work 全为周六/日、互斥无重复、全在年内；festival 日期非 TODO 则为合法 `YYYY-MM-DD`；`selfCheck` 失败仅允许 TODO 占位或"节日当天不得补班"；自检通过且文件名年份合法时 `render` 产物可被 `LoadYear` 加载 |
+
+补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`Coarse` 结果 ∈ {Workday, Holiday} 且幂等、`IsWorkday`/`IsHoliday` 恰一为真、`String` 分段均为合法名）覆盖，不再另设 fuzz 目标。
+
+约束：fuzz 目标不得新增第三方依赖（仅 `testing`/`time`/标准库）；失败语料按 Go 惯例落盘 `testdata/fuzz/<Name>/` 后 SHALL 转写为常规回归用例（普通 Test 或种子）再删除语料文件，保持仓库无 fuzz 语料残留。
+
+#### Scenario: 黑盒仅用导出 API
+- **WHEN** 检查根包外部测试文件 `goliday_test.go` 的导入与引用
+- **THEN** 其 `package` 为 `goliday_test`，且不引用 `normalizeDate`、`parseDate`、`yearFilePattern` 等未导出标识符
+
+#### Scenario: fuzz 种子即回归
+- **WHEN** 运行 `go test ./...`（不带 `-fuzz`）
+- **THEN** 各 Fuzz 目标仅以种子语料执行且全部通过；`go test -fuzz=Fuzz -fuzztime=10s ./...`（逐包）无 crash
+
+#### Scenario: 崩溃语料回填
+- **WHEN** fuzz 发现失败并在 `testdata/fuzz/<Name>/` 落盘语料
+- **THEN** 该语料转写为常规回归用例（种子或普通 Test）后删除语料文件，`git status` 无 fuzz 语料残留
 
 ## MODIFIED Requirements
 

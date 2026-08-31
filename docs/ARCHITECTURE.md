@@ -16,21 +16,24 @@ goliday/
 ├── config.go                       # TOML 解析（LoadYear）与校验（YearConfig.Validate）
 ├── store.go                        # 多年份配置加载与只读存储（Store/LoadDir）
 ├── calendar.go                     # 查询索引与判定（Calendar/Query/QueryRange/Stats）
-├── daytype_test.go                 # 掩码与映射测试
-├── config_test.go                  # 解析与校验测试
-├── store_test.go                   # 目录加载测试
-├── calendar_test.go                # 判定/区间/统计测试
+├── config_test.go                  # 【白盒】parseDate 严格解析 + FuzzParseDate
+├── daytype_test.go                 # 【黑盒】枚举契约 + 256 值穷举不变量
+├── calendar_test.go                # 【黑盒】判定/区间/统计契约 + 全年校验 + FuzzQueryConsistency
+├── config_blackbox_test.go         # 【黑盒】LoadYear/LoadDir/Validate 契约 + FuzzLoadYearTOML
+├── store_test.go                   # 【黑盒】目录加载契约
 ├── cmd/
 │   ├── goliday-server/             # HTTP + gRPC 服务（可执行入口）
 │   │   ├── main.go                 # flag 解析、加载配置、启动/优雅关闭 HTTP 与 gRPC
 │   │   ├── handlers.go             # /api/v1/days、/api/v1/stats、/healthz 处理器与中间件
-│   │   ├── handlers_test.go        # 处理器测试（httptest）
+│   │   ├── handlers_test.go        # 【白盒】处理器测试（httptest）
+│   │   ├── handlers_fuzz_test.go   # 【白盒】FuzzDaysHandler（任意查询参数）
 │   │   ├── grpc.go                 # GolidayService 实现（GetDay/QueryDays/QueryStats）+ 标准健康检查
-│   │   └── grpc_test.go            # gRPC 测试（bufconn）
+│   │   └── grpc_test.go            # 【白盒】gRPC 测试（bufconn）
 │   └── goliday-tool/               # 配置工具（可执行入口）
 │       ├── main.go                 # 子命令分发：validate（校验）与 gen（公告→TOML 草稿）
 │       ├── gen.go                  # gen 实现：公告解析、节日推断、草稿渲染与自检
-│       └── gen_test.go             # 解析与子命令测试
+│       ├── gen_test.go             # 【白盒】解析与子命令测试
+│       └── gen_fuzz_test.go        # 【白盒】FuzzGenDraft（任意公告文本）
 ├── proto/
 │   └── goliday/v1/
 │       ├── goliday.proto           # gRPC 接口定义（package goliday.v1，供调用方引用）
@@ -149,3 +152,29 @@ JSON 序列化返回
 - **gRPC 服务**：与 HTTP 同进程（`-grpc-addr`，默认 `:50051`，空字符串禁用），实现 `GolidayService` 三方法（`GetDay/QueryDays/QueryStats`），语义与 HTTP API 完全一致，并注册 gRPC 标准健康检查；优雅关闭同时覆盖双协议。
 - **proto 定义**：`proto/goliday/v1/goliday.proto`（package `goliday.v1`）供调用方直接引用；`DayType` 掩码以 **`uint32`** 表达并附位含义注释，取值与位定义和 HTTP API 掩码表（见 [API.md](./API.md) 第 6 节）保持一致。生成代码入库于 `proto/goliday/v1/`，调用方无需本地 protoc；再生成命令与参考版本见 [API.md](./API.md) 第 7.5 节。
 - 接口契约、错误语义与调用示例详见 [API.md](./API.md) 第 7 节。
+
+---
+
+## 6. 测试分层（白盒/黑盒）与 fuzz
+
+单元测试按可见性分层，每个测试文件头部以注释标注视角：
+
+| 层 | 位置 | 说明 |
+|---|---|---|
+| **白盒** | 根包 `package goliday`：`config_test.go`；`cmd/*` 的 `package main`：`handlers_test.go`、`grpc_test.go`、`gen_test.go` 与两个 fuzz 文件 | 与被测包同名，可访问未导出标识符（如 `parseDate`、`newHandler`、`grpcServer`、`parseAnnouncement`），覆盖分支、边界与错误路径 |
+| **黑盒** | 根包 `package goliday_test`：`daytype_test.go`、`calendar_test.go`、`config_blackbox_test.go`、`store_test.go` | 仅经导出 API 验证对外契约（判断算法、粗细映射、区间/统计口径、无配置年回退），不引用任何未导出标识符 |
+
+补充两类强化用例：
+
+- **穷举不变量**：`DayType` 为 uint8 小域，`TestDayTypeExhaustiveInvariants` 遍历全部 256 个取值验证 `Coarse` 封闭且幂等、`IsWorkday/IsHoliday` 恰一为真、`String` 分段合法；`TestCalendarConfiguredYearExhaustive` 对已配置年份全年逐日验证判型 ∈ 6 种合法组合。
+- **fuzz 测试**（Go 原生 `testing.F`，种子内联，`go test` 常规运行即执行种子回归）：
+
+| 目标 | 位置 | 不变量 |
+|---|---|---|
+| `FuzzParseDate` | 根包（白盒） | 严格解析 ⇔ `time.Parse` 接受且回格式化一致；幂等 |
+| `FuzzQueryConsistency` | 根包（黑盒） | 判型 ∈ 合法组合全集；粗细一致；同时刻/时区不变；无配置年仅周休 |
+| `FuzzLoadYearTOML` | 根包（黑盒） | `LoadYear` 成功 ⟹ 稀疏约束全部成立且 Calendar 判型与配置一致 |
+| `FuzzDaysHandler` | server（白盒） | 任意参数不 panic、仅 200/400、响应 JSON 结构与统计口径不变 |
+| `FuzzGenDraft` | tool（白盒） | 任意公告解析出的草稿恒满足稀疏表不变量，自检通过可加载 |
+
+冒烟：`go test -run=^$ -fuzz=Fuzz<Name> -fuzztime=10s`（逐包逐目标）。fuzz 发现的崩溃语料按 Go 惯例落盘 `testdata/fuzz/`，须转写为常规回归用例后删除，仓库不保留语料文件。

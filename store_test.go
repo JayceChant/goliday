@@ -1,10 +1,14 @@
-package goliday
+// 黑盒测试（package goliday_test）：仅经导出 API（LoadDir/Store）验证
+// 目录加载的对外契约：仅加载 NNNN.toml、忽略杂项、空目录与错误场景。
+package goliday_test
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"goliday"
 )
 
 func TestStoreTempDirScenario(t *testing.T) {
@@ -68,18 +72,18 @@ func TestLoadDirInvalid(t *testing.T) {
 				t.Fatalf("写入 %s 失败: %v", target, err)
 			}
 
-			s, err := LoadDir(dir)
-			if err == nil {
-				t.Fatalf("LoadDir(%q) 未报错，返回 %+v", dir, s)
-			}
-			msg := err.Error()
-			if !strings.Contains(msg, filepath.ToSlash(target)) {
-				t.Errorf("错误信息 %q 未包含文件名 %q", msg, target)
-			}
-			for _, kw := range keywords {
-				if !strings.Contains(msg, kw) {
-					t.Errorf("错误信息 %q 未包含关键词 %q", msg, kw)
+			if _, err := goliday.LoadDir(dir); err != nil {
+				msg := err.Error()
+				if !strings.Contains(msg, filepath.ToSlash(target)) {
+					t.Errorf("错误信息 %q 未包含文件名 %q", msg, target)
 				}
+				for _, kw := range keywords {
+					if !strings.Contains(msg, kw) {
+						t.Errorf("错误信息 %q 未包含关键词 %q", msg, kw)
+					}
+				}
+			} else {
+				t.Fatalf("LoadDir(%q) 未报错", dir)
 			}
 		})
 	}
@@ -94,7 +98,7 @@ func TestLoadDirInvalidDirIgnored(t *testing.T) {
 }
 
 func TestLoadDirMissingDir(t *testing.T) {
-	if _, err := LoadDir(filepath.Join(t.TempDir(), "no-such-dir")); err == nil {
+	if _, err := goliday.LoadDir(filepath.Join(t.TempDir(), "no-such-dir")); err == nil {
 		t.Error("不存在的目录 LoadDir 未报错")
 	}
 }

@@ -1,3 +1,5 @@
+// 白盒测试（package main）：经未导出的 newHandler 构造完整处理链，
+// 覆盖全部 HTTP API Scenario。
 package main
 
 import (

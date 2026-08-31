@@ -59,6 +59,7 @@
 - Task 7 依赖 Task 3（复用校验）、Task 5（公告样例与 testdata）
 - Task 8 依赖 Task 2~7 定型接口，可与 Task 7 部分并行
 - 追加任务（gRPC TODO 落地）：Task 9 → Task 10 → Task 11；Task 12 依赖 Task 10
+- 追加任务（测试强化）：Task 13 依赖 Task 2~12（存量测试与实现定型）
 
 # 追加任务（gRPC TODO 落地）
 - [x] Task 9: 编写 proto 定义并生成代码入库
@@ -76,3 +77,11 @@
   - [x] 12.1 `go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .` 全绿；根包依赖审计（无 gRPC 导入）
   - [x] 12.2 冒烟：gRPC 端口监听/禁用行为、健康检查
   - [x] 12.3 按 AGENTS.md 规范 git commit（中文 Conventional Commits）
+
+# 追加任务（测试强化：白盒/黑盒分层与 fuzz）
+- [x] Task 13: 测试分层重组与 fuzz 测试
+  - [x] 13.1 根包黑盒化：`daytype_test.go`、`calendar_test.go`、`store_test.go` 迁至 `package goliday_test`，新增 `config_blackbox_test.go` 承接原 config_test.go 的 LoadYear/LoadDir/Validate 契约测试与黑盒公用 helper；`config_test.go` 精简为白盒（未导出 `parseDate`）
+  - [x] 13.2 黑盒穷举/全年校验：DayType 全 256 取值不变量（Coarse ∈ {Workday,Holiday} 且幂等、IsWorkday/IsHoliday 恰一真、String 分段合法名）；Calendar 对已配置年份全年逐日结果 ∈ 6 种合法组合且粗细一致
+  - [x] 13.3 fuzz 目标：`FuzzParseDate`（根包白盒）、`FuzzQueryConsistency`/`FuzzLoadYearTOML`（根包黑盒）、`FuzzDaysHandler`（server 白盒）、`FuzzGenDraft`（tool 白盒），种子内联、无新增依赖
+  - [x] 13.4 同步 `docs/ARCHITECTURE.md`（目录树与测试分层说明）
+  - [x] 13.5 验证：`go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .` 全绿；各 fuzz 目标逐包 `-fuzz` 冒烟通过；无 `testdata/fuzz/` 语料残留

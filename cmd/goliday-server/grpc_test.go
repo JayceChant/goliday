@@ -1,3 +1,5 @@
+// 白盒测试（package main）：经 bufconn 直接挂载未导出的 grpcServer，
+// 覆盖 gRPC 语义一致性与错误场景。
 package main
 
 import (

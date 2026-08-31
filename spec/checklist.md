@@ -56,3 +56,12 @@
 - [x] 根包依赖审计：根包导入无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 BurntSushi/toml + grpc/protobuf（genproto/rpc、x/* 等均为 gRPC 传递依赖）
 - [x] `docs/API.md` 新增 gRPC 章节、`docs/ARCHITECTURE.md` 依赖分级与目录树更新
 - [x] 全量验证通过 + 中文 Conventional Commits 提交
+
+## 追加验收（测试分层与 fuzz）
+- [x] 根包测试按视角分层：白盒 `package goliday`（config_test.go：parseDate 严格解析）；黑盒 `package goliday_test`（daytype/calendar/config_blackbox/store），黑盒仅引用导出 API
+- [x] 每个测试文件头注释标注「白盒/黑盒」及测试视角；server 与 tool 测试归白盒（`package main`）
+- [x] DayType 全 256 取值穷举不变量通过；Calendar 对已配置年份全年逐日结果 ∈ 6 种合法组合且粗细一致
+- [x] fuzz 目标齐备：`FuzzParseDate`、`FuzzQueryConsistency`、`FuzzLoadYearTOML`、`FuzzDaysHandler`、`FuzzGenDraft`，种子内联、无新增依赖；`go test ./...` 种子全部通过
+- [x] 各 fuzz 目标逐包 `-fuzz` 冒烟通过；仓库无 `testdata/fuzz/` 语料残留
+- [x] `docs/ARCHITECTURE.md` 目录树与测试分层说明已同步
+- [x] 全量验证通过 + 中文 Conventional Commits 提交（type 为 `test`）

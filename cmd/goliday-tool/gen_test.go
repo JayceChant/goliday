@@ -1,3 +1,5 @@
+// 白盒测试（package main）：直接调用未导出的解析/组装/子命令函数，
+// 覆盖公告解析、草稿生成与 gen/validate 行为。
 package main
 
 import (
