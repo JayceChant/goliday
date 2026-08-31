@@ -74,7 +74,8 @@ func TestLoadDirInvalid(t *testing.T) {
 
 			if _, err := goliday.LoadDir(dir); err != nil {
 				msg := err.Error()
-				if !strings.Contains(msg, filepath.ToSlash(target)) {
+				// 错误信息内嵌的即传入的原始路径，直接断言（兼容平台路径分隔符差异）。
+				if !strings.Contains(msg, target) {
 					t.Errorf("错误信息 %q 未包含文件名 %q", msg, target)
 				}
 				for _, kw := range keywords {

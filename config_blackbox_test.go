@@ -210,7 +210,8 @@ func TestLoadYearInvalid(t *testing.T) {
 				t.Fatalf("LoadYear(%q) 未报错，返回 %+v", path, cfg)
 			}
 			msg := err.Error()
-			if !strings.Contains(msg, filepath.ToSlash(path)) {
+			// 错误信息内嵌的即传入的原始路径，直接断言（兼容平台路径分隔符差异）。
+			if !strings.Contains(msg, path) {
 				t.Errorf("错误信息 %q 未包含文件名 %q", msg, path)
 			}
 			for _, kw := range keywords {
