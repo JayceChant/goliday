@@ -75,4 +75,4 @@
 - [ ] Task 12: 全量验证与提交
   - [x] 12.1 `go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .` 全绿；根包依赖审计（无 gRPC 导入）
   - [x] 12.2 冒烟：gRPC 端口监听/禁用行为、健康检查
-  - [ ] 12.3 按 AGENTS.md 规范 git commit（中文 Conventional Commits）
+  - [x] 12.3 按 AGENTS.md 规范 git commit（中文 Conventional Commits）
