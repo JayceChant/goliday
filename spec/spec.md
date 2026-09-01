@@ -280,7 +280,7 @@ Dockerfile 约定：
 
 ci.yml 约定：
 - 触发：`push` 默认分支、`pull_request`（默认分支）、`workflow_dispatch`；权限最小化 `contents: read`；
-- 测试作业：`stable` 与 `oldstable` 双版本矩阵（`actions/setup-go` 自带模块缓存），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile`；
+- 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile`；
 - 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；
 - lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警。
 
@@ -296,7 +296,7 @@ README 双语 SHALL 在标题下接入 CI、Codecov、pkg.go.dev、OpenSSF Score
 
 #### Scenario: CI 测试矩阵
 - **WHEN** push 或 PR 触发 ci.yml
-- **THEN** `stable` 与 `oldstable` 两个矩阵项各自完成 build/vet/gofmt/test，lint 作业零告警；任一步骤失败流水线标红
+- **THEN** `1.27.x` 与 `stable` 两个矩阵项各自完成 build/vet/gofmt/test，lint 作业零告警；任一步骤失败流水线标红
 
 #### Scenario: 覆盖率上报
 - **WHEN** `stable` 矩阵项测试通过

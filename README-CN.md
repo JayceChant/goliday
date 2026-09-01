@@ -124,7 +124,7 @@ go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .
 
 | 服务 | 结果 | 说明 |
 |---|---|---|
-| [GitHub Actions](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | [![ci](https://github.com/JayceChant/goliday/actions/workflows/ci.yml/badge.svg)](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | Go stable / oldstable 双版本矩阵：build、vet、gofmt、`go test -race`，另设 golangci-lint 零告警作业（[工作流](.github/workflows/ci.yml)） |
+| [GitHub Actions](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | [![ci](https://github.com/JayceChant/goliday/actions/workflows/ci.yml/badge.svg)](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | Go 1.27.x（go.mod 最低要求）+ stable 双版本矩阵：build、vet、gofmt、`go test -race`，另设 golangci-lint 零告警作业（[工作流](.github/workflows/ci.yml)） |
 | [Codecov](https://codecov.io/gh/JayceChant/goliday) | [![codecov](https://codecov.io/gh/JayceChant/goliday/graph/badge.svg)](https://codecov.io/gh/JayceChant/goliday) | `go test -coverprofile` 覆盖率上报，逐行查看覆盖详情 |
 | [pkg.go.dev](https://pkg.go.dev/github.com/JayceChant/goliday) | [![Go Reference](https://pkg.go.dev/badge/github.com/JayceChant/goliday.svg)](https://pkg.go.dev/github.com/JayceChant/goliday) | Go 官方文档构建与导入检查，随模块版本自动更新 |
 | [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JayceChant/goliday/badge)](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | 仓库安全实践自动评分，每周定时运行，SARIF 同步至 code scanning（[工作流](.github/workflows/scorecard.yml)） |

@@ -82,3 +82,4 @@
 - [x] README 双语语义一致：标题下四枚徽章（Actions CI/Codecov/pkg.go.dev/OpenSSF Scorecard）+「质量与持续集成 / Quality & CI」章节表格链接各服务结果页与工作流文件；无本地绝对路径
 - [x] YAML 语法经解析校验通过；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（ci: 新增 CI 测试矩阵与覆盖率、Scorecard 工作流并接入 README 徽章）
 - [x] 修复 scorecard-action 版本解析失败（`@v2` 漂移主标签不存在）：改为固定 `@v2.4.4`（该仓库仅发布完整版本 tag）；YAML 重新校验通过；执行提交（fix: scorecard-action 固定到完整版本标签 v2.4.4）
+- [x] 修复 CI 矩阵 oldstable（Go 1.26.x，低于 go.mod 要求 1.27 且 runner 默认 GOTOOLCHAIN=local 不自动升级）编译失败：矩阵改为 `1.27.x`（最低要求）+ `stable`，spec.md Requirement/Scenario 与 README 双语表述同步；YAML 重新校验通过；执行提交（fix: CI 矩阵改为 go.mod 最低版本与 stable）
