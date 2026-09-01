@@ -81,3 +81,4 @@
 - [x] `.github/workflows/scorecard.yml`：push 默认分支/每周 cron/branch_protection_rule/workflow_dispatch 触发；顶层 `permissions: read-all`，作业内 id-token: write + security-events: write 最小化；ossf/scorecard-action publish_results: true 发布 scorecard.dev；SARIF 经 artifact 留存并由 github/codeql-action/upload-sarif 上传 code scanning
 - [x] README 双语语义一致：标题下四枚徽章（Actions CI/Codecov/pkg.go.dev/OpenSSF Scorecard）+「质量与持续集成 / Quality & CI」章节表格链接各服务结果页与工作流文件；无本地绝对路径
 - [x] YAML 语法经解析校验通过；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（ci: 新增 CI 测试矩阵与覆盖率、Scorecard 工作流并接入 README 徽章）
+- [x] 修复 scorecard-action 版本解析失败（`@v2` 漂移主标签不存在）：改为固定 `@v2.4.4`（该仓库仅发布完整版本 tag）；YAML 重新校验通过；执行提交（fix: scorecard-action 固定到完整版本标签 v2.4.4）
