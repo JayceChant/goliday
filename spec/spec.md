@@ -245,6 +245,35 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **WHEN** `goliday-tool validate testdata/2026.toml` 与对 `testdata/invalid/*.toml`
 - **THEN** 分别退出 0 与非 0
 
+### Requirement: 容器镜像与发布（GitHub 环境）
+
+仓库根 SHALL 提供 `Dockerfile`（多阶段构建）与 `.dockerignore`，GitHub Actions SHALL 提供 `.github/workflows/docker.yml` 自动构建并发布镜像至 GHCR（`ghcr.io/<owner>/goliday`）。
+
+Dockerfile 约定：
+- 构建阶段：`golang:1.27`（`AS build`），仅复制 `go.mod`/`go.sum` 后 `go mod download`（层缓存友好），再复制源码；`CGO_ENABLED=0` 静态编译 `cmd/goliday-server`（distroless 无动态 loader，必须静态链接）。
+- 运行阶段：`gcr.io/distroless/static-debian12:nonroot`；仅复制 server 二进制至 `/goliday-server`；`USER nonroot`（镜像内已内置）；`EXPOSE 8080 50051`；`ENTRYPOINT ["/goliday-server"]`。
+- 不打包 `configs/`：配置与镜像解耦，运行时经 volume 挂载后以 `-config-dir` 指向；distroless 无 shell，容器内一切命令参数走 exec 形式。
+- 构建上下文最小化：`.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`*.md`、`.env*` 等非构建必需内容。
+
+工作流约定：
+- 触发：`push` 默认分支、`push` tag `v*`、`pull_request`（仅构建验证，不推送）、`workflow_dispatch`；
+- 权限最小化：`contents: read` + `packages: write`；
+- 步骤：checkout → buildx → QEMU（多架构）→ GHCR 登录（`GITHUB_TOKEN`）→ metadata 提取标签 → build & push（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance`/`sbom` 关闭以保持镜像单 manifest）；
+- 标签策略（metadata-action）：分支名（默认分支）、语义化版本 `v1.2.3` → `1.2.3` / `1.2` / `1`、tag 事件附加 `latest`；
+- 无自定义 secrets：GHCR 认证仅用内置 `GITHUB_TOKEN`。
+
+#### Scenario: 本地构建镜像
+- **WHEN** 在仓库根执行 `docker build -t goliday .`
+- **THEN** 多阶段构建成功，最终镜像基于 distroless 且以 nonroot 运行，`docker run goliday -v` 输出版本后退出
+
+#### Scenario: 容器启动并挂载配置
+- **WHEN** `docker run -p 8080:8080 -v $PWD/configs:/data:ro goliday -config-dir /data`
+- **THEN** 服务监听 8080/50051，`GET /healthz` 返回已加载年份
+
+#### Scenario: CI 构建与发布
+- **WHEN** push tag `v0.2.0` 触发工作流
+- **THEN** 构建多架构镜像并发布至 `ghcr.io/<owner>/goliday:0.2.0`（另含 `0.2`、`0`、`latest`）；PR 事件仅构建不推送
+
 ### Requirement: proto 定义与生成代码
 
 系统 SHALL 提供 `proto/goliday/v1/goliday.proto`（syntax proto3，package `goliday.v1`，`option go_package = "github.com/JayceChant/goliday/proto/goliday/v1;golidayv1"`），供调用方直接引用；生成的 Go 代码 SHALL 入库于 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}`（调用方无需本地 protoc）。

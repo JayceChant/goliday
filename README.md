@@ -42,6 +42,27 @@ resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detai
 
 > Examples are based on `configs/2026.toml` (a hypothetical sample, not official). For production use, generate the config from official announcements following the [annual config update process](#annual-config-update).
 
+## Docker
+
+Multi-stage build: compiled as a static binary (`CGO_ENABLED=0`), the runtime image is `gcr.io/distroless/static-debian12:nonroot` (no shell, no package manager) and contains only the server binary. Year configs are **not** baked into the image — mount them at runtime.
+
+```bash
+# Build locally
+docker build -t goliday .
+
+# Run: HTTP :8080, gRPC :50051; mount the config directory read-only
+docker run -p 8080:8080 -v $PWD/configs:/data:ro goliday -config-dir /data
+
+curl "http://localhost:8080/healthz"
+# {"status":"ok","years":[2025,2026]}
+```
+
+Images are published to GHCR by [GitHub Actions](.github/workflows/docker.yml) on every push to the default branch and every `v*` tag (multi-arch `linux/amd64` + `linux/arm64`):
+
+```bash
+docker pull ghcr.io/jaycechant/goliday:latest
+```
+
 ## API Overview
 
 | Protocol | Endpoint | Description |

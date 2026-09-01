@@ -67,3 +67,10 @@
 - [x] `go fix ./...` 重复执行至收敛：首轮改写 calendar_test.go / config_blackbox_test.go / daytype_test.go / store_test.go 共 5 处（`for i := 0; i < 366; i++` → `for i := range 366`；删除 3 处循环变量影子拷贝 `tc := tc` / `name, keywords := name, keywords`；`strings.Split` 遍历改 `strings.SplitSeq`）；第二轮起零修改（幂等）
 - [x] 每轮改动均验证有效：`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues 全绿
 - [x] 现代 Go 风格基线写入 AGENTS.md 第 5 节（go fix 幂等要求 + range-over-int / 禁影子拷贝 / SplitSeq 三条规则）；执行提交（refactor: 应用 go fix 现代化写法并沉淀风格基线）
+
+## 容器镜像与发布（Task 23）
+- [x] Dockerfile 为多阶段构建：build 阶段 `golang:1.27`（先 go.mod/go.sum 后源码分层，`CGO_ENABLED=0` 静态编译 `./cmd/goliday-server`）；运行阶段 `gcr.io/distroless/static-debian12:nonroot`，仅含 `/goliday-server`，`EXPOSE 8080 50051`，exec 形式 `ENTRYPOINT`；不打包 `configs/`
+- [x] `.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`*.md`、`.env*` 等非构建必需内容，构建上下文最小化
+- [x] `.github/workflows/docker.yml`：push 默认分支/`v*` tag/PR/手动触发；权限 `contents: read` + `packages: write`；checkout → buildx → QEMU → GHCR 登录（GITHUB_TOKEN）→ metadata 标签（分支名、semver 三段、latest）→ build & push `linux/amd64`+`linux/arm64`（GHA 缓存）；PR 仅构建不推送
+- [x] spec.md 新增「容器镜像与发布（GitHub 环境）」Requirement 与 Scenario；README.md / README-CN.md 新增 Docker 章节且语义一致
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯新增容器/CI/文档文件，无 Go 代码改动）；本机无 docker，以相同编译参数（`CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w"`）交叉验证静态构建产物 `-v` 输出版本正常；执行提交（build: 新增容器镜像与 GHCR 发布工作流）

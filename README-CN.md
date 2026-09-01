@@ -42,6 +42,27 @@ resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detai
 
 > 示例基于 `configs/2026.toml`（假设示例方案，非官方）。正式使用请按[年度配置更新流程](#年度配置更新)以官方公告生成。
 
+## Docker
+
+多阶段构建：以静态二进制编译（`CGO_ENABLED=0`），运行镜像基于 `gcr.io/distroless/static-debian12:nonroot`（无 shell、无包管理器），仅包含 server 二进制。年份配置**不打入镜像**，运行时挂载。
+
+```bash
+# 本地构建
+docker build -t goliday .
+
+# 运行：HTTP :8080，gRPC :50051；配置目录只读挂载
+docker run -p 8080:8080 -v $PWD/configs:/data:ro goliday -config-dir /data
+
+curl "http://localhost:8080/healthz"
+# {"status":"ok","years":[2025,2026]}
+```
+
+镜像由 [GitHub Actions](.github/workflows/docker.yml) 在推送到默认分支及 `v*` tag 时自动发布至 GHCR（多架构 `linux/amd64` + `linux/arm64`）：
+
+```bash
+docker pull ghcr.io/jaycechant/goliday:latest
+```
+
 ## API 概览
 
 | 协议 | 入口 | 说明 |

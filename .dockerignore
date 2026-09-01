@@ -1,0 +1,19 @@
+# 构建上下文最小化：仅保留 Go 源码、go.mod/go.sum 与运行时必需文件。
+.git
+.github
+.env*
+.dockerignore
+Dockerfile
+.gitattributes
+.gitignore
+.golangci.yml
+buf.yaml
+buf.gen.yaml
+
+docs
+spec
+testdata
+configs
+
+**/*.md
+**/*_test.go
