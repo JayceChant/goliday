@@ -202,7 +202,6 @@ var invalidFiles = map[string][]string{
 
 func TestLoadYearInvalid(t *testing.T) {
 	for name, keywords := range invalidFiles {
-		name, keywords := name, keywords
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join("testdata", "invalid", name)
 			cfg, err := goliday.LoadYear(path)
@@ -303,7 +302,6 @@ func TestValidateRules(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.cfg.Validate()
 			if err == nil {

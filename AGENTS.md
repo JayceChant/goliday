@@ -39,6 +39,11 @@
 
   （`gofmt -l .` 输出必须为空）
 - 静态检查：`golangci-lint run ./...` 须零告警（配置见 `.golangci.yml`；本机未安装时可通过 `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` 安装，不要求入库）。
+- 自动现代化：`go fix ./...` 须无任何改动（幂等）；新代码直接采用下述现代写法，避免过时风格。
+- 现代 Go 风格基线（go fix 实际落地的改写规则，依 Go 版本）：
+  - 整数计数循环用 range-over-int（Go 1.22+）：`for i := range 366`，不写 `for i := 0; i < 366; i++`。
+  - 循环变量每轮迭代独立作用域（Go 1.22+）：禁止 `tc := tc`、`name, keywords := name, keywords` 等影子拷贝（含 `t.Run` 闭包、goroutine 捕获场景）。
+  - 仅遍历、不保留结果时用零分配迭代器（Go 1.24+）：`for part := range strings.SplitSeq(s, "|")` 替代 `strings.Split`；后者仅在需要切片本身时使用。
 
 ## 6. 文档与语言
 

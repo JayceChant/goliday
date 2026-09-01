@@ -60,7 +60,6 @@ func TestStoreEmptyDir(t *testing.T) {
 // 样例原始文件名非 NNNN.toml（会被 LoadDir 忽略），故复制为 2026.toml 后加载。
 func TestLoadDirInvalid(t *testing.T) {
 	for name, keywords := range invalidFiles {
-		name, keywords := name, keywords
 		t.Run(name, func(t *testing.T) {
 			src, err := os.ReadFile(filepath.Join("testdata", "invalid", name))
 			if err != nil {

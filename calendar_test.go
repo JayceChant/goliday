@@ -387,7 +387,7 @@ func TestCalendarConfiguredYearExhaustive(t *testing.T) {
 
 	for _, year := range []int{2025, 2026} {
 		start := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
-		for i := 0; i < 366; i++ {
+		for i := range 366 {
 			d := start.AddDate(0, 0, i)
 			if d.Year() != year {
 				break

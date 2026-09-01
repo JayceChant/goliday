@@ -135,7 +135,7 @@ func TestDayTypeExhaustiveInvariants(t *testing.T) {
 			if dt.IsWorkday() == dt.IsHoliday() {
 				t.Fatalf("DayType(%d) IsWorkday/IsHoliday 必须恰一为真", v)
 			}
-			for _, part := range strings.Split(dt.String(), "|") {
+			for part := range strings.SplitSeq(dt.String(), "|") {
 				if !legalNames[part] {
 					t.Fatalf("DayType(%d).String() = %q 含非法分段 %q", v, dt.String(), part)
 				}

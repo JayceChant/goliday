@@ -62,3 +62,8 @@
 - [x] `.golangci.yml`（golangci-lint v2）入库：standard 五件套（errcheck/govet/ineffassign/staticcheck/unused）为基线，补充 errorlint、gocritic、misspell、nolintlint（require-specific）、revive、unconvert、unparam 七项；goimports 以 `github.com/JayceChant/goliday` 本地前缀分组；proto 生成代码按 generated: lax 豁免
 - [x] lint 告警清零（初检 9 处）：errcheck 5 处（测试与工具中 Close/Serve 显式 `_ =` 或闭包处理）、gocritic 2 处（main.go 信号 stop 改显式调用消除 exitAfterDefer；gen.go if-else 链改 switch）、revive 1 处（handleHealthz 未用参数改 `_`）、unparam 1 处（genFor 增补 2024 年真实公告用例使 year 参数多值生效）
 - [x] AGENTS.md 第 5 节验证要求纳入 `golangci-lint run ./...` 零告警；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（build: 引入 golangci-lint 配置并按告警修复代码）
+
+## go fix 现代化巡检
+- [x] `go fix ./...` 重复执行至收敛：首轮改写 calendar_test.go / config_blackbox_test.go / daytype_test.go / store_test.go 共 5 处（`for i := 0; i < 366; i++` → `for i := range 366`；删除 3 处循环变量影子拷贝 `tc := tc` / `name, keywords := name, keywords`；`strings.Split` 遍历改 `strings.SplitSeq`）；第二轮起零修改（幂等）
+- [x] 每轮改动均验证有效：`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues 全绿
+- [x] 现代 Go 风格基线写入 AGENTS.md 第 5 节（go fix 幂等要求 + range-over-int / 禁影子拷贝 / SplitSeq 三条规则）；执行提交（refactor: 应用 go fix 现代化写法并沉淀风格基线）

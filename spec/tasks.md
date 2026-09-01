@@ -15,3 +15,4 @@
 - [x] Task 22（buf lint 豁免收敛）：`buf.yaml` 改为 v2 工作区（模块根 `proto/`，buf 官方标准布局，目录与 package `goliday.v1` 对应），消除 PACKAGE_DIRECTORY_MATCH 豁免；`QueryStats` 拆分独立 `QueryStatsRequest`/`QueryStatsResponse`（字段与 QueryDaysRequest 同构，符合 buf BP「每 RPC 独立消息」），消除 RPC_* 三条豁免；`buf lint` STANDARD 零豁免通过；服务端代码与测试、spec/API 文档同步。
 - [x] 依赖升级巡检：`go list -m -u all` 确认直接依赖（toml v1.6.0 / grpc v1.83.2 / protobuf v1.36.12）均为最新稳定版；仅间接依赖 `google.golang.org/genproto/googleapis/rpc` 升至 `v0.0.0-20260831171406-18b4a7587f8a`；依赖分级不变，无新增依赖；验证命令全绿。
 - [x] golangci-lint 引入：新增 `.golangci.yml`（v2 格式，standard 五件套为基线，按"高价值低噪音"原则补充 errorlint/gocritic/misspell/nolintlint/revive/unconvert/unparam；goimports 以本地前缀分组；proto 生成代码豁免）；按 lint 结果清零 9 处告警；AGENTS.md 验证命令纳入 `golangci-lint run`；验证命令全绿。
+- [x] go fix 现代化巡检：重复执行 `go fix ./...` 至幂等（首轮改写 4 个测试文件共 5 处：range-over-int 循环、删除 Go 1.22 前的循环变量影子拷贝、`strings.Split` 改 `SplitSeq`），每轮验证命令全绿；AGENTS.md 第 5 节写入现代 Go 风格基线（go fix 幂等要求 + 三条改写规则），避免再写过时风格代码。
