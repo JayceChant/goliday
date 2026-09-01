@@ -86,6 +86,7 @@
 - [x] 补充 CodeQL/govulncheck/SonarCloud 三项：新增 `.github/workflows/codeql.yml`（Go 静态安全分析，build-mode: none，告警入 code scanning）与 `.github/workflows/govulncheck.yml`（官方漏洞扫描门禁，text 输出可触达漏洞即失败）；spec.md Requirement 扩展两项约定 + 3 个 Scenario，SonarCloud 决策依据更新为徽章依赖 SonCloud 端启用（项目 key `JayceChant_goliday`）；README 双语徽章扩为 CI/Codecov/CodeQL/govulncheck/pkg.go.dev/Scorecard/SonarCloud（保留用户新增的 License 徽章与表格行）；YAML 校验通过；执行提交（ci: 新增 CodeQL 与 govulncheck 工作流并补齐 SonarCloud 徽章）
 - [x] 修复 CodeQL init 失败（CodeQL 2.26+ 已移除 Go 的 none 构建模式）：`codeql.yml` 的 `build-mode: none` 改为 `autobuild`；spec.md codeql.yml 约定与 CodeQL Scenario 同步修订；YAML 重新校验通过；执行提交（fix: CodeQL 构建模式改为 autobuild 适配新版要求）
 - [x] 修复 SonarCloud 徽章无法显示（`sonarcloud.io/images/project_badges/sonarcloud.svg` 实测 403 已失效）：README 双语共 4 处（标题下徽章行与质量表格行）改为官方现行质量门禁徽章 URL `sonarcloud.io/api/project_badges/quality_gate?project=JayceChant_goliday`（curl 实测 200 image/svg+xml，与 spec「徽章反映通过/失败」一致）；验证命令全绿（纯 README 变更，无 Go 代码改动）；执行提交（fix: 替换失效的 SonarCloud 徽章为质量门禁徽章）
+- [x] 修复 SonarCloud 5 个 security issue（githubactions:S7637，外部 Action 须固定完整 commit SHA）：5 个 workflow 共 22 处 `uses` 全部由浮动 tag 改为完整 40 位 SHA（`git ls-remote` 取各 tag 当前指向的最新 patch 版本，运行行为不变）并附版本注释；YAML 校验通过；验证命令全绿（纯 workflow YAML 变更，无 Go 代码改动）；执行提交（fix: GitHub Actions 依赖固定为完整 commit SHA）
 
 ## MIT License
 - [x] 仓库根 `LICENSE` 为 MIT 标准文本，版权行 `Copyright (c) 2026 Jayce Chant (陈思杰)`；文件 UTF-8 无 BOM、LF 换行，无本地绝对路径
