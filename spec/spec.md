@@ -288,11 +288,21 @@ scorecard.yml 约定（OpenSSF Scorecard，无需注册）：
 - 触发：`push` 默认分支、每周 `schedule`、`branch_protection_rule`；顶层 `permissions: read-all`，作业内最小化（`id-token: write` 供发布 OIDC 认证、`security-events: write` 供 SARIF 上传）；
 - `ossf/scorecard-action` 以 `publish_results: true` 发布评分至 scorecard.dev；SARIF 产物落盘 artifact 并经 `github/codeql-action/upload-sarif` 上传至 code scanning；checkout 置 `persist-credentials: false`。
 
+codeql.yml 约定（CodeQL 静态安全分析，公共仓库免费、无需注册）：
+- 触发：`push` 默认分支、`pull_request`、每周 `schedule`、`workflow_dispatch`；作业权限最小化（`security-events: write` + 只读）；
+- 语言 `go`、`build-mode: none`（Go 无需构建），结果上传 code scanning（Security 标签页）。
+
+govulncheck.yml 约定（Go 官方依赖漏洞扫描，无需注册）：
+- 触发：`push` 默认分支、每周 `schedule`、`workflow_dispatch`；`contents: read`；
+- `golang/govulncheck-action@v1` 以 text 输出扫描 `./...`，仅当存在可被实际调用路径触达的漏洞时作业失败（作为门禁）。
+
 pkg.go.dev 文档为 Go 官方服务自动抓取（模块可解析、可编译即自动建页），仓库无需配置，README SHALL 提供徽章与结果链接。
 
-README 双语 SHALL 在标题下接入 CI、Codecov、pkg.go.dev、OpenSSF Scorecard 四枚徽章，并设「质量与持续集成」章节以表格链接各服务结果页。
+SonarCloud 侧：仓库不预置 workflow（CI-based 分析需 `SONAR_TOKEN` secret，另行配置），质量门禁徽章与结果链接依赖 SonCloud 端绑定仓库并启用 Go automatic analysis（push 后自动分析）。
 
-**决策依据**：选取表中可直接在仓库内落地的服务（Actions/Codecov/Scorecard/pkg.go.dev）；SonarCloud、Snyk/Socket 需外部注册绑定，不在仓库内预置，避免空配置导致流水线常红。
+README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg.go.dev、OpenSSF Scorecard、SonarCloud 徽章，并设「质量与持续集成」章节以表格链接各服务结果页。
+
+**决策依据**：Actions/Codecov/Scorecard/CodeQL/govulncheck/pkg.go.dev 均可直接在仓库内落地且无需注册；SonarCloud 徽章仅依赖其在 SonCloud 端启用项目；Snyk/Socket 需 GitHub App 绑定，不在仓库内预置，避免空配置导致流水线常红。
 
 #### Scenario: CI 测试矩阵
 - **WHEN** push 或 PR 触发 ci.yml
@@ -305,6 +315,18 @@ README 双语 SHALL 在标题下接入 CI、Codecov、pkg.go.dev、OpenSSF Score
 #### Scenario: Scorecard 评分发布
 - **WHEN** scorecard.yml 在默认分支运行
 - **THEN** 评分发布至 scorecard.dev 项目页，SARIF 出现在仓库 code scanning；scorecard.dev 徽章可访问
+
+#### Scenario: CodeQL 静态分析
+- **WHEN** push 或 PR 触发 codeql.yml
+- **THEN** Go 代码经 CodeQL 分析（无需构建），告警出现在仓库 code scanning；workflow 徽章反映运行状态
+
+#### Scenario: govulncheck 漏洞门禁
+- **WHEN** govulncheck.yml 扫描 `./...`
+- **THEN** 无可触达漏洞时通过；存在可被调用路径触达的已知漏洞时作业失败并在日志给出修复版本
+
+#### Scenario: SonarCloud 质量门禁徽章
+- **WHEN** 仓库已绑定 SonCloud 项目并推送代码
+- **THEN** automatic analysis 生成质量门禁状态，README 徽章反映通过/失败
 
 ### Requirement: proto 定义与生成代码
 

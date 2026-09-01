@@ -1,0 +1,26 @@
+# govulncheck 依赖漏洞扫描：
+# - 默认分支推送 / 每周定时运行官方 golang.org/x/vuln 扫描
+# - text 输出：发现可被实际调用路径触达的漏洞时作业失败（门禁）
+# - Go 官方工具，无需注册
+name: govulncheck
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "43 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Run govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - id: govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: stable
+          go-package: ./...
