@@ -1,0 +1,21 @@
+# buf 配置（v2）：仓库根为模块根，与既有 protoc 流程的文件名基准保持一致，
+# 使生成代码内部标识符（source 路径、descriptor 文件名）不因迁移而改变。
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+  # 豁免理由（spec 既定布局，见 spec.md「模块结构与依赖约束」「proto 定义与生成代码」）：
+  # - PACKAGE_DIRECTORY_MATCH：proto 位于 proto/goliday/v1/，package 为 goliday.v1，
+  #   目录约定与 buf 默认（以 proto/ 为根）不同，属仓库既有布局，不改；
+  # - RPC_* 三项：QueryStats 与 QueryDays 复用同一入参 QueryDaysRequest、
+  #   响应名简化为 StatsResponse，系 spec 既定 API 设计。
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+breaking:
+  use:
+    - FILE

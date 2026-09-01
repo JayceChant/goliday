@@ -11,3 +11,4 @@
 - [x] 文档精简：README 改为用户视角并修正过时的「无配置年回退」表述；spec.md 合并 ADDED/MODIFIED 为单一当前契约（保留决策依据）；tasks/checklist 压缩为批次总览；AGENTS.md 轻度精简并同步依赖分级表述；docs 修正过时条目与重复示例。
 - [x] README 双语化：原中文版移至 `README-CN.md`，`README.md` 改为英文版，两文件开头提供语言切换互链；纯文档变更，无代码改动。
 - [x] Task 20（模块路径迁移）：module 由 `goliday` 改为 `github.com/JayceChant/goliday`；同步全部 import 路径、proto `go_package` 与重新生成 pb 代码、spec/AGENTS/docs 引用；验证命令全绿。
+- [x] Task 21（proto 工具链迁移至 buf）：新增 `buf.yaml`（模块/lint/breaking，豁免项附理由）与 `buf.gen.yaml`（本地 protoc-gen-go/go-grpc，版本固定）；再生成命令改为仓库根 `buf generate`，`buf lint` 通过；spec/API.md/ARCHITECTURE.md/proto 头注释同步；产物与 protoc 仅差生成头 protoc 版本行（`(unknown)`，预期）。

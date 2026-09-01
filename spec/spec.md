@@ -254,15 +254,15 @@ proto 内容约定：
 - 消息：`Day{date,type,type_label}`、`Stats{workday,holiday,ordinary,compensate,weekend,festival,adjusted}`（粗粒度字段恒填充，细粒度字段仅 `detailed=true` 时填充，组合日交叉计数语义与 HTTP 一致）、`GetDayRequest{date,detailed}`、`GetDayResponse{date,type,type_label,total_days,stats}`、`QueryDaysRequest{start,end,dates[],detailed}`、`QueryDaysResponse{mode,start,end,total_days,days[],stats}`、`StatsResponse{mode,start,end,total_days,stats}`；
 - 服务 `GolidayService`：`GetDay`（单日）、`QueryDays`（区间/离散/混合并集，含明细）、`QueryStats`（同 QueryDays 入参，不含 days 明细）——语义与 HTTP `/api/v1/days`、`/api/v1/stats` 一一对应；
 - 日期一律 `YYYY-MM-DD` 字符串；`mode` 取 `range`/`list`；
-- proto 头注释写明再生成命令（需 protoc 与 protoc-gen-go、protoc-gen-go-grpc 在 PATH）。
+- proto 头注释写明再生成方式（buf：在仓库根执行 `buf generate`，需 buf 与 protoc-gen-go、protoc-gen-go-grpc 在 PATH；配置见仓库根 `buf.yaml`/`buf.gen.yaml`，lint 豁免项及其理由以 buf.yaml 注释为准）。
 
 #### Scenario: proto 可供调用方引用
 - **WHEN** 调用方获取本仓库后查找 `proto/goliday/v1/goliday.proto` 与生成代码
-- **THEN** 无需 protoc 即可 `import "github.com/JayceChant/goliday/proto/goliday/v1"`（同模块）或复制 .proto 生成其他语言桩代码
+- **THEN** 无需 buf/protoc 即可 `import "github.com/JayceChant/goliday/proto/goliday/v1"`（同模块）或复制 .proto 生成其他语言桩代码
 
 #### Scenario: 再生成
-- **WHEN** 在仓库根按 proto 头注释的 protoc 命令重新生成
-- **THEN** 生成文件落盘于 `proto/goliday/v1/` 且 `gofmt`/`go build` 通过
+- **WHEN** 在仓库根执行 `buf generate`
+- **THEN** 生成文件落盘于 `proto/goliday/v1/` 且 `gofmt`/`go build` 通过；`buf lint` 通过
 
 ### Requirement: gRPC 服务（与 HTTP 同进程）
 

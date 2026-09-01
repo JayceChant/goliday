@@ -12,6 +12,8 @@ goliday 是一个基于 Go 1.27 的中国法定节假日服务：以**按年组�
 goliday/
 ├── go.mod                          # module github.com/JayceChant/goliday，go 1.27
 ├── go.sum
+├── buf.yaml                        # buf 模块/lint/breaking 配置（proto/ 属仓库布局豁免项）
+├── buf.gen.yaml                    # buf generate 插件与参数（本地 protoc-gen-go/go-grpc）
 ├── daytype.go                      # DayType 位掩码枚举、Coarse/String 映射
 ├── config.go                       # TOML 解析（LoadYear）与校验（YearConfig.Validate）
 ├── store.go                        # 多年份配置加载与只读存储（Store/LoadDir）

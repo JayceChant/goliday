@@ -37,8 +37,13 @@
 - [x] 验证命令全绿（纯文档变更，无代码改动）；执行提交（docs: README 改为英文版并新增中文版与语言互链）
 
 ## 模块路径迁移（Task 20）
-
 - [x] `go.mod` module 为 `github.com/JayceChant/goliday`；全部 Go 文件 import 路径同步，`grep` 无残留旧路径
 - [x] proto `go_package` 更新为 `github.com/JayceChant/goliday/proto/goliday/v1;golidayv1` 并按 spec 命令重新生成 pb 代码（protoc v29.3 / protoc-gen-go v1.36.5 / protoc-gen-go-grpc v1.5.1）
 - [x] spec.md / AGENTS.md / docs（ARCHITECTURE、API）中的 module、go_package、import 示例与再生成命令全部同步
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（refactor: 模块路径迁移为 github.com/JayceChant/goliday）
+
+## proto 工具链迁移至 buf（Task 21）
+- [x] `buf.yaml`（模块根为仓库根，lint STANDARD + 4 项豁免并注明理由，breaking FILE）与 `buf.gen.yaml`（本地插件 protoc-gen-go v1.36.5 / protoc-gen-go-grpc v1.5.1）入库；`buf lint` 通过
+- [x] 再生成命令统一为仓库根 `buf generate`（spec.md、docs/API.md 7.5、docs/ARCHITECTURE.md、proto 头注释同步）；生成代码入库位置与 `go_package` 不变，`buf generate` 幂等（二次生成无差异）
+- [x] WSL 安装 buf v1.72.0（`go install`，本机 `~/go/bin`，不入库）；生成头注释 protoc 版本行变为 `(unknown)` 属预期并已在文档说明
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（build: proto 代码生成改用 buf 管理）
