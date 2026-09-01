@@ -6,6 +6,7 @@
 [![codecov](https://codecov.io/gh/JayceChant/goliday/graph/badge.svg)](https://codecov.io/gh/JayceChant/goliday)
 [![Go Reference](https://pkg.go.dev/badge/github.com/JayceChant/goliday.svg)](https://pkg.go.dev/github.com/JayceChant/goliday)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JayceChant/goliday/badge)](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A holiday lookup service built on Go 1.27: it records the holiday and workday-swap arrangements published by China's State Council in **sparse, per-year config files**, derives all other dates from standard-library weekend rules, and exposes semantically identical **HTTP and gRPC** interfaces supporting date-type queries and range statistics at both coarse and fine granularity.
 
@@ -128,6 +129,7 @@ Test data: `testdata/2025.toml` (real official plan), `testdata/2026.toml` (hypo
 | [Codecov](https://codecov.io/gh/JayceChant/goliday) | [![codecov](https://codecov.io/gh/JayceChant/goliday/graph/badge.svg)](https://codecov.io/gh/JayceChant/goliday) | Coverage uploaded from `go test -coverprofile`, line-by-line coverage browsing |
 | [pkg.go.dev](https://pkg.go.dev/github.com/JayceChant/goliday) | [![Go Reference](https://pkg.go.dev/badge/github.com/JayceChant/goliday.svg)](https://pkg.go.dev/github.com/JayceChant/goliday) | Official Go doc build & import check, refreshed automatically per module version |
 | [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JayceChant/goliday/badge)](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | Automated repo security-practice score, runs weekly, SARIF synced to code scanning ([workflow](.github/workflows/scorecard.yml)) |
+| [MIT License](LICENSE) | ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) | Released under the [MIT License](LICENSE), copyright (c) 2026 Jayce Chant (陈思杰) |
 
 ## Documentation Index
 

@@ -6,6 +6,7 @@
 [![codecov](https://codecov.io/gh/JayceChant/goliday/graph/badge.svg)](https://codecov.io/gh/JayceChant/goliday)
 [![Go Reference](https://pkg.go.dev/badge/github.com/JayceChant/goliday.svg)](https://pkg.go.dev/github.com/JayceChant/goliday)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JayceChant/goliday/badge)](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 基于 Go 1.27 的节假日查询服务：以**按年组织的稀疏配置文件**记录国务院假日办公布的放假与补班安排，其余日期由标准库周休规则推导，对外提供语义一致的 **HTTP 与 gRPC 双协议**接口，支持粗/细两级粒度的日期类型查询与区间统计。
 
@@ -128,6 +129,7 @@ go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .
 | [Codecov](https://codecov.io/gh/JayceChant/goliday) | [![codecov](https://codecov.io/gh/JayceChant/goliday/graph/badge.svg)](https://codecov.io/gh/JayceChant/goliday) | `go test -coverprofile` 覆盖率上报，逐行查看覆盖详情 |
 | [pkg.go.dev](https://pkg.go.dev/github.com/JayceChant/goliday) | [![Go Reference](https://pkg.go.dev/badge/github.com/JayceChant/goliday.svg)](https://pkg.go.dev/github.com/JayceChant/goliday) | Go 官方文档构建与导入检查，随模块版本自动更新 |
 | [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JayceChant/goliday/badge)](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | 仓库安全实践自动评分，每周定时运行，SARIF 同步至 code scanning（[工作流](.github/workflows/scorecard.yml)） |
+| [MIT License](LICENSE) | ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) | 以 [MIT 许可证](LICENSE)发布，Copyright (c) 2026 Jayce Chant（陈思杰） |
 
 ## 文档索引
 

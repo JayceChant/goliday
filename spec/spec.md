@@ -442,6 +442,18 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 - **WHEN** 对任意已加载年份的任意区间/日期集合分别用前缀和与逐日 `Query` 暴力统计
 - **THEN** 粗、细全部计数与 `Total` 完全一致
 
+### Requirement: 开源许可证
+
+仓库根 SHALL 提供 `LICENSE` 文件，采用 **MIT 许可证**标准文本，版权行 `Copyright (c) 2026 Jayce Chant (陈思杰)`。
+
+README 双语 SHALL 在标题下接入 MIT License 徽章（链接 `LICENSE`），并在「质量与持续集成」章节表格中新增许可证条目。
+
+**决策依据**：MIT 为最宽松的常用许可证，利于嵌入调用与 Scorecard 的 License 检测项；版权人保留中文名以便实名归属。
+
+#### Scenario: License 检测通过
+- **WHEN** GitHub 或 OpenSSF Scorecard 检测仓库许可证
+- **THEN** 识别为 MIT；README 双语徽章与表格条目均可跳转至 `LICENSE`
+
 ## 附录：核心包 API 形态
 
 ```go

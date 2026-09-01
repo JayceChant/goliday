@@ -83,3 +83,9 @@
 - [x] YAML 语法经解析校验通过；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（ci: 新增 CI 测试矩阵与覆盖率、Scorecard 工作流并接入 README 徽章）
 - [x] 修复 scorecard-action 版本解析失败（`@v2` 漂移主标签不存在）：改为固定 `@v2.4.4`（该仓库仅发布完整版本 tag）；YAML 重新校验通过；执行提交（fix: scorecard-action 固定到完整版本标签 v2.4.4）
 - [x] 修复 CI 矩阵 oldstable（Go 1.26.x，低于 go.mod 要求 1.27 且 runner 默认 GOTOOLCHAIN=local 不自动升级）编译失败：矩阵改为 `1.27.x`（最低要求）+ `stable`，spec.md Requirement/Scenario 与 README 双语表述同步；YAML 重新校验通过；执行提交（fix: CI 矩阵改为 go.mod 最低版本与 stable）
+
+## MIT License
+- [x] 仓库根 `LICENSE` 为 MIT 标准文本，版权行 `Copyright (c) 2026 Jayce Chant (陈思杰)`；文件 UTF-8 无 BOM、LF 换行，无本地绝对路径
+- [x] spec.md 新增「开源许可证」Requirement（含决策依据与 Scenario）；tasks.md 追加批次条目
+- [x] README 双语语义一致：标题下新增 MIT License 徽章（链接 `LICENSE`），「质量与持续集成 / Quality & CI」表格新增许可证条目
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯新增 LICENSE/文档变更，无 Go 代码改动）；执行提交（docs: 新增 MIT 许可证并在 README 双语接入 License 徽章）
