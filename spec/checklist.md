@@ -74,3 +74,10 @@
 - [x] `.github/workflows/docker.yml`：push 默认分支/`v*` tag/PR/手动触发；权限 `contents: read` + `packages: write`；checkout → buildx → QEMU → GHCR 登录（GITHUB_TOKEN）→ metadata 标签（分支名、semver 三段、latest）→ build & push `linux/amd64`+`linux/arm64`（GHA 缓存）；PR 仅构建不推送
 - [x] spec.md 新增「容器镜像与发布（GitHub 环境）」Requirement 与 Scenario；README.md / README-CN.md 新增 Docker 章节且语义一致
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯新增容器/CI/文档文件，无 Go 代码改动）；本机无 docker，以相同编译参数（`CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w"`）交叉验证静态构建产物 `-v` 输出版本正常；执行提交（build: 新增容器镜像与 GHCR 发布工作流）
+
+## 在线质量门禁与 CI 测试矩阵
+- [x] spec.md 新增「在线质量门禁与 CI 测试矩阵（GitHub 环境）」Requirement（含 3 个 Scenario 与决策依据）；tasks.md 追加批次条目
+- [x] `.github/workflows/ci.yml`：stable/oldstable 双版本矩阵（setup-go 缓存，persist-credentials: false）依次执行 build/vet/gofmt 检查/`go test -count=1 -race -covermode=atomic -coverprofile`；仅 stable 项经 codecov/codecov-action 上传 coverage.out（fail_ci_if_error: false，无 token 公共仓库亦可上传）；lint 作业 golangci/golangci-lint-action v2.13 与 `.golangci.yml`（version: "2"）匹配，零告警门禁
+- [x] `.github/workflows/scorecard.yml`：push 默认分支/每周 cron/branch_protection_rule/workflow_dispatch 触发；顶层 `permissions: read-all`，作业内 id-token: write + security-events: write 最小化；ossf/scorecard-action publish_results: true 发布 scorecard.dev；SARIF 经 artifact 留存并由 github/codeql-action/upload-sarif 上传 code scanning
+- [x] README 双语语义一致：标题下四枚徽章（Actions CI/Codecov/pkg.go.dev/OpenSSF Scorecard）+「质量与持续集成 / Quality & CI」章节表格链接各服务结果页与工作流文件；无本地绝对路径
+- [x] YAML 语法经解析校验通过；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（ci: 新增 CI 测试矩阵与覆盖率、Scorecard 工作流并接入 README 徽章）

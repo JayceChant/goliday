@@ -1,0 +1,53 @@
+# OpenSSF Scorecard 供应链安全评分：
+# - 每周与默认分支推送时评估仓库安全实践（CI/分支保护/依赖固定/令牌权限等）
+# - 评分发布至 scorecard.dev（publish_results，无需注册）
+# - SARIF 上传至仓库 code scanning（需仓库开启 GitHub Advanced Security 的公共仓库默认能力）
+name: scorecard
+
+on:
+  push:
+    branches: [master]
+  branch_protection_rule:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # 发布结果到 scorecard.dev 需 OIDC 令牌
+      id-token: write
+      # 上传 SARIF 到 code scanning
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # 公有仓库评分公开发布（scorecard.dev 徽章与项目页依赖此项）
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif

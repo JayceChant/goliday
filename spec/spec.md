@@ -274,6 +274,38 @@ Dockerfile 约定：
 - **WHEN** push tag `v0.2.0` 触发工作流
 - **THEN** 构建多架构镜像并发布至 `ghcr.io/<owner>/goliday:0.2.0`（另含 `0.2`、`0`、`latest`）；PR 事件仅构建不推送
 
+### Requirement: 在线质量门禁与 CI 测试矩阵（GitHub 环境）
+
+仓库 SHALL 提供 `.github/workflows/ci.yml` 与 `.github/workflows/scorecard.yml`，将本地验证门禁搬上 GitHub Actions，并把结果以徽章与链接接入 README 双语版。
+
+ci.yml 约定：
+- 触发：`push` 默认分支、`pull_request`（默认分支）、`workflow_dispatch`；权限最小化 `contents: read`；
+- 测试作业：`stable` 与 `oldstable` 双版本矩阵（`actions/setup-go` 自带模块缓存），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile`；
+- 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；
+- lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警。
+
+scorecard.yml 约定（OpenSSF Scorecard，无需注册）：
+- 触发：`push` 默认分支、每周 `schedule`、`branch_protection_rule`；顶层 `permissions: read-all`，作业内最小化（`id-token: write` 供发布 OIDC 认证、`security-events: write` 供 SARIF 上传）；
+- `ossf/scorecard-action` 以 `publish_results: true` 发布评分至 scorecard.dev；SARIF 产物落盘 artifact 并经 `github/codeql-action/upload-sarif` 上传至 code scanning；checkout 置 `persist-credentials: false`。
+
+pkg.go.dev 文档为 Go 官方服务自动抓取（模块可解析、可编译即自动建页），仓库无需配置，README SHALL 提供徽章与结果链接。
+
+README 双语 SHALL 在标题下接入 CI、Codecov、pkg.go.dev、OpenSSF Scorecard 四枚徽章，并设「质量与持续集成」章节以表格链接各服务结果页。
+
+**决策依据**：选取表中可直接在仓库内落地的服务（Actions/Codecov/Scorecard/pkg.go.dev）；SonarCloud、Snyk/Socket 需外部注册绑定，不在仓库内预置，避免空配置导致流水线常红。
+
+#### Scenario: CI 测试矩阵
+- **WHEN** push 或 PR 触发 ci.yml
+- **THEN** `stable` 与 `oldstable` 两个矩阵项各自完成 build/vet/gofmt/test，lint 作业零告警；任一步骤失败流水线标红
+
+#### Scenario: 覆盖率上报
+- **WHEN** `stable` 矩阵项测试通过
+- **THEN** `coverage.out` 上传至 Codecov，Codecov 项目页可逐行查看覆盖详情；未配置 `CODECOV_TOKEN` 时公共仓库仍可上传
+
+#### Scenario: Scorecard 评分发布
+- **WHEN** scorecard.yml 在默认分支运行
+- **THEN** 评分发布至 scorecard.dev 项目页，SARIF 出现在仓库 code scanning；scorecard.dev 徽章可访问
+
 ### Requirement: proto 定义与生成代码
 
 系统 SHALL 提供 `proto/goliday/v1/goliday.proto`（syntax proto3，package `goliday.v1`，`option go_package = "github.com/JayceChant/goliday/proto/goliday/v1;golidayv1"`），供调用方直接引用；生成的 Go 代码 SHALL 入库于 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}`（调用方无需本地 protoc）。
