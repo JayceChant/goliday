@@ -1,0 +1,40 @@
+# SonarCloud：静态分析（代码异味/安全漏洞/重复率/覆盖率质量门禁）
+# 依赖仓库 secrets 中的 SONAR_TOKEN；项目参数见根目录 sonar-project.properties
+name: sonarcloud
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: SonarCloud analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        # 完整历史：Quality Gate 的新代码（new code）判定依赖提交历史
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 'stable'
+          check-latest: true
+          cache: false
+
+      - name: Generate coverage
+        run: go test -covermode=atomic -coverprofile=coverage.txt ./...
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

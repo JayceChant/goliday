@@ -279,7 +279,7 @@ Dockerfile 约定：
 
 ### Requirement: 在线质量门禁与 CI 测试矩阵（GitHub 环境）
 
-仓库 SHALL 提供 `.github/workflows/ci.yml` 与 `.github/workflows/scorecard.yml`，将本地验证门禁搬上 GitHub Actions，并把结果以徽章与链接接入 README 双语版。
+仓库 SHALL 提供 `.github/workflows/ci.yml`、`.github/workflows/scorecard.yml` 与 `.github/workflows/sonarcloud.yml`，将本地验证门禁搬上 GitHub Actions，并把结果以徽章与链接接入 README 双语版。
 
 ci.yml 约定：
 - 触发：`push` 默认分支、`pull_request`（默认分支）、`workflow_dispatch`；权限最小化 `contents: read`；
@@ -301,7 +301,10 @@ govulncheck.yml 约定（Go 官方依赖漏洞扫描，无需注册）：
 
 pkg.go.dev 文档为 Go 官方服务自动抓取（模块可解析、可编译即自动建页），仓库无需配置，README SHALL 提供徽章与结果链接。
 
-SonarCloud 侧：仓库不预置 workflow（CI-based 分析需 `SONAR_TOKEN` secret，另行配置），质量门禁徽章与结果链接依赖 SonCloud 端绑定仓库并启用 Go automatic analysis（push 后自动分析）。
+sonarcloud.yml 约定（SonarCloud 静态分析：代码异味/安全漏洞/重复率/覆盖率质量门禁）：
+- 触发：`push` 默认分支、`pull_request`（默认分支，opened/synchronize/reopened）；权限最小化 `contents: read`；
+- 步骤：checkout 拉取完整历史（`fetch-depth: 0`，Quality Gate 的新代码判定依赖提交历史）→ `go test -covermode=atomic -coverprofile=coverage.txt ./...` 生成覆盖率 → `SonarSource/sonarqube-scan-action` 扫描上报；
+- 认证依赖仓库 secret `SONAR_TOKEN`（未配置时扫描步骤失败，SonarCloud 端绑定仓库生成 token 后即生效）；项目参数（projectKey/organization、源码与测试目录、覆盖率路径、排除规则）入库于根目录 `sonar-project.properties`；`proto/` 生成代码经 `sonar.coverage.exclusions` 从覆盖率统计排除，与 Codecov、`.golangci.yml` 对生成代码的豁免同一口径。
 
 README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg.go.dev、OpenSSF Scorecard、SonarCloud 徽章；各服务的说明与结果页链接 SHALL 收录于 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)（质量门禁与 CI 章节），README 不设「质量与持续集成」章节——徽章保持可发现性，详细内容仅面向维护者，避免对使用者构成干扰。
 
@@ -328,8 +331,8 @@ README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg
 - **THEN** 无可触达漏洞时通过；存在可被调用路径触达的已知漏洞时作业失败并在日志给出修复版本
 
 #### Scenario: SonarCloud 质量门禁徽章
-- **WHEN** 仓库已绑定 SonCloud 项目并推送代码
-- **THEN** automatic analysis 生成质量门禁状态，README 徽章反映通过/失败
+- **WHEN** sonarcloud.yml 在默认分支 push 或 PR 上运行（仓库已配置 `SONAR_TOKEN`）
+- **THEN** 分析结果上报 SonarCloud 项目页并生成质量门禁状态，README 徽章反映通过/失败
 
 ### Requirement: proto 定义与生成代码
 

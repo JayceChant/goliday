@@ -94,6 +94,13 @@
 - [x] 修复 SonarCloud 徽章无法显示（`sonarcloud.io/images/project_badges/sonarcloud.svg` 实测 403 已失效）：README 双语共 4 处（标题下徽章行与质量表格行）改为官方现行质量门禁徽章 URL `sonarcloud.io/api/project_badges/quality_gate?project=JayceChant_goliday`（curl 实测 200 image/svg+xml，与 spec「徽章反映通过/失败」一致）；验证命令全绿（纯 README 变更，无 Go 代码改动）；执行提交（fix: 替换失效的 SonarCloud 徽章为质量门禁徽章）
 - [x] 修复 SonarCloud 5 个 security issue（githubactions:S7637，外部 Action 须固定完整 commit SHA）：5 个 workflow 共 22 处 `uses` 全部由浮动 tag 改为完整 40 位 SHA（`git ls-remote` 取各 tag 当前指向的最新 patch 版本，运行行为不变）并附版本注释；YAML 校验通过；验证命令全绿（纯 workflow YAML 变更，无 Go 代码改动）；执行提交（fix: GitHub Actions 依赖固定为完整 commit SHA）
 
+## SonarCloud CI 分析落地
+- [x] 新增 `.github/workflows/sonarcloud.yml`：push 默认分支 / PR（master，opened/synchronize/reopened）触发；`permissions: contents: read`；checkout `fetch-depth: 0`（Quality Gate 新代码判定依赖提交历史）+ `persist-credentials: false`；setup-go（stable，cache: false）；`go test -covermode=atomic -coverprofile=coverage.txt ./...` 生成覆盖率；SonarSource/sonarqube-scan-action 固定完整 SHA（v8）扫描上报，`SONAR_TOKEN` 经 env 注入；无本地绝对路径
+- [x] 新增根目录 `sonar-project.properties`：projectKey `JayceChant_goliday` / organization `jaycechant`；`sonar.sources=.` + `sonar.tests=.` + `sonar.test.inclusions=**/*_test.go`；`sonar.exclusions` 剔除测试文件与 `proto/**`，`sonar.coverage.exclusions=proto/**`（与 codecov.yml、.golangci.yml 生成代码豁免同口径）；`sonar.go.coverage.reportPaths=coverage.txt`
+- [x] spec.md「在线质量门禁与 CI 测试矩阵」Requirement 同步：SHALL 清单纳入 sonarcloud.yml；「SonarCloud 侧不预置 workflow」条款改写为 sonarcloud.yml 约定（触发/步骤/认证/参数文件/排除口径）；「SonarCloud 质量门禁徽章」Scenario 改为 workflow 运行口径；决策依据更新（workflow 已入库，仅依赖 secret `SONAR_TOKEN`，SonarCloud 端需关闭 automatic analysis 避免重复分析）
+- [x] docs/ARCHITECTURE.md 第 7 节质量门禁表格 SonarCloud 条目补充工作流链接与运行方式说明；spec/tasks.md 追加批次条目
+- [x] YAML 解析校验通过；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯 workflow/文档变更，无 Go 代码改动）；执行提交（ci: 新增 SonarCloud 分析工作流与项目参数文件）
+
 ## MIT License
 - [x] 仓库根 `LICENSE` 为 MIT 标准文本，版权行 `Copyright (c) 2026 Jayce Chant (陈思杰)`；文件 UTF-8 无 BOM、LF 换行，无本地绝对路径
 - [x] spec.md 新增「开源许可证」Requirement（含决策依据与 Scenario）；tasks.md 追加批次条目
