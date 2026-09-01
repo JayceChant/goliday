@@ -1,15 +1,14 @@
 # goliday — 中国法定节假日 API 服务
 
-基于 Go 1.27 的节假日查询服务：以**按年组织的稀疏配置文件**记录国务院节假日办公布的放假与补班安排，其余日期由标准库周休规则推导，对外提供语义一致的 **HTTP 与 gRPC 双协议**接口，支持粗/细两级粒度的日期类型查询与区间统计。
+基于 Go 1.27 的节假日查询服务：以**按年组织的稀疏配置文件**记录国务院假日办公布的放假与补班安排，其余日期由标准库周休规则推导，对外提供语义一致的 **HTTP 与 gRPC 双协议**接口，支持粗/细两级粒度的日期类型查询与区间统计。
 
-## 特性
+## 核心设计
 
-- **位掩码日期类型**：`DayType`（uint8）以可组合位标志表达 5 种细粒度（普通工作日/补班/周末/节日/调休）与 2 种粗粒度段值（工作日/节假日），细→粗用位运算与优先级规则（补班优先）映射。
-- **稀疏配置**：每年一个 `TOML` 文件，只记录"被调整过"的日期（`off` 仅工作日变休息、`work` 仅周末变上班）；周末与普通工作日等标准库可判定的信息一律不写入，年文件仅 20~30 行、可人工审计。
-- **配置优先 + 周休回退**：有配置年份以配置为准，未覆盖日期回退周六/周日判断；无配置年份整年自动回退，服务开箱即用。
-- **丰富的查询形态**：单日、区间（左闭右开 `[start, end)`）、离散日期列表，以及区间+离散混合并集；统计支持细粒度组合日交叉计数。
-- **双协议**：HTTP（仅标准库，Go 1.22+ `ServeMux`）与 gRPC（`proto/goliday/v1/goliday.proto`，生成代码入库，调用方无需 protoc）。
-- **极小依赖面**：核心包（根包 `goliday`）仅依赖 `github.com/BurntSushi/toml`；gRPC 运行时隔离在服务入口与生成代码包中。零框架、零数据库，配置启动时一次性加载纯内存。
+- **位掩码日期类型**：`DayType`（uint8）以可组合位标志表达 5 种细粒度（普通工作日/补班/周末/节日/调休）与 2 种粗粒度段值（工作日/节假日），细→粗用位运算与优先级规则（补班优先归工作日）映射。
+- **稀疏配置**：每年一个 TOML 文件，只记录"被调整过"的日期（`off` 仅工作日变休息、`work` 仅周末变上班），周末与普通工作日由标准库按星期推导、一律不写入——年文件仅 20~30 行，可人工审计。
+- **配置优先 + 年份强校验**：有配置年份以配置为准，未覆盖日期回退周六/周日判断；查询覆盖未加载配置的年份时返回 `year_not_loaded` 错误而非静默回退，避免"未配置"被误读为"真实周末"。
+- **前缀和统计**：加载时为每年构建细粒度组合计数前缀和，统计为 O(覆盖年数) 差分，`/stats` 接口不限查询跨度。
+- **极小依赖面**：核心包仅依赖 `github.com/BurntSushi/toml`；gRPC 运行时隔离在服务入口与生成代码包中。零框架、零数据库，配置启动时一次性加载纯内存。
 
 ## 快速开始
 
@@ -45,12 +44,12 @@ resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detai
 
 | 协议 | 入口 | 说明 |
 |---|---|---|
-| HTTP | `GET /api/v1/days` | 单日 / 区间 / 离散 / 混合查询，含逐日明细 |
-| HTTP | `GET /api/v1/stats` | 与 `/days` 统计口径一致，无明细 |
+| HTTP | `GET /api/v1/days` | 单日 / 区间（左闭右开）/ 离散 / 混合并集查询，含逐日明细；区间跨度 ≤366 天 |
+| HTTP | `GET /api/v1/stats` | 与 `/days` 统计口径一致，无明细；不限跨度 |
 | HTTP | `GET /healthz` | 健康检查，返回已加载年份 |
 | gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`，与 HTTP 一一对应，另注册 gRPC 标准健康检查 |
 
-日期类型掩码：
+日期类型掩码（`type_label` 即 `DayType.String()`，组合按位从低到高以 `|` 连接）：
 
 | 值 | 含义 | | 值 | 含义 |
 |---|---|---|---|---|
@@ -59,6 +58,8 @@ resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detai
 | 4 | 周末 | | 6 | 补班逢周末 |
 | 8 | 节日 | | 12 | 节日逢周末 |
 | 16 | 调休 | | 24 | 节日当天调休 |
+
+细粒度统计（`detailed=true`）为单标志位交叉计数：组合日对其每个标志各计 1 天，各键之和可大于 `total_days`；总休息/上班天数请用粗粒度 `stats.holiday`/`stats.workday`。
 
 完整契约（参数、响应结构、错误码、gRPC 调用示例、proto 再生成命令）见 [docs/API.md](docs/API.md)。
 
@@ -70,7 +71,7 @@ resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detai
 2. 校验：`go run ./cmd/goliday-tool validate configs/2027.toml`；
 3. 人工抽查若干日期后放入 `configs/`，重启服务并经 `/healthz` 确认年份已加载。
 
-配置格式（选型对比、字段语义、校验规则、判断算法）见 [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md)，完整注释示例见 [docs/holiday_config_example.toml](docs/holiday_config_example.toml)。
+配置格式（选型依据、字段语义、校验规则、判定算法）见 [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md)，完整注释示例见 [docs/holiday_config_example.toml](docs/holiday_config_example.toml)。
 
 ## 架构与依赖
 
@@ -96,7 +97,7 @@ go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .
 | 文档 | 内容 |
 |---|---|
 | [docs/API.md](docs/API.md) | HTTP 与 gRPC 完整契约、掩码对照、调用示例 |
-| [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | 配置格式选型、稀疏表原则、校验规则、判断算法 |
+| [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | 配置格式选型、稀疏表原则、校验规则、判定算法 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 目录结构、分层、依赖约束、数据流 |
 | [docs/generate_prompt.md](docs/generate_prompt.md) | 官方公告 → 年度配置的 LLM 提示词模板 |
 | [spec/](spec/) | 需求规格、任务清单与验收清单（遵循 [AGENTS.md](AGENTS.md)） |

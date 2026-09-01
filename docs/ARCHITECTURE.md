@@ -158,12 +158,10 @@ JSON 序列化返回
 
 ---
 
-## 5. gRPC 接口（已实现）
-
-原 TODO 项已落地：
+## 5. gRPC 接口
 
 - **gRPC 服务**：与 HTTP 同进程（`-grpc-addr`，默认 `:50051`，空字符串禁用），实现 `GolidayService` 三方法（`GetDay/QueryDays/QueryStats`），语义与 HTTP API 完全一致，并注册 gRPC 标准健康检查；优雅关闭同时覆盖双协议。
-- **proto 定义**：`proto/goliday/v1/goliday.proto`（package `goliday.v1`）供调用方直接引用；`DayType` 掩码以 **`uint32`** 表达并附位含义注释，取值与位定义和 HTTP API 掩码表（见 [API.md](./API.md) 第 6 节）保持一致。生成代码入库于 `proto/goliday/v1/`，调用方无需本地 protoc；再生成命令与参考版本见 [API.md](./API.md) 第 7.5 节。
+- **proto 定义**：`proto/goliday/v1/goliday.proto`（package `goliday.v1`）供调用方直接引用；`DayType` 掩码以 **`uint32`** 表达并附位含义注释，与 HTTP API 掩码表（见 [API.md](./API.md) 第 6 节）一致。生成代码入库于 `proto/goliday/v1/`，调用方无需本地 protoc；再生成命令见 [API.md](./API.md) 第 7.5 节。
 - 接口契约、错误语义与调用示例详见 [API.md](./API.md) 第 7 节。
 
 ---

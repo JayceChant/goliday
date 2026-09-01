@@ -1,50 +1,25 @@
 # 节假日 API 服务（goliday）Spec
 
-## Why
-空白仓库，需从零实现一个基于 Go 1.27 的中国节假日 API 服务：以按年组织的**稀疏**配置文件记录节假日办对日历的调整（仅写入与默认周休状态不同的日期），配合标准库周休判断，对外提供粗/细两级粒度的日期类型查询与区间统计能力，并在每年官方方案公布后可通过提示词/工具半自动生成新年度配置。
+## 项目定位
 
-## What Changes
-- 新建 Go module `goliday`（go 1.27），核心逻辑置于根包 `goliday`，HTTP 服务置于 `cmd/goliday-server` 子包，配置生成/校验工具置于 `cmd/goliday-tool` 子包。
-- 定义日期类型位掩码枚举 `DayType`（**uint8**，取值范围小，可组合位标志）：
-  - 粗粒度：`Workday 工作日`、`Holiday 节假日`。
-  - 细粒度：`Ordinary 普通工作日`、`Compensate 补班`、`Weekend 周末`、`Festival 节日`、`Adjusted 调休`。
-  - 细→粗映射用位运算与优先级规则（补班优先）实现。
-- 核心查询能力：
-  - 单日期查询，默认粗粒度，参数开启细粒度。
-  - 区间查询（左闭右开 `[start, end)`）与离散日期列表，可混合（并集、去重、升序）。
-  - 统计：按粒度返回各类天数（细粒度组合日交叉计数）。
-- 配置体系（**稀疏表原则**）：
-  - 格式 **TOML**，每年一个文件 `<config_dir>/<year>.toml`，启动时全量加载（参数指定目录），纯内存，不用数据库。
-  - **只记录节假日办“调整过”的日期**：放假日 `off`（仅周一~周五的工作日变休息）与补班日 `work`（仅周六/周日变上班）；凡标准日期库可判定的信息（周末、普通工作日）一律不写入配置。
-  - 节日定义 `[[festival]]` 仅含名称与节日当天日期（农历节日每年漂移，无法由标准库获得）。
-  - 判断顺序：work 命中 → 补班；off 命中 → 调休；节日当天 → 附加 Festival 标志；否则退回标准库周休判断；无该年文件整年退回周休。
-- 生成工具与文档：`docs/generate_prompt.md` 提示词模板；`cmd/goliday-tool` 提供 `gen`（公告文本 → 年度 TOML 草稿）与 `validate`（校验）子命令。
-- gRPC 接口与 proto 文档：`proto/goliday/v1/goliday.proto`（package `goliday.v1`）定义 `GolidayService`（GetDay/QueryDays/QueryStats），语义与 HTTP API 一致；生成代码入库于 `proto/goliday/v1/`；`cmd/goliday-server` 同进程提供 gRPC 服务（`-grpc-addr`）。
-- 依赖策略：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**；HTTP 处理仅标准库；gRPC 相关（`google.golang.org/grpc`、`google.golang.org/protobuf`、`google.golang.org/genproto/googleapis/rpc`）仅允许出现在 proto 生成代码包与 `cmd/` 子包。
-- 测试分层：单元测试区分**白盒**（与被测包同名的内部测试包，如 `package goliday`、`package main`，可访问未导出标识符）与**黑盒**（根包外部测试包 `package goliday_test`，仅经导出 API 验证对外契约）；并按被测目标归属提供原生 **fuzz 测试**（标准库 `testing.F`，种子语料内联），目标清单见「测试分层（白盒/黑盒）与 fuzz 测试」Requirement。
-- API 契约与配置格式、选型、目录结构、示例配置见 `docs/API.md`、`docs/CONFIG_FORMAT.md`、`docs/ARCHITECTURE.md`、`docs/holiday_config_example.toml`。
+基于 Go 1.27 的中国节假日 API 服务：以按年组织的**稀疏**配置文件记录节假日办对日历的调整（仅写入与默认周休状态不同的日期），配合标准库周休判断，对外提供粗/细两级粒度的日期类型查询与区间统计能力，并在每年官方方案公布后可通过提示词/工具半自动生成新年度配置。
 
-## Impact
-- Affected specs: 全部为本变更新增（无既有 spec 受影响；「测试分层与 fuzz 测试」为追加 Requirement，不修改既有行为）。
-- Affected code（均为新建）：
-  - 根包：`daytype.go`、`config.go`、`store.go`、`calendar.go` 及对应 `*_test.go`
-  - 服务子包：`cmd/goliday-server/{main.go,handlers.go,handlers_test.go,grpc.go,grpc_test.go}`
-  - 工具子包：`cmd/goliday-tool/main.go`
-  - proto：`proto/goliday/v1/goliday.proto` 及生成代码 `proto/goliday/v1/goliday.pb.go`、`goliday_grpc.pb.go`
-  - 文档：`docs/{API.md,CONFIG_FORMAT.md,ARCHITECTURE.md,generate_prompt.md,holiday_config_example.toml}`
-  - 测试数据：`testdata/{2025.toml,2026.toml,invalid/*.toml}`
-  - 工程：`go.mod`、`.gitignore`
+各 Requirement 中的 **决策依据** 记录关键取舍原因，后续修改前先审视，避免反复。
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: 模块结构与依赖约束
-系统 SHALL 在仓库根创建 Go module（module 名 `goliday`，go 指令 1.27）；核心逻辑 SHALL 位于根包 `goliday`；服务与工具 SHALL 分别位于 `cmd/goliday-server`、`cmd/goliday-tool`。依赖约束：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**；HTTP 处理仅标准库；gRPC 相关依赖（`google.golang.org/grpc`、`google.golang.org/protobuf`、`google.golang.org/genproto/googleapis/rpc`）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包，不得进入根包。
+
+系统 SHALL 在仓库根创建 Go module（module 名 `goliday`，go 指令 1.27）；核心逻辑 SHALL 位于根包 `goliday`；服务与工具 SHALL 分别位于 `cmd/goliday-server`、`cmd/goliday-tool`。依赖按包分级：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**，不得导入 gRPC/protobuf；HTTP 处理仅标准库；gRPC 三件套（`google.golang.org/grpc`、`google.golang.org/protobuf` 及传递依赖）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包。
+
+**决策依据**：核心库保持最小依赖面，gRPC 运行时隔离在入口与生成代码中。
 
 #### Scenario: 依赖审计通过
 - **WHEN** 运行 `go list -deps .`（根包）与 `go list -m all`
-- **THEN** 根包导入中无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 `github.com/BurntSushi/toml`、`google.golang.org/grpc`、`google.golang.org/protobuf`，其余第三方模块（`genproto/googleapis/rpc`、`golang.org/x/*` 等）均为 gRPC 的传递依赖
+- **THEN** 根包导入中无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 `github.com/BurntSushi/toml`、`google.golang.org/grpc`、`google.golang.org/protobuf`，其余第三方模块均为 gRPC 的传递依赖
 
 ### Requirement: DayType 位掩码枚举
+
 系统 SHALL 定义 `type DayType uint8` 与可组合位标志常量，细粒度值可通过位运算映射为粗粒度段值（uint8 足够容纳 5 个细粒度位及组合）。
 
 枚举取值（`daytype.go`）：
@@ -82,9 +57,10 @@
 - **THEN** 分别返回 `"festival|adjusted"`、`"compensate|weekend"`；对粗粒度 `DayTypeWorkday` 返回 `"workday"`
 
 ### Requirement: 稀疏配置文件格式（TOML）
+
 配置 SHALL 采用 TOML，每年一个文件，命名 `<year>.toml`（如 `2026.toml`），服务启动时经 `-config-dir` 加载目录内全部年份文件。
 
-**稀疏表原则**：配置只记录节假日办对日历的“调整”，即与默认周休状态不同的日期；凡可由标准日期库判定的信息（周六/周日、普通工作日）不得写入。
+**稀疏表原则**：配置只记录节假日办对日历的"调整"，即与默认周休状态不同的日期；凡可由标准日期库判定的信息（周六/周日、普通工作日）不得写入。
 
 文件结构：
 
@@ -112,7 +88,7 @@ off = [
 work = [ "2026-01-24", "2026-02-28" ]
 ```
 
-**格式选型（详见 `docs/CONFIG_FORMAT.md`）**：TOML。理由：注释原生支持（JSON 被排除）；无缩进敏感与隐式类型转换陷阱（YAML 的 `01-01`/时间戳隐式解析风险，LLM 与手写均易错）；扁平字符串数组最贴合稀疏表；Go（BurntSushi/toml）与 Python 3.11+（tomllib）生态成熟。
+**格式选型**：TOML。理由：注释原生支持（JSON 被排除）；无缩进敏感与隐式类型转换陷阱（YAML 的 `01-01`/时间戳隐式解析风险，LLM 与手写均易错）；扁平字符串数组最贴合稀疏表；Go（BurntSushi/toml）与 Python 3.11+（tomllib）生态成熟。详见 `docs/CONFIG_FORMAT.md`。
 
 校验规则（加载与 `goliday-tool validate` 一致）：
 - `year` 必须与文件名一致；
@@ -128,7 +104,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 2. `date ∈ off` → `Adjusted`（off 必为工作日）；
 3. `date == 某 festival.date` → 在周休结果上附加 `Festival` 位；
 4. 周休回退：周六/周日 → `Weekend`，否则 `Ordinary`；
-5. 该年无配置文件 → 整年按 4 回退。
+5. 该年无配置文件 → 见「年份加载强校验」：返回 `ErrYearNotLoaded`，不回退。
 
 等价表达：`t = 周末 ? Weekend : Ordinary`；`if off 命中 { t = Adjusted }`；`if work 命中 { t = Compensate|Weekend }`；`if 节日当天 { t |= Festival }`。
 
@@ -156,16 +132,17 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **WHEN** 查询 2026-03-03（周二，未被任何条目覆盖）
 - **THEN** 判定为 `Workday`（细：`Ordinary=1`）
 
-#### Scenario: 无该年配置
-- **WHEN** 配置目录仅有 `2026.toml`，查询 2027-05-01（周六）
-- **THEN** 判定为 `Holiday`（细：`Weekend=4`）
-
 #### Scenario: 稀疏原则违规
 - **WHEN** `off` 含周末日期（如 `2026-01-03` 周六），或 `work` 含工作日，或两集合有交集
 - **THEN** 加载返回错误，服务启动失败；`testdata/invalid/` 提供此类样例
 
 ### Requirement: 单日期查询
-核心包 SHALL 提供 `Query(date time.Time) DayType`（细粒度）与 `QueryCoarse(date time.Time) DayType`；服务层 SHALL 暴露 HTTP 单日查询。
+
+核心包 SHALL 提供 `Query(date time.Time) (DayType, error)`（细粒度）与 `QueryCoarse(date time.Time) (DayType, error)`；`IsWorkday`/`IsHoliday` 同步返回 `error`。`date` 年份未加载时返回包装 `ErrYearNotLoaded` 的错误（`errors.Is` 可判别，message 含年份），不回退周休判断（见「年份加载强校验」）。
+
+**决策依据**：消除「未配置」与「真实周末」的静默混淆，故由早期的"无配置年回退周休"改为强校验报错。
+
+服务层 SHALL 暴露 HTTP 单日查询：
 
 `GET /api/v1/days?date=2026-02-20`（`detailed=true|false`，默认 false）
 - 响应：`{"date":"2026-02-20","type":28,"type_label":"holiday"}`；`detailed=true` 时 `{"date":"2026-02-20","type":16,"type_label":"adjusted"}`。
@@ -175,6 +152,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **THEN** 返回 400 与统一错误信息
 
 ### Requirement: 区间与离散列表查询（同一接口）
+
 同一接口 SHALL 支持（左闭右开 `[start, end)`）与离散列表 `dates`（逗号分隔），两者可同时提供（并集、去重、升序）。
 
 - 区间模式：`GET /api/v1/days?start=2026-02-01&end=2026-02-28`
@@ -182,6 +160,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 - 混合模式：`GET /api/v1/days?start=2026-02-01&end=2026-02-03&dates=2026-03-08`
 
 区间响应（粗粒度）：
+
 ```json
 {
   "mode": "range",
@@ -193,17 +172,11 @@ work = [ "2026-01-24", "2026-02-28" ]
 }
 ```
 
-列表/混合响应：
-```json
-{
-  "mode": "list",
-  "total_days": 3,
-  "days": [ ... ],
-  "stats": { "holiday": 2, "workday": 1 }
-}
-```
+列表/混合响应：`mode` 为 `"list"`，结构同上（不含区间字段）。
 
 细粒度模式下 `days[].type` 为细粒度掩码，`stats` 为 `{"ordinary":n,"compensate":n,"weekend":n,"festival":n,"adjusted":n}`；组合日（如 `festival|adjusted`、`compensate|weekend`）SHALL 对其含有的每个标志各计 1 天（存在交叉计数，各键之和可大于 `total_days`）。
+
+跨度限制分化：`/api/v1/days`（含 gRPC `QueryDays`）区间跨度上限 **366 天**（防响应膨胀）；`/api/v1/stats`（含 `QueryStats`）**不限跨度**（前缀和实现，见「细粒度组合计数前缀和统计」）。全部覆盖年份须已加载（见「年份加载强校验」）。`days` 响应中的 `stats` 与同输入的 stats 接口完全一致（复用前缀和路径）。
 
 #### Scenario: 区间左闭右开
 - **WHEN** `start=2026-02-01&end=2026-02-28`
@@ -222,24 +195,26 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **THEN** 该两日分别在 `festival`+`adjusted`、`compensate`+`weekend` 键中各计 1
 
 #### Scenario: 参数校验
-- **WHEN** `end < start`、或区间跨度 > 366 天、或 `date`/`start+end`/`dates` 均缺省、或日期格式非法
+- **WHEN** `end < start`、或（days 接口）区间跨度 > 366 天、或 `date`/`start+end`/`dates` 均缺省、或日期格式非法
 - **THEN** 返回 400 与明确错误信息
 
 ### Requirement: 统计接口
-系统 SHALL 提供 `GET /api/v1/stats?start=...&end=...&detailed=...`，统计口径与 `/api/v1/days` 完全一致但不返回 `days` 明细；两接口 SHALL 复用同一处理器逻辑。
+
+系统 SHALL 提供 `GET /api/v1/stats?start=...&end=...&detailed=...`，统计口径与 `/api/v1/days` 完全一致但不返回 `days` 明细；两接口 SHALL 复用同一处理器逻辑。实现为前缀和差分（见「细粒度组合计数前缀和统计」），**不限查询跨度**；混合并集统计 = 区间前缀和统计 + 列表中剔除落在区间内日期后的分段统计，二者相加。
 
 #### Scenario: 统计一致性
 - **WHEN** 同一区间分别调用 `/api/v1/stats` 与 `/api/v1/days`
 - **THEN** 两者 `stats`、`total_days` 完全一致
 
 ### Requirement: HTTP 服务子包（仅标准库）
+
 `cmd/goliday-server` SHALL 仅用标准库实现 HTTP 服务（`net/http`，Go 1.22 `ServeMux` 方法+路径路由模式）。
 
-命令行参数（`flag`）：`-addr`（默认 `":8080"`）、`-config-dir`（默认 `"./configs"`）、`-v`（输出版本后退出）。
+命令行参数（`flag`）：`-addr`（默认 `":8080"`）、`-grpc-addr`（默认 `":50051"`，空字符串禁用 gRPC）、`-config-dir`（默认 `"./configs"`）、`-v`（输出版本后退出）。
 
 路由：`GET /api/v1/days`、`GET /api/v1/stats`、`GET /healthz`；中间件（函数装饰器实现）：请求日志、Panic 恢复。
 
-错误响应统一格式 `{"error":{"code":"...","message":"..."}}`；日期解析统一 `2006-01-02`。
+错误响应统一格式 `{"error":{"code":"...","message":"..."}}`；日期解析统一 `2006-01-02`。错误码：`missing_query`、`invalid_date`、`invalid_range`、`invalid_detailed`、`year_not_loaded`、`not_found`（404）、`method_not_allowed`（405）。
 
 #### Scenario: 健康检查
 - **WHEN** `GET /healthz`
@@ -250,12 +225,13 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **THEN** 分别返回 404/405 统一错误格式
 
 ### Requirement: 年度配置生成工具与提示词
+
 系统 SHALL 提供 `cmd/goliday-tool`（Go 实现，子命令 `gen` 与 `validate`）与 `docs/generate_prompt.md` 提示词模板。
 
 `goliday-tool gen -year 2027 -out configs/2027.toml < 公告.txt`：
-- 输入官方公告原文（stdin 或 `-file`），解析“X月X日至X月X日放假共N天”“X月X日（周X）上班”等句式；
+- 输入官方公告原文（stdin 或 `-file`），解析"X月X日至X月X日放假共N天""X月X日（周X）上班"等句式；
 - 输出符合稀疏表规则的 TOML 草稿：自动剔除假期中的周末日（不写入 `off`）、将补班周末写入 `work`、按节日名写入 `festival`；
-- `festival.date` 需按节日名推断（公历节日固定月日；农历节日从公告中的“正月初一”等表述或除夕/初一日期推断），无法推断时输出占位注释待人工补全。
+- `festival.date` 需按节日名推断（公历节日固定月日；农历节日从公告中的"正月初一"等表述或除夕/初一日期推断），无法推断时输出占位注释待人工补全。
 
 `goliday-tool validate <file...>`：执行与加载一致的校验（年份一致、稀疏原则、互斥、合法性），通过退出码 0，否则输出错误并退出非 0。
 
@@ -270,6 +246,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **THEN** 分别退出 0 与非 0
 
 ### Requirement: proto 定义与生成代码
+
 系统 SHALL 提供 `proto/goliday/v1/goliday.proto`（syntax proto3，package `goliday.v1`，`option go_package = "goliday/proto/goliday/v1;golidayv1"`），供调用方直接引用；生成的 Go 代码 SHALL 入库于 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}`（调用方无需本地 protoc）。
 
 proto 内容约定：
@@ -288,9 +265,10 @@ proto 内容约定：
 - **THEN** 生成文件落盘于 `proto/goliday/v1/` 且 `gofmt`/`go build` 通过
 
 ### Requirement: gRPC 服务（与 HTTP 同进程）
-`cmd/goliday-server` SHALL 在同进程内提供 gRPC 服务：新增 flag `-grpc-addr`（默认 `":50051"`，空字符串禁用 gRPC），注册 `GolidayService` 与 gRPC 标准健康检查服务（`grpc.health.v1`）；优雅关闭 SHALL 同时覆盖 HTTP 与 gRPC。
 
-gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：单日 `detailed` 粗/细切换、多日明细恒细粒度、区间左闭右开且跨度 ≤366 天、离散去重升序、区间+离散并集 `mode=list`、`date` 与其他参数并存时 `date` 优先；参数错误 SHALL 映射为 `codes.InvalidArgument`，错误 `message` 文案与 HTTP 一致（含 `invalid_date`/`invalid_range`/`missing_query`/`invalid_detailed` 等标识）。
+`cmd/goliday-server` SHALL 在同进程内提供 gRPC 服务：注册 `GolidayService` 与 gRPC 标准健康检查服务（`grpc.health.v1`）；优雅关闭 SHALL 同时覆盖 HTTP 与 gRPC。
+
+gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：单日 `detailed` 粗/细切换、多日明细恒细粒度、区间左闭右开（`QueryDays` 跨度 ≤366 天，`QueryStats` 不限跨度）、离散去重升序、区间+离散并集 `mode=list`、`date` 与其他参数并存时 `date` 优先；参数错误 SHALL 映射为 `codes.InvalidArgument`，错误 `message` 文案与 HTTP 一致（含 `invalid_date`/`invalid_range`/`missing_query`/`invalid_detailed`/`year_not_loaded` 等标识）。
 
 #### Scenario: 启用与禁用
 - **WHEN** 以默认参数启动
@@ -305,7 +283,8 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 - **THEN** 返回 `codes.InvalidArgument`，message 与 HTTP 同类错误一致
 
 ### Requirement: 测试分层（白盒/黑盒）与 fuzz 测试
-系统 SHALL 将单元测试按可见性分层。**白盒测试**位于与被测包同名的内部测试包，允许访问未导出标识符，覆盖分支、边界与错误路径；每个测试文件头 SHALL 以注释标注「白盒/黑盒」及测试视角。**黑盒测试** SHALL 位于根包外部测试包 `package goliday_test`，仅引用 `goliday` 导出 API（`LoadYear`/`LoadDir`/`Store`/`NewCalendar`/`Calendar`/`YearConfig.Validate`/`DayType` 常量与方法），不引用任何未导出标识符，以使用方视角验证对外行为契约（判断算法、粗细映射、区间/列表/统计口径、无配置年回退）。文件布局：
+
+系统 SHALL 将单元测试按可见性分层。**白盒测试**位于与被测包同名的内部测试包，允许访问未导出标识符，覆盖分支、边界与错误路径；每个测试文件头 SHALL 以注释标注「白盒/黑盒」及测试视角。**黑盒测试** SHALL 位于根包外部测试包 `package goliday_test`，仅引用 `goliday` 导出 API（`LoadYear`/`LoadDir`/`Store`/`NewCalendar`/`Calendar`/`YearConfig.Validate`/`DayType` 常量与方法），不引用任何未导出标识符，以使用方视角验证对外行为契约。文件布局：
 
 | 包 | 文件 | 视角 |
 |---|---|---|
@@ -319,13 +298,13 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 系统 SHALL 提供原生 fuzz 测试（Go 标准 `testing.F`），种子语料内联于测试（不落盘语料目录），并保证 `go test`（非 fuzz 模式）仅执行种子即全部通过：
 
-| Fuzz 目标 | 所属 | 性质 | 不变量 |
-|---|---|---|---|
-| `FuzzParseDate` | 根包 `package goliday`（白盒） | 输入校验 | 任意字符串：解析成功 ⇔ `time.Parse("2006-01-02", s)` 接受且 `Format` 回环一致；成功值再解析幂等；失败必须返回非 nil error |
-| `FuzzQueryConsistency` | 根包 `package goliday_test`（黑盒） | 语义等价 | 任意年/月/日/时/分构造的 `time.Time`：`Query` 结果 ∈ 合法细粒度组合全集 {1,4,6,12,16,24}；`QueryCoarse == Query().Coarse()`；`IsWorkday/IsHoliday` 与之互斥一致；同一日不同时刻（+5h/+23h）、UTC 与 +08:00 表示结果不变；无配置年份结果仅 {Ordinary, Weekend} |
-| `FuzzLoadYearTOML` | 根包 `package goliday_test`（黑盒） | 输入校验 | 任意年份 + TOML 文本：`LoadYear` 成功 ⟹ `Validate()` 幂等通过、off 全为周一~五、work 全为周六/日、两集合互斥无重复、全部日期在 `year` 年内；经 `LoadDir` 构造的 `Calendar` 对 off 日含 `Adjusted` 位、work 日为 `Compensate|Weekend` |
-| `FuzzDaysHandler` | `cmd/goliday-server` `package main`（白盒） | 鲁棒性 | 任意查询串打到 `/api/v1/days` 与 `/api/v1/stats`：不 panic、状态码仅 200/400、响应恒为合法 JSON；200 且含 `days` 时升序唯一、`total_days == len(days)`；粗粒度 stats 之和 == `total_days`，细粒度（交叉计数）之和 ≥ `total_days`；单日模式 `total_days == 1` |
-| `FuzzGenDraft` | `cmd/goliday-tool` `package main`（白盒） | 不变量 | 任意年份 + 公告文本：解析条目区间有效且在年内；草稿 off 全为周一~五、work 全为周六/日、互斥无重复、全在年内；festival 日期非 TODO 则为合法 `YYYY-MM-DD`；`selfCheck` 失败仅允许 TODO 占位或"节日当天不得补班"；自检通过且文件名年份合法时 `render` 产物可被 `LoadYear` 加载 |
+| Fuzz 目标 | 所属 | 不变量 |
+|---|---|---|
+| `FuzzParseDate` | 根包 `package goliday`（白盒） | 任意字符串：解析成功 ⇔ `time.Parse("2006-01-02", s)` 接受且 `Format` 回环一致；成功值再解析幂等；失败必须返回非 nil error |
+| `FuzzQueryConsistency` | 根包 `package goliday_test`（黑盒） | 任意构造的 `time.Time`：已加载年份 `Query` 结果 ∈ 合法细粒度组合全集 {1,4,6,12,16,24} 且 `QueryCoarse == Query().Coarse()`、`IsWorkday/IsHoliday` 与之互斥一致、同一日不同时刻（+5h/+23h）与 UTC/+08:00 表示结果不变；未加载年份断言返回 `ErrYearNotLoaded` |
+| `FuzzLoadYearTOML` | 根包 `package goliday_test`（黑盒） | 任意年份 + TOML 文本：`LoadYear` 成功 ⟹ `Validate()` 幂等通过、off 全为周一~五、work 全为周六/日、两集合互斥无重复、全部日期在 `year` 年内；经 `LoadDir` 构造的 `Calendar` 对 off 日含 `Adjusted` 位、work 日为 `Compensate\|Weekend` |
+| `FuzzDaysHandler` | `cmd/goliday-server` `package main`（白盒） | 任意查询串打到 `/api/v1/days` 与 `/api/v1/stats`：不 panic、状态码仅 200/400、响应恒为合法 JSON；200 且含 `days` 时升序唯一、`total_days == len(days)`；粗粒度 stats 之和 == `total_days`，细粒度（交叉计数）之和 ≥ `total_days`；单日模式 `total_days == 1`；stats 路径不因跨度报错（未加载年份报 `year_not_loaded` 除外） |
+| `FuzzGenDraft` | `cmd/goliday-tool` `package main`（白盒） | 任意年份 + 公告文本：解析条目区间有效且在年内；草稿 off 全为周一~五、work 全为周六/日、互斥无重复、全在年内；festival 日期非 TODO 则为合法 `YYYY-MM-DD`；`selfCheck` 失败仅允许 TODO 占位或"节日当天不得补班"；自检通过且文件名年份合法时 `render` 产物可被 `LoadYear` 加载 |
 
 补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`Coarse` 结果 ∈ {Workday, Holiday} 且幂等、`IsWorkday`/`IsHoliday` 恰一为真、`String` 分段均为合法名）覆盖，不再另设 fuzz 目标。
 
@@ -344,7 +323,10 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 - **THEN** 该语料转写为常规回归用例（种子或普通 Test）后删除语料文件，`git status` 无 fuzz 语料残留
 
 ### Requirement: 年份加载强校验（year_not_loaded）
+
 系统 SHALL 在执行任何查询（单日、区间、离散、混合）前先确定查询实际覆盖的年份集合，并要求其中每个年份均已加载配置文件；任一年份未加载即报错，错误 SHALL 列出全部未加载年份（升序、去重），不得静默回退到系统周休判断。
+
+**决策依据**：早期版本对无配置年份整年回退周休判断，会将「未配置」与「真实周末」混淆，故改为强校验报错。不要改回静默回退。
 
 覆盖年份集合的确定规则：
 - 单日 `date`：`{date.Year()}`；
@@ -370,14 +352,17 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 #### Scenario: 已加载年份不受影响
 - **WHEN** 查询 2025、2026 任意日期或区间
-- **THEN** 行为与本变更前一致（回归）
+- **THEN** 行为正常（回归）
 
 ### Requirement: 细粒度组合计数前缀和统计
+
 `Calendar` SHALL 在构造时（`NewCalendar`）为每个已加载年份构建前缀和数组，加载完成后只读、可被多个 goroutine 并发访问：
 
 - 每年数组 `prefix`，长度 = 该年天数 + 1，元素为 6 种合法细粒度组合（`1/4/6/12/16/24`）各自的累计天数（**按组合计数**，非标志位交叉计数）；
 - `prefix[0]` 为全零；`prefix[i] = prefix[i-1] + 第 i 天（元旦起 1-based）类型的组合计数`，即 `prefix[i]` 表示 `[元旦, 元旦+i天)`（左闭右开）的累计；
 - 构建成本 O(年天数)，仅在构造时发生一次。
+
+**决策依据**：统计 O(覆盖年数) 差分即可完成，故 `/stats` 解除范围限制；days 明细接口保留 366 天上限防响应膨胀。
 
 统计导出规则（由组合计数 `C(v)` 线性组合，语义与逐日统计完全等价）：
 - 细粒度标志位交叉计数：`ordinary=C(1)`、`compensate=C(6)`、`weekend=C(4)+C(6)+C(12)`、`festival=C(12)+C(24)`、`adjusted=C(16)+C(24)`；
@@ -395,41 +380,6 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 #### Scenario: 与逐日统计等价
 - **WHEN** 对任意已加载年份的任意区间/日期集合分别用前缀和与逐日 `Query` 暴力统计
 - **THEN** 粗、细全部计数与 `Total` 完全一致
-
-## MODIFIED Requirements
-
-### Requirement: 模块结构与依赖约束（本次修订）
-依赖约束由「全项目仅一个三方依赖」调整为：**根包（核心包）保持仅 `github.com/BurntSushi/toml`**（零 gRPC 依赖）；gRPC 三件套（`google.golang.org/grpc`、`google.golang.org/protobuf`、`google.golang.org/genproto/googleapis/rpc`）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包。
-**Reason**: 实现 TODO 项 gRPC 接口与 proto 文档，需引入 gRPC 运行时；为守住"核心包最小依赖"初衷，将约束细化为按包分级。
-**Migration**: 根包源码不得 import gRPC/protobuf 包；HTTP 处理仍仅标准库；依赖审计命令相应更新（见该 Requirement 的 Scenario）。
-
-### Requirement: 单日期查询（本次修订：年份强校验）
-核心包 SHALL 提供 `Query(date time.Time) (DayType, error)`（细粒度）与 `QueryCoarse(date time.Time) (DayType, error)`；`IsWorkday`/`IsHoliday` 同步返回 `error`。`date` 年份未加载时返回包装 `ErrYearNotLoaded` 的错误（`errors.Is` 可判别，message 含年份），不再回退周休判断。服务层单日查询在未加载年份时返回 `year_not_loaded`（HTTP 400 / gRPC InvalidArgument）。
-**Reason**: 消除「未配置」与「真实周末」的静默混淆。
-**Migration**: 所有 `Query` 族调用方需处理 error；原「无该年配置回退」的测试契约改为断言 `ErrYearNotLoaded`。
-
-### Requirement: 区间与离散列表查询（本次修订：跨度限制分化与年份强校验）
-区间（左闭右开）与离散列表/混合并集语义不变（去重、升序、`mode=range/list`、`date` 优先），追加：全部覆盖年份须已加载（见「年份加载强校验」）。`/api/v1/days`（含 gRPC `QueryDays`）区间跨度上限 366 天**保留**；`/api/v1/stats`（含 `QueryStats`）**取消**跨度上限；days 响应中的 `stats` 与同输入的 stats 接口完全一致（复用前缀和路径）。
-**Reason**: 明细接口需防响应膨胀，统计接口靠前缀和已无性能顾虑。
-**Migration**: `resolveMultiQuery` 参数化跨度上限（days=366，stats=不限），stats 路径不得展开区间为逐日切片。
-
-### Requirement: 统计接口（本次修订：前缀和实现）
-`GET /api/v1/stats`（及 gRPC `QueryStats`）入参与响应字段不变，统计口径不变（粗 `workday/holiday`；细 5 键交叉计数、组合日各标志计 1），但实现改为前缀和差分（见「细粒度组合计数前缀和统计」），**不限查询跨度**。混合并集统计 = 区间前缀和统计 + 列表中剔除落在区间内日期后的分段统计，二者相加。
-**Reason**: O(覆盖年数) 统计效率，解除范围限制。
-**Migration**: 服务层统计入口统一走 `StatsRange`/`Stats`；`Calendar.Stats(dates, detailed)` 签名增加 `error` 返回，新增 `StatsRange(start, end, detailed) (StatsResult, error)`。
-
-### Requirement: HTTP 服务与 gRPC 错误契约（本次修订：新增 year_not_loaded）
-两协议共用错误表新增 `year_not_loaded`（HTTP 400 ↔ gRPC `InvalidArgument`，message 同源）；跨度校验分化：仅 days/QueryDays 保留 `invalid_range` 超限错误，stats/QueryStats 不再校验跨度。
-**Reason**: 错误契约与两接口差异化限制保持一致。
-**Migration**: `grpc_test.go`/`handlers_test.go` 补充 `year_not_loaded` 与「stats 大跨度成功 / days 大跨度 400」场景。
-
-### Requirement: 测试分层与 fuzz 不变量（本次修订：未加载年契约）
-`FuzzQueryConsistency` 不变量调整：已加载年份 `Query` 结果 ∈ 合法组合全集且粗细一致等原有不变量保持；未加载年份断言返回 `ErrYearNotLoaded`（不再断言「仅 Ordinary/Weekend」）。`FuzzDaysHandler` 不变量调整：状态码仍仅 200/400；`/api/v1/stats` 任意跨度不因跨度报错（未加载年份报 `year_not_loaded` 除外）；粗粒度 stats 之和 == `total_days` 等原有不变量保持。其余测试分层要求不变。
-**Reason**: 契约变更需同步到 fuzz 不变量。
-**Migration**: 黑盒 `calendar_test.go`/`config_blackbox_test.go`/`store_test.go` 适配新签名与错误契约；新增前缀和 vs 暴力一致性测试。
-
-## REMOVED Requirements
-（无。原「无该年配置整年回退」行为随 MODIFIED「单日期查询（本次修订）」移除，非独立 Requirement。）
 
 ## 附录：核心包 API 形态
 

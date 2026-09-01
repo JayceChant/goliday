@@ -99,22 +99,12 @@ curl "http://localhost:8080/api/v1/days?start=2026-02-14&end=2026-02-18"
 
 逐日说明：02-14（周六）补班 → 粗粒度 workday（细粒度 `compensate|weekend`）；02-15（周日）自然周末 → holiday；02-16（周一）春节调休 → holiday；02-17（周二）春节当天 → holiday（`festival|adjusted`）。注意 `days` 明细的 `type` **恒为细粒度数值**（与 `detailed` 无关），`detailed` 仅切换 `stats` 统计口径。
 
-细粒度版本（`&detailed=true`，`days` 明细不变，仅 `stats` 换为交叉计数）：
+细粒度版本（`&detailed=true`）：`days` 明细不变（恒为细粒度数值），仅 `stats` 换为交叉计数：
 
 ```json
-{
-  "mode": "range",
-  "start": "2026-02-14",
-  "end": "2026-02-18",
-  "total_days": 4,
-  "days": [
-    {"date": "2026-02-14", "type": 6,  "type_label": "compensate|weekend"},
-    {"date": "2026-02-15", "type": 4,  "type_label": "weekend"},
-    {"date": "2026-02-16", "type": 16, "type_label": "adjusted"},
-    {"date": "2026-02-17", "type": 24, "type_label": "festival|adjusted"}
-  ],
-  "stats": {"ordinary": 0, "compensate": 1, "weekend": 2, "festival": 1, "adjusted": 2}
-}
+{ "mode": "range", "start": "2026-02-14", "end": "2026-02-18", "total_days": 4,
+  "days": [ ...同上... ],
+  "stats": {"ordinary": 0, "compensate": 1, "weekend": 2, "festival": 1, "adjusted": 2} }
 ```
 
 ### 2.4 离散列表查询
@@ -138,15 +128,7 @@ curl "http://localhost:8080/api/v1/days?dates=2026-02-16,2026-02-28,2026-02-17"
 }
 ```
 
-2026-02-28 为周六补班（`work`），故粗粒度统计归入 workday（细粒度 `compensate|weekend`）。细粒度版本：
-
-```bash
-curl "http://localhost:8080/api/v1/days?date=2026-02-28&detailed=true"
-```
-
-```json
-{"date": "2026-02-28", "type": 6, "type_label": "compensate|weekend", "total_days": 1, "stats": {"adjusted": 0, "compensate": 1, "festival": 0, "ordinary": 0, "weekend": 1}}
-```
+2026-02-28 为周六补班（`work`），故粗粒度统计归入 workday（细粒度 `compensate|weekend`，单日细粒度响应见 2.2）。
 
 ### 2.5 混合查询（区间 + 离散）
 

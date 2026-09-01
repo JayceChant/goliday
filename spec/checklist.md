@@ -1,99 +1,32 @@
 # Checklist
 
-## 工程与依赖
-- [x] Go module `goliday` 已初始化，go 指令为 1.27
-- [x] 核心逻辑位于根包 `goliday`，服务位于 `cmd/goliday-server`，工具位于 `cmd/goliday-tool`
-- [x] 全项目仅一个第三方依赖 `github.com/BurntSushi/toml`（`go list -m all` 验证）；HTTP 服务仅标准库（无路由框架）
-- [x] `go build ./...`、`go vet ./...`、`go test ./...` 全部通过
+> 历史批次验收记录；新批次验收项追加于本文件，完成勾选须先于提交（见 [AGENTS.md](../AGENTS.md) 第 7 节）。
 
-## DayType 枚举
-- [x] `DayType` 为 uint8 位掩码：`Ordinary=1`、`Compensate=2`、`Weekend=4`、`Festival=8`、`Adjusted=16`、`Workday=3`、`Holiday=28`
-- [x] `Coarse()` 按补班优先规则映射（`Compensate|Weekend` → `Workday`）；`IsWorkday()`/`IsHoliday()` 与之一致
-- [x] 细粒度合法组合全集：`1`、`6`、`4`、`12`、`16`、`24`
-- [x] `String()`：组合按位序 `|` 连接小写名；粗值返回 `workday`/`holiday`
-- [x] 枚举单元测试覆盖全部 spec Scenario
+## 首个完整版本（Task 1~8）
 
-## 稀疏配置
-- [x] 配置为 TOML 按年文件 `<year>.toml`，启动时经 `-config-dir` 加载，纯内存无数据库
-- [x] 稀疏表原则：仅记录调整过的日期——`off` 仅周一~周五（工作日变休息）、`work` 仅周六/周日（周末变上班）；周末/普通工作日等标准库可判定信息未写入
-- [x] `[[festival]]` 仅含名称与节日当天日期
-- [x] 判断算法：work→`Compensate|Weekend`；off→`Adjusted`；节日当天附加 `Festival`；否则周休回退；无该年文件整年回退
-- [x] 校验：year 与文件名一致、off/work 稀疏合法、无重复且互斥、work 不含 festival.date、日期合法且在年内；违规启动失败并指明文件与原因
-- [x] `LoadDir` 忽略非 `.toml` 文件与子目录
-- [x] `docs/CONFIG_FORMAT.md` 含 TOML/YAML/JSON 选型对比（结论 TOML）与稀疏表原则说明
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）
+- [x] DayType 枚举、稀疏配置校验与判定算法、查询/统计口径全部 Scenario 通过
+- [x] HTTP 服务（days/stats/healthz、统一错误格式、中间件、404/405）全部 Scenario 通过
+- [x] goliday-tool gen/validate 行为符合契约；docs 与实现一致
 
-## 查询与统计
-- [x] 单日期查询默认粗粒度（`workday`/`holiday`），`detailed` 开启细粒度
-- [x] 区间查询左闭右开 `[start, end)`，`days` 不含 end，跨度上限 366 天
-- [x] 离散列表去重、升序；与区间可混合（并集，`mode=list`）
-- [x] 统计粗粒度 `workday/holiday`；细粒度 `ordinary/compensate/weekend/festival/adjusted`，组合日交叉计数（各标志各计 1 天）
-- [x] `/api/v1/stats` 与 `/api/v1/days` 同区间下 `stats`、`total_days` 一致
-- [x] 参数校验：`end<start`、跨度超限、输入均缺省、日期非法 → 400 统一错误格式
+## gRPC 落地（Task 9~12）
 
-## HTTP 服务
-- [x] flag 参数：`-addr`（默认 `:8080`）、`-config-dir`（默认 `./configs`）、`-v`
-- [x] 路由（Go 1.22 ServeMux）：`GET /api/v1/days`、`GET /api/v1/stats`、`GET /healthz`；中间件：日志、Panic 恢复
-- [x] 统一错误响应 `{"error":{"code","message"}}`；日期解析 `2006-01-02`
-- [x] handlers 测试覆盖全部 API Scenario（httptest）
+- [x] proto 与生成代码入库（无需 protoc 可编译）；`-grpc-addr` 启停生效；优雅关闭覆盖双协议
+- [x] gRPC 与 HTTP 语义一致、错误码映射一致；根包依赖审计通过（零 gRPC 导入）
 
-## 生成工具与提示词
-- [x] `goliday-tool validate`：合法样例退出 0，invalid 样例报错并退出非 0
-- [x] `goliday-tool gen`：由年份 + 公告原文生成稀疏 TOML 草稿（剔除周末、补班入 work、节日推断，无法推断留占位注释），产物可通过 validate
-- [x] `docs/generate_prompt.md` 提供公告 → 年度 TOML 的 LLM 提示词模板
-- [x] `docs/holiday_config_example.toml` 完整注释示例；`docs/API.md`、`docs/ARCHITECTURE.md` 与实现一致（17 处偏差已按代码修正）
+## 测试强化（Task 13）
 
-## TODO 项登记（本次不实现，仅记录）
-- [x] ~~登记：后续实现 gRPC 接口（语义与 HTTP API 一致）~~（已由追加任务 Task 9~12 落地）
-- [x] ~~登记：后续提供 `proto/goliday/v1/goliday.proto` proto 文档及生成说明（`DayType` 以 `uint32` 表达）~~（已落地）
+- [x] 白盒/黑盒分层落实（文件头标注视角；黑盒仅引用导出 API）
+- [x] 256 值穷举、全年判型穷举通过；5 个 fuzz 目标种子全过、逐包冒烟通过、无语料残留
 
-## 追加验收（gRPC TODO 落地）
-- [x] `proto/goliday/v1/goliday.proto` 存在：package `goliday.v1`、`go_package` 正确、DayType 以 uint32 位注释表达、GolidayService（GetDay/QueryDays/QueryStats）
-- [x] 生成代码 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}` 入库，无需 protoc 即可编译
-- [x] `-grpc-addr`（默认 `:50051`，空串禁用）生效；gRPC 与 HTTP 同进程；注册标准健康检查；优雅关闭覆盖双协议
-- [x] gRPC 查询语义与 HTTP 一致（单日/区间/离散/混合、detailed、跨度 ≤366、明细恒细粒度、stats 交叉计数）
-- [x] 参数错误 → `codes.InvalidArgument`，message 文案与 HTTP 一致
-- [x] grpc_test.go（bufconn）覆盖语义一致性与错误场景
-- [x] 根包依赖审计：根包导入无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 BurntSushi/toml + grpc/protobuf（genproto/rpc、x/* 等均为 gRPC 传递依赖）
-- [x] `docs/API.md` 新增 gRPC 章节、`docs/ARCHITECTURE.md` 依赖分级与目录树更新
-- [x] 全量验证通过 + 中文 Conventional Commits 提交
+## 年份强校验 + 前缀和（Task 14~19）
 
-## 追加验收（测试分层与 fuzz）
-- [x] 根包测试按视角分层：白盒 `package goliday`（config_test.go：parseDate 严格解析）；黑盒 `package goliday_test`（daytype/calendar/config_blackbox/store），黑盒仅引用导出 API
-- [x] 每个测试文件头注释标注「白盒/黑盒」及测试视角；server 与 tool 测试归白盒（`package main`）
-- [x] DayType 全 256 取值穷举不变量通过；Calendar 对已配置年份全年逐日结果 ∈ 6 种合法组合且粗细一致
-- [x] fuzz 目标齐备：`FuzzParseDate`、`FuzzQueryConsistency`、`FuzzLoadYearTOML`、`FuzzDaysHandler`、`FuzzGenDraft`，种子内联、无新增依赖；`go test ./...` 种子全部通过
-- [x] 各 fuzz 目标逐包 `-fuzz` 冒烟通过；仓库无 `testdata/fuzz/` 语料残留
-- [x] `docs/ARCHITECTURE.md` 目录树与测试分层说明已同步
-- [x] 全量验证通过 + 中文 Conventional Commits 提交（type 为 `test`）
+- [x] 未加载年份在单日/区间（含跨年中间整年）/离散/混合下均报 `year_not_loaded`（HTTP 400 / gRPC InvalidArgument，message 同源）；空区间不触发
+- [x] stats 不限跨度、days 保留 366 天上限；前缀和统计与逐日暴力统计完全一致（含跨年区间）
+- [x] 全量验证全绿 + 中文 Conventional Commits 提交，提交后工作区干净
 
-## 追加验收（年份强校验 + 前缀和统计：enforce-year-loading-prefix-stats）
+## 文档精简
 
-### 年份加载强校验
-- [x] 根包新增导出哨兵错误 `ErrYearNotLoaded`（`errors.Is` 判别）与 `(c *Calendar) HasYear(year int) bool`
-- [x] `Query`/`QueryCoarse`/`IsWorkday`/`IsHoliday`/`QueryRange` 返回 `error`；未加载年份返回包装 `ErrYearNotLoaded` 的错误（message 含年份），不再静默回退周休
-- [x] 单日、区间（含跨年中间整年）、离散、混合：任一覆盖年份未加载 → HTTP 400 `year_not_loaded`，message 列出升序去重的全部未加载年份
-- [x] gRPC 同场景返回 `codes.InvalidArgument`，message 与 HTTP 同源（`year_not_loaded: ...`）
-- [x] 空区间（start==end）不触发校验：200、`total_days=0`、stats 全 0
-- [x] 已加载年份（2025/2026）全部既有查询行为不变（回归）
-
-### 前缀和统计
-- [x] `NewCalendar` 为每个已加载年份构建组合计数前缀和（长度=年天数+1，`prefix[0]=0`，左闭右开语义），构建后只读并发安全
-- [x] `StatsRange(start, end, detailed)`：年内差分、跨年拆段相加，O(覆盖年数)，不限跨度；`Stats(dates, detailed)` 返回 `(StatsResult, error)` 且走前缀和路径
-- [x] 计数导出公式正确：细 `ordinary=C(1)`、`compensate=C(6)`、`weekend=C(4)+C(6)+C(12)`、`festival=C(12)+C(24)`、`adjusted=C(16)+C(24)`；粗 `workday=C(1)+C(6)`、`holiday=C(4)+C(12)+C(16)+C(24)`
-- [x] 前缀和统计与逐日暴力统计对 2025/2026 任意区间/集合完全一致（粗、细、Total，含跨年区间）
-
-### 接口限制与一致性
-- [x] `/api/v1/stats` 与 `QueryStats` 取消 366 天跨度限制：跨 2025→2026 大跨度统计成功
-- [x] `/api/v1/days` 与 `QueryDays` 保留 366 天明细上限：超限 → 400/InvalidArgument `invalid_range`
-- [x] days 明细的 `stats` 复用前缀和路径，与 `/api/v1/stats` 同输入 `stats`、`total_days` 完全一致
-- [x] 混合并集统计 = 区间前缀和 + 列表剔除区间内日期后分段统计，`total_days` 与去重并集大小一致
-- [x] 响应字段结构与 proto 消息不变（无需再生成 proto）；HTTP/gRPC 同输入结果一致
-
-### 测试与文档
-- [x] 根包白盒/黑盒测试适配新签名；「无该年配置回退」契约改写为 `ErrYearNotLoaded` 断言
-- [x] `FuzzQueryConsistency`：已加载年不变量保持、未加载年断言 `ErrYearNotLoaded`；`FuzzDaysHandler`：状态码仅 200/400、stats 无跨度 400、不 panic
-- [x] `docs/API.md`：错误表新增 `year_not_loaded`、跨度限制说明改为「仅 days 366 上限」、stats 前缀和说明、gRPC 错误码同步
-- [x] `docs/ARCHITECTURE.md`：前缀和结构、构建时机、并发语义、统计复杂度与年份强校验说明
-- [x] `go build ./... && go vet ./... && go test -count=1 ./...` 全绿；`gofmt -l .` 为空；fuzz 逐包冒烟通过；无 `testdata/fuzz/` 残留
-- [x] 冒烟：`year_not_loaded`、stats 大跨度成功、days 超限 400 三类行为
-- [x] 按 AGENTS.md 先勾选后提交（中文 Conventional Commits），提交后 `git status --short` 干净
+- [x] README 保留用户必要信息（选型依据、算法/数据结构权衡）并修正与实现不一致的年份回退表述
+- [x] spec/tasks/checklist/AGENTS/docs 精简后语义无损，无本地绝对路径；验证命令全绿（纯文档变更，无代码改动）
+- [x] 按规范执行提交（docs: 精简 README 与规格文档并修正过时表述）
