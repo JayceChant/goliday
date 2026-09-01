@@ -1,5 +1,5 @@
 # 构建并发布容器镜像至 GHCR：
-# - push 默认分支 / workflow_dispatch / PR：构建验证（PR 不推送）
+# - push 默认分支 / workflow_dispatch / PR：仅构建验证，不推送
 # - push tag v*：发布 ghcr.io/<owner>/goliday（semver 三段标签 + latest）
 name: docker
 
@@ -34,7 +34,7 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Login to GHCR
-        if: github.event_name != 'pull_request'
+        if: startsWith(github.ref, 'refs/tags/')
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
@@ -47,7 +47,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # 分支名标签（如 master）；PR 事件为 pr-<编号>
+            # 分支名 / PR 编号标签仅作非推送事件的构建标识，不发布
             type=ref,event=branch
             type=ref,event=pr
             # v1.2.3 → 1.2.3 / 1.2 / 1
@@ -62,7 +62,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

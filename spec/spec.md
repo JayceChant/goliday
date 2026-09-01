@@ -256,10 +256,11 @@ Dockerfile 约定：
 - 构建上下文最小化：`.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`*.md`、`.env*` 等非构建必需内容。
 
 工作流约定：
-- 触发：`push` 默认分支、`push` tag `v*`、`pull_request`（仅构建验证，不推送）、`workflow_dispatch`；
+- 触发：`push` 默认分支、`push` tag `v*`、`pull_request`、`workflow_dispatch`；
+- 推送策略：仅 `push` tag `v*` 事件发布镜像至 GHCR；`push` 默认分支、`pull_request`、`workflow_dispatch` 仅构建验证不推送（master 滚动镜像无消费场景，保留只会产生冗余版本记录；构建可行性由验证构建保障）；
 - 权限最小化：`contents: read` + `packages: write`；
-- 步骤：checkout → buildx → QEMU（多架构）→ GHCR 登录（`GITHUB_TOKEN`）→ metadata 提取标签 → build & push（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance`/`sbom` 关闭以保持镜像单 manifest）；
-- 标签策略（metadata-action）：分支名（默认分支）、语义化版本 `v1.2.3` → `1.2.3` / `1.2` / `1`、tag 事件附加 `latest`；
+- 步骤：checkout → buildx → QEMU（多架构）→ GHCR 登录（`GITHUB_TOKEN`，仅 tag 事件执行）→ metadata 提取标签 → build（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance`/`sbom` 关闭以保持镜像单 manifest；仅 tag 事件 push）；
+- 标签策略（metadata-action）：语义化版本 `v1.2.3` → `1.2.3` / `1.2` / `1`、tag 事件附加 `latest`；分支名 / PR 编号标签仅作非推送事件的构建标识，不发布；
 - 无自定义 secrets：GHCR 认证仅用内置 `GITHUB_TOKEN`。
 
 #### Scenario: 本地构建镜像
@@ -272,7 +273,9 @@ Dockerfile 约定：
 
 #### Scenario: CI 构建与发布
 - **WHEN** push tag `v0.2.0` 触发工作流
-- **THEN** 构建多架构镜像并发布至 `ghcr.io/<owner>/goliday:0.2.0`（另含 `0.2`、`0`、`latest`）；PR 事件仅构建不推送
+- **THEN** 构建多架构镜像并发布至 `ghcr.io/<owner>/goliday:0.2.0`（另含 `0.2`、`0`、`latest`）
+- **WHEN** push 默认分支、PR 或 workflow_dispatch 触发工作流
+- **THEN** 仅执行多架构构建验证，不登录、不推送任何镜像
 
 ### Requirement: 在线质量门禁与 CI 测试矩阵（GitHub 环境）
 

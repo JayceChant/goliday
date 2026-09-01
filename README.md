@@ -66,7 +66,7 @@ curl "http://localhost:8080/healthz"
 # {"status":"ok","years":[2025,2026]}
 ```
 
-Images are published to GHCR by [GitHub Actions](.github/workflows/docker.yml) on every push to the default branch and every `v*` tag (multi-arch `linux/amd64` + `linux/arm64`):
+Images are published to GHCR by [GitHub Actions](.github/workflows/docker.yml) on every `v*` tag push (multi-arch `linux/amd64` + `linux/arm64`; pushes to the default branch, PRs and manual runs build for verification only, without publishing):
 
 ```bash
 docker pull ghcr.io/jaycechant/goliday:latest

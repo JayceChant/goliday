@@ -75,6 +75,12 @@
 - [x] spec.md 新增「容器镜像与发布（GitHub 环境）」Requirement 与 Scenario；README.md / README-CN.md 新增 Docker 章节且语义一致
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯新增容器/CI/文档文件，无 Go 代码改动）；本机无 docker，以相同编译参数（`CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w"`）交叉验证静态构建产物 `-v` 输出版本正常；执行提交（build: 新增容器镜像与 GHCR 发布工作流）
 
+## 镜像发布策略收敛
+
+- [x] `.github/workflows/docker.yml` 推送条件改为 `startsWith(github.ref, 'refs/tags/')`：仅 push tag `v*` 登录 GHCR 并发布（semver 三段 + latest）；push 默认分支、PR、workflow_dispatch 仅多架构构建验证，不登录不推送，消除 master 滚动镜像冗余（公共仓库 GHCR 存储免费，避免的是 package 页版本列表噪音）
+- [x] spec.md「容器镜像与发布」工作流约定新增推送策略条款（含决策依据）、步骤与标签策略同步（分支名 / PR 编号标签仅作非推送事件构建标识）；「CI 构建与发布」Scenario 拆分 tag 与非 tag 双口径；README 双语 Docker 章节发布说明同步
+- [x] YAML 解析校验通过；验证命令全绿（纯 workflow YAML 与文档变更，无 Go 代码改动）；执行提交（ci: 镜像仅在 tag 推送时发布，其余事件仅构建验证）
+
 ## 在线质量门禁与 CI 测试矩阵
 - [x] spec.md 新增「在线质量门禁与 CI 测试矩阵（GitHub 环境）」Requirement（含 3 个 Scenario 与决策依据）；tasks.md 追加批次条目
 - [x] `.github/workflows/ci.yml`：stable/oldstable 双版本矩阵（setup-go 缓存，persist-credentials: false）依次执行 build/vet/gofmt 检查/`go test -count=1 -race -covermode=atomic -coverprofile`；仅 stable 项经 codecov/codecov-action 上传 coverage.out（fail_ci_if_error: false，无 token 公共仓库亦可上传）；lint 作业 golangci/golangci-lint-action v2.13 与 `.golangci.yml`（version: "2"）匹配，零告警门禁

@@ -66,7 +66,7 @@ curl "http://localhost:8080/healthz"
 # {"status":"ok","years":[2025,2026]}
 ```
 
-镜像由 [GitHub Actions](.github/workflows/docker.yml) 在推送到默认分支及 `v*` tag 时自动发布至 GHCR（多架构 `linux/amd64` + `linux/arm64`）：
+镜像由 [GitHub Actions](.github/workflows/docker.yml) 在推送 `v*` tag 时自动发布至 GHCR（多架构 `linux/amd64` + `linux/arm64`；默认分支、PR 与手动触发仅做构建验证，不发布）：
 
 ```bash
 docker pull ghcr.io/jaycechant/goliday:latest
