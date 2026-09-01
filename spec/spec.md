@@ -290,7 +290,7 @@ scorecard.yml 约定（OpenSSF Scorecard，无需注册）：
 
 codeql.yml 约定（CodeQL 静态安全分析，公共仓库免费、无需注册）：
 - 触发：`push` 默认分支、`pull_request`、每周 `schedule`、`workflow_dispatch`；作业权限最小化（`security-events: write` + 只读）；
-- 语言 `go`、`build-mode: none`（Go 无需构建），结果上传 code scanning（Security 标签页）。
+- 语言 `go`、`build-mode: autobuild`（新版 CodeQL 已移除 Go 的 none 模式），结果上传 code scanning（Security 标签页）。
 
 govulncheck.yml 约定（Go 官方依赖漏洞扫描，无需注册）：
 - 触发：`push` 默认分支、每周 `schedule`、`workflow_dispatch`；`contents: read`；
@@ -318,7 +318,7 @@ README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg
 
 #### Scenario: CodeQL 静态分析
 - **WHEN** push 或 PR 触发 codeql.yml
-- **THEN** Go 代码经 CodeQL 分析（无需构建），告警出现在仓库 code scanning；workflow 徽章反映运行状态
+- **THEN** Go 代码经 CodeQL 分析（autobuild 构建后提取），告警出现在仓库 code scanning；workflow 徽章反映运行状态
 
 #### Scenario: govulncheck 漏洞门禁
 - **WHEN** govulncheck.yml 扫描 `./...`

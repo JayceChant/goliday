@@ -84,6 +84,7 @@
 - [x] 修复 scorecard-action 版本解析失败（`@v2` 漂移主标签不存在）：改为固定 `@v2.4.4`（该仓库仅发布完整版本 tag）；YAML 重新校验通过；执行提交（fix: scorecard-action 固定到完整版本标签 v2.4.4）
 - [x] 修复 CI 矩阵 oldstable（Go 1.26.x，低于 go.mod 要求 1.27 且 runner 默认 GOTOOLCHAIN=local 不自动升级）编译失败：矩阵改为 `1.27.x`（最低要求）+ `stable`，spec.md Requirement/Scenario 与 README 双语表述同步；YAML 重新校验通过；执行提交（fix: CI 矩阵改为 go.mod 最低版本与 stable）
 - [x] 补充 CodeQL/govulncheck/SonarCloud 三项：新增 `.github/workflows/codeql.yml`（Go 静态安全分析，build-mode: none，告警入 code scanning）与 `.github/workflows/govulncheck.yml`（官方漏洞扫描门禁，text 输出可触达漏洞即失败）；spec.md Requirement 扩展两项约定 + 3 个 Scenario，SonarCloud 决策依据更新为徽章依赖 SonCloud 端启用（项目 key `JayceChant_goliday`）；README 双语徽章扩为 CI/Codecov/CodeQL/govulncheck/pkg.go.dev/Scorecard/SonarCloud（保留用户新增的 License 徽章与表格行）；YAML 校验通过；执行提交（ci: 新增 CodeQL 与 govulncheck 工作流并补齐 SonarCloud 徽章）
+- [x] 修复 CodeQL init 失败（CodeQL 2.26+ 已移除 Go 的 none 构建模式）：`codeql.yml` 的 `build-mode: none` 改为 `autobuild`；spec.md codeql.yml 约定与 CodeQL Scenario 同步修订；YAML 重新校验通过；执行提交（fix: CodeQL 构建模式改为 autobuild 适配新版要求）
 
 ## MIT License
 - [x] 仓库根 `LICENSE` 为 MIT 标准文本，版权行 `Copyright (c) 2026 Jayce Chant (陈思杰)`；文件 UTF-8 无 BOM、LF 换行，无本地绝对路径
