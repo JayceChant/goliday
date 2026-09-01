@@ -102,6 +102,12 @@
 - [x] `FuzzGenDraft` 允许的 selfCheck 失败类别同步扩展（spec 不变量表与测试注释一致）；5 个 fuzz 目标冒烟复跑全部 PASS
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（test: 提升测试覆盖率并修复 fuzz 发现的索引越界缺陷）
 
+## 覆盖率统计排除 proto 生成代码
+- [x] 新增仓库根 `codecov.yml`：`ignore: ["proto/"]`，注释说明排除理由（buf 生成桩代码不设测试目标，行为由 buf lint/再生成幂等/bufconn 集成测试间接保障，与 `.golangci.yml` 生成代码豁免同一口径）
+- [x] `.github/workflows/ci.yml` 上传前新增过滤步骤：`grep -v` 剔除 coverage.out 中 `proto/` 行，并以 `grep -c` 自校验（残留即失败）；过滤仅 stable 矩阵项生效于上传物
+- [x] spec.md「在线质量门禁与 CI 测试矩阵」Requirement 的覆盖率上报约定与「覆盖率上报」Scenario 同步双口径（CI 过滤 + Codecov ignore）
+- [x] 本地验证：过滤后 profile 无 proto 记录，全仓口径 89.6%（Codecov 原 69% 系零覆盖生成代码计入分母所致）；ci.yml/codecov.yml 经 YAML 解析校验通过；验证命令全绿（build/vet/test/gofmt 空输出）；执行提交（ci: 覆盖率统计排除 proto 生成代码）
+
 ## README 移除质量与 CI 章节
 
 - [x] README 双语删除「质量与持续集成 / Quality & CI」章节（标题下徽章保留），文档索引中 ARCHITECTURE.md 条目补充「质量门禁与 CI」描述

@@ -281,7 +281,7 @@ Dockerfile 约定：
 ci.yml 约定：
 - 触发：`push` 默认分支、`pull_request`（默认分支）、`workflow_dispatch`；权限最小化 `contents: read`；
 - 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile`；
-- 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；
+- 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；上传前过滤 profile 中 `proto/goliday/v1` 生成代码的记录，并经仓库根 `codecov.yml`（`ignore: proto/`）在 Codecov 端同步排除——生成代码不设测试目标，避免零覆盖记录拉低统计（与 `.golangci.yml` 对生成代码的豁免同一口径）；
 - lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警。
 
 scorecard.yml 约定（OpenSSF Scorecard，无需注册）：
@@ -310,7 +310,7 @@ README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg
 
 #### Scenario: 覆盖率上报
 - **WHEN** `stable` 矩阵项测试通过
-- **THEN** `coverage.out` 上传至 Codecov，Codecov 项目页可逐行查看覆盖详情；未配置 `CODECOV_TOKEN` 时公共仓库仍可上传
+- **THEN** 过滤 proto 生成代码后的 `coverage.out` 上传至 Codecov，Codecov 项目页可逐行查看覆盖详情且统计不含生成代码；未配置 `CODECOV_TOKEN` 时公共仓库仍可上传
 
 #### Scenario: Scorecard 评分发布
 - **WHEN** scorecard.yml 在默认分支运行

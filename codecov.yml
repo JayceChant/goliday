@@ -1,0 +1,11 @@
+# Codecov 覆盖率报告配置。
+#
+# proto/goliday/v1 为 buf 生成的桩代码（goliday.pb.go / goliday_grpc.pb.go），
+# 不属于手写业务逻辑，不设测试目标，从覆盖率统计中整体排除：
+# - 其行为由 buf lint（STANDARD 零豁免）、再生成幂等与 cmd/goliday-server
+#   的 bufconn gRPC 集成测试间接保障；
+# - 与 .golangci.yml 对生成代码的 generated: lax 豁免保持同一口径。
+# CI 侧（.github/workflows/ci.yml）在上传前亦会过滤 coverage.out 中的
+# proto 行，两侧口径一致。
+ignore:
+  - "proto/"
