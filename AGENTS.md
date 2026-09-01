@@ -38,6 +38,7 @@
   ```
 
   （`gofmt -l .` 输出必须为空）
+- 静态检查：`golangci-lint run ./...` 须零告警（配置见 `.golangci.yml`；本机未安装时可通过 `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` 安装，不要求入库）。
 
 ## 6. 文档与语言
 

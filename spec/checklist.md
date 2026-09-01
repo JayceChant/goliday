@@ -57,3 +57,8 @@
 - [x] `go list -m -u all` 巡检：直接依赖（toml/grpc/protobuf）已为最新稳定版；间接依赖 `genproto/googleapis/rpc` 升级一版，`go mod tidy` 后 go.mod/go.sum 无冗余变更
 - [x] 依赖分级审计不变（根包仅 toml，gRPC 三件套限于 proto 生成包与 cmd/，HTTP 服务仅标准库），无新增依赖
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（chore: 升级间接依赖 genproto/googleapis/rpc 至最新版）
+
+## golangci-lint 引入
+- [x] `.golangci.yml`（golangci-lint v2）入库：standard 五件套（errcheck/govet/ineffassign/staticcheck/unused）为基线，补充 errorlint、gocritic、misspell、nolintlint（require-specific）、revive、unconvert、unparam 七项；goimports 以 `github.com/JayceChant/goliday` 本地前缀分组；proto 生成代码按 generated: lax 豁免
+- [x] lint 告警清零（初检 9 处）：errcheck 5 处（测试与工具中 Close/Serve 显式 `_ =` 或闭包处理）、gocritic 2 处（main.go 信号 stop 改显式调用消除 exitAfterDefer；gen.go if-else 链改 switch）、revive 1 处（handleHealthz 未用参数改 `_`）、unparam 1 处（genFor 增补 2024 年真实公告用例使 year 参数多值生效）
+- [x] AGENTS.md 第 5 节验证要求纳入 `golangci-lint run ./...` 零告警；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（build: 引入 golangci-lint 配置并按告警修复代码）

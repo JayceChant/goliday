@@ -290,11 +290,12 @@ func parseAnnouncement(year int, text string) *parseResult {
 			window := seg[:idx]
 			names := canonicalNames(window)
 			dates := extractDates(window)
-			if len(names) == 0 {
+			switch {
+			case len(names) == 0:
 				res.warnf("识别到放假安排但无法确定节日名：%s", seg)
-			} else if len(dates) == 0 {
+			case len(dates) == 0:
 				res.warnf("识别到 %s 但未解析出假期日期：%s", strings.Join(names, "、"), seg)
-			} else {
+			default:
 				start, ok1 := mkDate(year, dates[0])
 				end, ok2 := mkDate(year, dates[len(dates)-1])
 				if !ok1 || !ok2 || end.Before(start) {
@@ -496,7 +497,8 @@ func runGen(args []string) int {
 			fmt.Fprintf(os.Stderr, "错误：读取公告文件失败: %v\n", err)
 			return 1
 		}
-		defer f.Close()
+		// 只读文件，Close 错误无需处理。
+		defer func() { _ = f.Close() }()
 		r = f
 		source = *file
 	}

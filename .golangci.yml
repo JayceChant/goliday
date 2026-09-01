@@ -1,0 +1,41 @@
+# golangci-lint v2 配置：以默认五件套（errcheck/govet/ineffassign/staticcheck/unused）
+# 为基线，仅补充高价值、低噪音的检查项，平衡代码质量与维护开销。
+# 运行：golangci-lint run（需 v2.x，本仓库以 v2.13 验证）。
+version: "2"
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  enable:
+    # 错误处理正确性：errors.Is/As 判别、fmt.Errorf 的 %w 包装误用
+    - errorlint
+    # 常见缺陷与可疑代码（默认启用稳定的 diagnostics 与 style 检查集）
+    - gocritic
+    # 注释与字符串中的英文拼写错误
+    - misspell
+    # 规范 //nolint 指令：必须指明具体 linter，防止无差别屏蔽
+    - nolintlint
+    # 命名、注释格式、控制流等基础风格（golint 后继，默认规则集）
+    - revive
+    # 多余的类型转换
+    - unconvert
+    # 未使用的参数、恒定不变的返回值等冗余函数签名
+    - unparam
+  settings:
+    nolintlint:
+      # 禁止裸 //nolint，须写明生效的 linter，便于审计与清理
+      require-specific: true
+  exclusions:
+    # 生成代码（proto/goliday/v1/*.pb.go 带 "Code generated ... DO NOT EDIT"
+    # 头）不参与检查；lax 为 v2 默认值，显式写出以示约定
+    generated: lax
+
+formatters:
+  enable:
+    - gofmt
+    # import 分组与排序检查；本地包单独成组置于末尾
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/JayceChant/goliday

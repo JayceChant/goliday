@@ -89,15 +89,16 @@ func main() {
 
 	// 监听 SIGINT/SIGTERM，收到信号后优雅关闭。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	select {
 	case err := <-errCh:
+		stop()
 		if err != nil {
 			log.Fatalf("服务异常退出: %v", err)
 		}
 		return
 	case <-ctx.Done():
+		stop()
 	}
 
 	log.Println("收到退出信号，开始优雅关闭……")

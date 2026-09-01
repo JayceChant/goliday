@@ -37,7 +37,8 @@ func newBufconnServer(t *testing.T) (pb.GolidayServiceClient, grpc_health_v1.Hea
 	healthSrv := health.NewServer()
 	healthSrv.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	grpc_health_v1.RegisterHealthServer(srv, healthSrv)
-	go srv.Serve(lis)
+	// Serve 在 t.Cleanup 的 srv.Stop 时返回错误，属预期，无需处理。
+	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 
 	conn, err := grpc.NewClient("passthrough:///bufnet",
@@ -47,7 +48,7 @@ func newBufconnServer(t *testing.T) (pb.GolidayServiceClient, grpc_health_v1.Hea
 		srv.Stop()
 		t.Fatalf("建立 gRPC 连接失败: %v", err)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
 	return pb.NewGolidayServiceClient(conn), grpc_health_v1.NewHealthClient(conn)
 }
 

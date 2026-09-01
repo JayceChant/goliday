@@ -181,7 +181,7 @@ func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
 // ---- 路由处理器 ----
 
 // handleHealthz 返回服务健康状态与已加载年份。
-func (s *server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
 		Status string `json:"status"`
 		Years  []int  `json:"years"`

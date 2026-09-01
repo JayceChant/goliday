@@ -96,6 +96,31 @@ func TestParseAnnouncement2026(t *testing.T) {
 	}
 }
 
+func TestParseAnnouncement2024(t *testing.T) {
+	// 2024 年真实公告样例：验证 year 参数实际生效——off 剔除区间内的
+	// 自然周末（02-10/11/17），work 为两个周末补班日；该文本无农历
+	// 表述，春节当天推断不出 → TODO 占位。
+	res, d := genFor(t, 2024,
+		"二、春节：2月10日至17日放假调休，共8天。2月4日（星期日）、2月18日（星期日）上班。")
+	// 唯一警告应为春节当天日期无法推断（TODO 占位）。
+	if len(res.warnings) != 1 || !strings.Contains(res.warnings[0], "无法推断") {
+		t.Errorf("warnings = %v，期望仅一条无法推断警告", res.warnings)
+	}
+	assertSameSet(t, "off", fmtSet(d.off), map[string]bool{
+		"2024-02-12": true, "2024-02-13": true, "2024-02-14": true,
+		"2024-02-15": true, "2024-02-16": true,
+	})
+	assertSameSet(t, "work", fmtSet(d.work), map[string]bool{
+		"2024-02-04": true, "2024-02-18": true,
+	})
+	if len(d.festivals) != 1 || d.festivals[0].Name != "春节" || d.festivals[0].Date != dateTODO {
+		t.Errorf("festivals = %+v，期望仅 春节（TODO 占位）", d.festivals)
+	}
+	if len(d.todos) != 1 || d.todos[0] != "春节" {
+		t.Errorf("todos = %v，期望 [春节]", d.todos)
+	}
+}
+
 func TestSelfCheckAndLoadYearRoundTrip(t *testing.T) {
 	_, d := genFor(t, 2026, ann2026)
 	if err := selfCheck(d); err != nil {
@@ -287,7 +312,7 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	os.Stdout = w
 	fn()
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	data, _ := io.ReadAll(r)
 	return string(data)
@@ -364,7 +389,10 @@ func TestRunGenFromStdin(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stdin = f
-	defer func() { os.Stdin = old; f.Close() }()
+	defer func() {
+		os.Stdin = old
+		_ = f.Close()
+	}()
 
 	out := filepath.Join(t.TempDir(), "2026.toml")
 	if rc := runGen([]string{"-year", "2026", "-out", out}); rc != 0 {
