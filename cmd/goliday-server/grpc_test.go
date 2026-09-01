@@ -213,12 +213,13 @@ func TestGRPCQueryDaysMixed(t *testing.T) {
 // 6. QueryStats 与 QueryDays 口径一致，且响应无 days 明细。
 func TestGRPCQueryStatsMatchesDays(t *testing.T) {
 	client, _ := newBufconnServer(t)
-	req := &pb.QueryDaysRequest{Start: "2026-02-14", End: "2026-02-17"}
-	daysResp, err := client.QueryDays(context.Background(), req)
+	daysResp, err := client.QueryDays(context.Background(),
+		&pb.QueryDaysRequest{Start: "2026-02-14", End: "2026-02-17"})
 	if err != nil {
 		t.Fatalf("QueryDays 失败: %v", err)
 	}
-	statsResp, err := client.QueryStats(context.Background(), req)
+	statsResp, err := client.QueryStats(context.Background(),
+		&pb.QueryStatsRequest{Start: "2026-02-14", End: "2026-02-17"})
 	if err != nil {
 		t.Fatalf("QueryStats 失败: %v", err)
 	}
@@ -236,7 +237,7 @@ func TestGRPCQueryStatsMatchesDays(t *testing.T) {
 	if want.GetWorkday() != got.GetWorkday() || want.GetHoliday() != got.GetHoliday() {
 		t.Errorf("stats 不一致: %v vs %v", got, want)
 	}
-	// StatsResponse 消息本身不含 days 字段（proto 契约静态保证，无法携带明细）。
+	// QueryStatsResponse 消息本身不含 days 字段（proto 契约静态保证，无法携带明细）。
 }
 
 // 7. detailed 统计交叉计数：组合日对每个标志位各计 1。
@@ -307,7 +308,7 @@ func TestGRPCYearNotLoaded(t *testing.T) {
 
 	// QueryStats 跨年区间含未加载中间年（2025 已加载、2026 已加载，
 	// 用 2025→2028 验证多年份列举）。
-	_, err = client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2025-06-01", End: "2028-12-31"})
+	_, err = client.QueryStats(ctx, &pb.QueryStatsRequest{Start: "2025-06-01", End: "2028-12-31"})
 	wantGRPCError(t, "QueryStats(2025→2028)", err, "year_not_loaded")
 	msg := status.Convert(err).Message()
 	for _, want := range []string{"2027", "2028"} {
@@ -327,7 +328,7 @@ func TestGRPCQueryStatsLargeRangeAndEmptyRange(t *testing.T) {
 	client, _ := newBufconnServer(t)
 	ctx := context.Background()
 
-	resp, err := client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2025-01-01", End: "2027-01-01"})
+	resp, err := client.QueryStats(ctx, &pb.QueryStatsRequest{Start: "2025-01-01", End: "2027-01-01"})
 	if err != nil {
 		t.Fatalf("QueryStats 大跨度失败: %v", err)
 	}
@@ -340,11 +341,11 @@ func TestGRPCQueryStatsLargeRangeAndEmptyRange(t *testing.T) {
 	}
 
 	// 分段对照。
-	y25, err := client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2025-01-01", End: "2026-01-01"})
+	y25, err := client.QueryStats(ctx, &pb.QueryStatsRequest{Start: "2025-01-01", End: "2026-01-01"})
 	if err != nil {
 		t.Fatalf("QueryStats(2025) 失败: %v", err)
 	}
-	y26, err := client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2026-01-01", End: "2027-01-01"})
+	y26, err := client.QueryStats(ctx, &pb.QueryStatsRequest{Start: "2026-01-01", End: "2027-01-01"})
 	if err != nil {
 		t.Fatalf("QueryStats(2026) 失败: %v", err)
 	}
@@ -358,7 +359,7 @@ func TestGRPCQueryStatsLargeRangeAndEmptyRange(t *testing.T) {
 	wantGRPCError(t, "QueryDays(跨度>366)", err, "invalid_range")
 
 	// 空区间（2027 未加载）：无覆盖年份，全零成功。
-	empty, err := client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2027-01-01", End: "2027-01-01"})
+	empty, err := client.QueryStats(ctx, &pb.QueryStatsRequest{Start: "2027-01-01", End: "2027-01-01"})
 	if err != nil {
 		t.Fatalf("QueryStats 空区间失败: %v", err)
 	}

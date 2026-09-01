@@ -47,3 +47,8 @@
 - [x] 再生成命令统一为仓库根 `buf generate`（spec.md、docs/API.md 7.5、docs/ARCHITECTURE.md、proto 头注释同步）；生成代码入库位置与 `go_package` 不变，`buf generate` 幂等（二次生成无差异）
 - [x] WSL 安装 buf v1.72.0（`go install`，本机 `~/go/bin`，不入库）；生成头注释 protoc 版本行变为 `(unknown)` 属预期并已在文档说明
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（build: proto 代码生成改用 buf 管理）
+
+## buf lint 豁免收敛（Task 22）
+- [x] `buf.yaml` 改为 v2 工作区（模块根 `proto/`），目录 `goliday/v1` 与 package `goliday.v1` 对应（buf 官方标准布局），`buf lint` 默认 STANDARD 规则零豁免通过；proto 包名与 Go import 路径不变
+- [x] `QueryStats` 使用独立 `QueryStatsRequest`/`QueryStatsResponse`（字段与 QueryDaysRequest 同构，语义不变）；服务端 `grpc.go`/`grpc_test.go` 同步；spec.md 与 docs/API.md 7.2 消息清单更新；生成代码 `source:` 为模块相对路径 `goliday/v1/goliday.proto`
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（build: buf lint 收敛为零豁免并拆分 QueryStats 消息）

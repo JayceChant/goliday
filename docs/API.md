@@ -307,7 +307,7 @@ gRPC 与 HTTP 同进程提供（`-grpc-addr`，默认 `:50051`，空字符串禁
 |---|---|---|
 | `GetDay(GetDayRequest)` | `GET /api/v1/days?date=...` | 单日，`GetDayResponse{date,type,type_label,total_days,stats}` |
 | `QueryDays(QueryDaysRequest)` | `GET /api/v1/days?start=...&end=...&dates=...` | 区间/离散/混合，含 `days` 明细 |
-| `QueryStats(QueryDaysRequest)` | `GET /api/v1/stats` | 同 QueryDays 入参，无 `days` 明细 |
+| `QueryStats(QueryStatsRequest)` | `GET /api/v1/stats` | 入参与 QueryDays 同构，无 `days` 明细 |
 
 `QueryDaysRequest{start, end, repeated dates, detailed}` 中日期均为 `YYYY-MM-DD` 字符串；`Stats` 消息恒填 `workday/holiday`（粗粒度），仅 `detailed=true` 时填 `ordinary/compensate/weekend/festival/adjusted`（细粒度交叉计数）。
 

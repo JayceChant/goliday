@@ -79,7 +79,14 @@ message QueryDaysResponse {
 }
 
 // 统计查询，对应 HTTP GET /api/v1/stats，入参同 QueryDaysRequest，不含 days 明细。
-message StatsResponse {
+message QueryStatsRequest {
+  string start = 1;          // 区间起点（含），YYYY-MM-DD
+  string end = 2;            // 区间终点（不含），YYYY-MM-DD
+  repeated string dates = 3; // 离散日期列表（自动去重升序，与区间并集）
+  bool detailed = 4;         // 默认 false（stats 粗粒度）
+}
+
+message QueryStatsResponse {
   string mode = 1;
   string start = 2;
   string end = 3;
@@ -94,5 +101,5 @@ service GolidayService {
   // 区间/离散/混合查询（含逐日明细）。
   rpc QueryDays(QueryDaysRequest) returns (QueryDaysResponse);
   // 统计查询（无逐日明细）。
-  rpc QueryStats(QueryDaysRequest) returns (StatsResponse);
+  rpc QueryStats(QueryStatsRequest) returns (QueryStatsResponse);
 }

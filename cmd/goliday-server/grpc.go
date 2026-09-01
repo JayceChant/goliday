@@ -86,20 +86,20 @@ func (s *grpcServer) GetDay(_ context.Context, req *pb.GetDayRequest) (*pb.GetDa
 // queryMulti QueryDays 与 QueryStats 共用的查询实现：归一化入参并校验
 // 覆盖年份已加载（year_not_loaded），随后统一走前缀和统计。
 // days 明细恒为细粒度数值，由 QueryDays 负责填充。
-func (s *grpcServer) queryMulti(req *pb.QueryDaysRequest, wantDays bool) (*multiQuery, goliday.StatsResult, error) {
+func (s *grpcServer) queryMulti(start, end string, dates []string, detailed, wantDays bool) (*multiQuery, goliday.StatsResult, error) {
 	// 仅 QueryDays（含明细）限制区间跨度；QueryStats 基于前缀和不限跨度。
 	maxSpan := 0
 	if wantDays {
 		maxSpan = maxRangeDays
 	}
-	mq, aerr := resolveMultiQuery(req.GetStart(), req.GetEnd(), req.GetDates(), maxSpan)
+	mq, aerr := resolveMultiQuery(start, end, dates, maxSpan)
 	if aerr != nil {
 		return nil, goliday.StatsResult{}, grpcErr(aerr)
 	}
 	if aerr := checkYears(s.cal, mq.coveredYears()); aerr != nil {
 		return nil, goliday.StatsResult{}, grpcErr(aerr)
 	}
-	st, aerr := statsFor(s.cal, mq, req.GetDetailed())
+	st, aerr := statsFor(s.cal, mq, detailed)
 	if aerr != nil {
 		return nil, goliday.StatsResult{}, grpcErr(aerr)
 	}
@@ -110,7 +110,7 @@ func (s *grpcServer) queryMulti(req *pb.QueryDaysRequest, wantDays bool) (*multi
 // 区间左闭右开且跨度 ≤366 天、离散去重升序、并存取并集（mode=list）；
 // 覆盖年份未加载时返回 year_not_loaded（InvalidArgument）。
 func (s *grpcServer) QueryDays(_ context.Context, req *pb.QueryDaysRequest) (*pb.QueryDaysResponse, error) {
-	mq, st, err := s.queryMulti(req, true)
+	mq, st, err := s.queryMulti(req.GetStart(), req.GetEnd(), req.GetDates(), req.GetDetailed(), true)
 	if err != nil {
 		return nil, err
 	}
@@ -133,14 +133,14 @@ func (s *grpcServer) QueryDays(_ context.Context, req *pb.QueryDaysRequest) (*pb
 	}, nil
 }
 
-// QueryStats 统计查询，入参与统计口径同 QueryDays（不限跨度），但不返回
-// days 明细。
-func (s *grpcServer) QueryStats(_ context.Context, req *pb.QueryDaysRequest) (*pb.StatsResponse, error) {
-	mq, st, err := s.queryMulti(req, false)
+// QueryStats 统计查询，入参结构与统计口径同 QueryDays（不限跨度），但不
+// 返回 days 明细；按 buf lint 要求使用独立消息，字段与 QueryDaysRequest 同构。
+func (s *grpcServer) QueryStats(_ context.Context, req *pb.QueryStatsRequest) (*pb.QueryStatsResponse, error) {
+	mq, st, err := s.queryMulti(req.GetStart(), req.GetEnd(), req.GetDates(), req.GetDetailed(), false)
 	if err != nil {
 		return nil, err
 	}
-	return &pb.StatsResponse{
+	return &pb.QueryStatsResponse{
 		Mode:      mq.mode,
 		Start:     mq.start,
 		End:       mq.end,
