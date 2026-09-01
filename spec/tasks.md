@@ -60,6 +60,7 @@
 - Task 8 依赖 Task 2~7 定型接口，可与 Task 7 部分并行
 - 追加任务（gRPC TODO 落地）：Task 9 → Task 10 → Task 11；Task 12 依赖 Task 10
 - 追加任务（测试强化）：Task 13 依赖 Task 2~12（存量测试与实现定型）
+- 追加任务（年份强校验 + 前缀和统计）：Task 14 → Task 15；Task 14 → Task 16 → Task 17；Task 18 依赖 Task 14~17 接口定型；Task 19 最后
 
 # 追加任务（gRPC TODO 落地）
 - [x] Task 9: 编写 proto 定义并生成代码入库
@@ -73,7 +74,7 @@
 - [x] Task 11: 更新文档（`docs/`）
   - [x] 11.1 `docs/API.md` 新增 gRPC 章节（proto 路径、服务与方法、-grpc-addr、再生成命令）
   - [x] 11.2 `docs/ARCHITECTURE.md` 更新依赖约束（按包分级）与目录树（proto/）
-- [ ] Task 12: 全量验证与提交
+- [x] Task 12: 全量验证与提交
   - [x] 12.1 `go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .` 全绿；根包依赖审计（无 gRPC 导入）
   - [x] 12.2 冒烟：gRPC 端口监听/禁用行为、健康检查
   - [x] 12.3 按 AGENTS.md 规范 git commit（中文 Conventional Commits）
@@ -85,3 +86,31 @@
   - [x] 13.3 fuzz 目标：`FuzzParseDate`（根包白盒）、`FuzzQueryConsistency`/`FuzzLoadYearTOML`（根包黑盒）、`FuzzDaysHandler`（server 白盒）、`FuzzGenDraft`（tool 白盒），种子内联、无新增依赖
   - [x] 13.4 同步 `docs/ARCHITECTURE.md`（目录树与测试分层说明）
   - [x] 13.5 验证：`go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .` 全绿；各 fuzz 目标逐包 `-fuzz` 冒烟通过；无 `testdata/fuzz/` 语料残留
+
+# 追加任务（年份强校验 + 统计前缀和化：enforce-year-loading-prefix-stats）
+> 变更内容：查询覆盖年份未加载即报错（`year_not_loaded`）；统计改为构造期前缀和差分（O(覆盖年数)），stats 接口取消 366 天跨度限制，days 保留；days 明细的 stats 复用前缀和路径。规格见 `spec.md`「年份加载强校验」「细粒度组合计数前缀和统计」及对应 MODIFIED Requirement。
+
+- [x] Task 14: 根包年份强校验与前缀和实现（`calendar.go`）
+  - [x] 14.1 定义导出哨兵错误 `ErrYearNotLoaded`（`errors.Is` 判别，message 含年份）与 `(c *Calendar) HasYear(year int) bool`；`Query`/`QueryCoarse`/`IsWorkday`/`IsHoliday`/`QueryRange` 增加 `error` 返回，未加载年返回包装错误，不再回退周休
+  - [x] 14.2 `yearIndex` 增加按组合计数的前缀和（长度=年天数+1，`prefix[0]=0`，左闭右开语义），`NewCalendar` 一次性构建后只读；组合→计数导出：细 `ordinary=C(1)`、`compensate=C(6)`、`weekend=C(4)+C(6)+C(12)`、`festival=C(12)+C(24)`、`adjusted=C(16)+C(24)`，粗 `workday=C(1)+C(6)`、`holiday=C(4)+C(12)+C(16)+C(24)`；`detailed=false` 时 `Fine=nil`
+  - [x] 14.3 新增 `StatsRange(start, end, detailed) (StatsResult, error)`：规范化日期后按年拆段差分（首年段/整年段/末年段），`Total` 为区间天数；跨年含未加载年报错；`Stats(dates, detailed)` 改返回 `(StatsResult, error)`，走前缀和路径
+- [x] Task 15: 根包测试适配与新增
+  - [x] 15.1 适配 `Query`/`QueryCoarse`/`QueryRange`/`Stats` 新签名；「无该年配置回退周休」契约改写为断言 `ErrYearNotLoaded`
+  - [x] 15.2 新增前缀和 vs 暴力一致性测试：2025/2026 全年及随机子区间、跨年区间（2025→2026）粗/细/Total 完全一致
+  - [x] 15.3 新增未加载年场景：`Query`/`StatsRange`/`Stats` 对未加载年断言 `errors.Is(err, ErrYearNotLoaded)`
+  - [x] 15.4 `FuzzQueryConsistency` 不变量更新：已加载年不变量保持，未加载年断言 `ErrYearNotLoaded`；种子补未加载年样本
+- [x] Task 16: 服务层年份强校验与前缀和接入（`cmd/goliday-server`）
+  - [x] 16.1 新增共用错误 `errYearNotLoaded`（code `year_not_loaded`，message 列升序去重年份）；覆盖年份收集：单日 `{date.Year()}`、区间 `[start.Year(), (end-1d).Year()]` 全部整年、列表各日期年、混合并集；响应构建前统一校验，空区间（start==end）直接返回空统计
+  - [x] 16.2 `resolveMultiQuery` 参数化跨度上限（days=366、stats=无上限），stats 路径不展开区间为逐日切片；统计路径改走 `StatsRange`/新 `Stats`，保证 days 与 stats 同输入统计一致；单日模式处理 `Query` 的 error 分支
+  - [x] 16.3 gRPC 同步：复用覆盖年份校验与共用错误（GetDay/queryMulti 入口先校验年份，映射 `codes.InvalidArgument`）；`QueryStats` 不再校验跨度、`QueryDays` 保留 366 上限
+- [x] Task 17: 服务层测试适配与新增
+  - [x] 17.1 新增场景：单日/区间/离散/混合未加载年 → 400/InvalidArgument `year_not_loaded` 且 message 含年份；跨年区间含未加载中间年；空区间 200 全零
+  - [x] 17.2 新增场景：stats 大跨度（2025→2026）成功且与分段统计一致；days 同区间超 366 天被拒（invalid_range）
+  - [x] 17.3 适配既有用例签名与「无配置年回退」断言改写；`FuzzDaysHandler` 不变量更新（状态码仍 200/400；stats 路径无跨度 400；未加载年 → `year_not_loaded`）
+- [x] Task 18: 文档同步
+  - [x] 18.1 `docs/API.md`：错误表加 `year_not_loaded` 行；第 2/3 节跨度限制改为「仅 days 366 上限」；stats 章节注明前缀和实现与不限跨度
+  - [x] 18.2 `docs/ARCHITECTURE.md`：Calendar 前缀和结构、构建时机、并发语义、O(覆盖年数) 统计与年份强校验说明
+- [x] Task 19: 全量验证与提交
+  - [x] 19.1 `go build ./... && go vet ./... && go test -count=1 ./...` 全绿；`gofmt -l .` 为空；各 fuzz 目标逐包 `-fuzz` 冒烟通过；无 `testdata/fuzz/` 残留
+  - [x] 19.2 冒烟：本地起服务验证 `year_not_loaded`、stats 大跨度、days 超限 400 三类行为
+  - [x] 19.3 按 AGENTS.md 先勾选 `spec/tasks.md`、`spec/checklist.md`（含「执行提交」自指项）再 git commit（中文 Conventional Commits，建议 `feat: 查询年份强校验与统计前缀和化`），提交后 `git status --short` 干净

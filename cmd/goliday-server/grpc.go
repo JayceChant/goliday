@@ -1,9 +1,11 @@
 // gRPC 服务实现：GolidayService 三方法与 grpc 标准健康检查，与 HTTP 同进程。
 //
 // 查询语义与 HTTP 接口完全一致：参数校验与归一化复用 handlers.go 的
-// parseDate/resolveMultiQuery（含 errMissingQuery 等共用错误文案），
-// 统计复用 goliday.Calendar.Stats；参数错误统一映射为
-// codes.InvalidArgument，message 为 "错误码标识: HTTP 同源文案"。
+// parseDate/resolveMultiQuery/checkYears（含 errMissingQuery、
+// year_not_loaded 等共用错误文案），统计统一走前缀和路径
+// statsFor（区间 StatsRange 差分 + 列表剔除区间内日期后分段统计）；
+// 参数错误统一映射为 codes.InvalidArgument，message 为
+// "错误码标识: HTTP 同源文案"。
 package main
 
 import (
@@ -48,6 +50,7 @@ func grpcErr(aerr *apiError) error {
 // GetDay 单日查询，语义同 HTTP GET /api/v1/days?date=...：
 // detailed=false（默认）返回粗粒度类型（workday/holiday），
 // true 返回细粒度掩码与 DayType.String()；total_days 恒为 1。
+// date 所在年份未加载时返回 year_not_loaded（InvalidArgument）。
 func (s *grpcServer) GetDay(_ context.Context, req *pb.GetDayRequest) (*pb.GetDayResponse, error) {
 	if req.GetDate() == "" {
 		return nil, grpcErr(errMissingQuery)
@@ -56,12 +59,21 @@ func (s *grpcServer) GetDay(_ context.Context, req *pb.GetDayRequest) (*pb.GetDa
 	if aerr != nil {
 		return nil, grpcErr(aerr)
 	}
+	if aerr := checkYears(s.cal, []int{d.Year()}); aerr != nil {
+		return nil, grpcErr(aerr)
+	}
 	detailed := req.GetDetailed()
-	shown := s.cal.Query(d)
+	shown, err := s.cal.Query(d)
+	if err != nil {
+		return nil, grpcErr(errInternalQuery)
+	}
 	if !detailed {
 		shown = shown.Coarse()
 	}
-	st := s.cal.Stats([]time.Time{d}, detailed)
+	st, err := s.cal.Stats([]time.Time{d}, detailed)
+	if err != nil {
+		return nil, grpcErr(errInternalQuery)
+	}
 	return &pb.GetDayResponse{
 		Date:      d.Format(dateLayout),
 		Type:      uint32(shown),
@@ -71,27 +83,44 @@ func (s *grpcServer) GetDay(_ context.Context, req *pb.GetDayRequest) (*pb.GetDa
 	}, nil
 }
 
-// queryMulti QueryDays 与 QueryStats 共用的查询实现：归一化入参后统计。
+// queryMulti QueryDays 与 QueryStats 共用的查询实现：归一化入参并校验
+// 覆盖年份已加载（year_not_loaded），随后统一走前缀和统计。
 // days 明细恒为细粒度数值，由 QueryDays 负责填充。
-func (s *grpcServer) queryMulti(req *pb.QueryDaysRequest) (*multiQuery, goliday.StatsResult, error) {
-	mq, aerr := resolveMultiQuery(req.GetStart(), req.GetEnd(), req.GetDates())
+func (s *grpcServer) queryMulti(req *pb.QueryDaysRequest, wantDays bool) (*multiQuery, goliday.StatsResult, error) {
+	// 仅 QueryDays（含明细）限制区间跨度；QueryStats 基于前缀和不限跨度。
+	maxSpan := 0
+	if wantDays {
+		maxSpan = maxRangeDays
+	}
+	mq, aerr := resolveMultiQuery(req.GetStart(), req.GetEnd(), req.GetDates(), maxSpan)
 	if aerr != nil {
 		return nil, goliday.StatsResult{}, grpcErr(aerr)
 	}
-	st := s.cal.Stats(mq.dates, req.GetDetailed())
+	if aerr := checkYears(s.cal, mq.coveredYears()); aerr != nil {
+		return nil, goliday.StatsResult{}, grpcErr(aerr)
+	}
+	st, aerr := statsFor(s.cal, mq, req.GetDetailed())
+	if aerr != nil {
+		return nil, goliday.StatsResult{}, grpcErr(aerr)
+	}
 	return mq, st, nil
 }
 
 // QueryDays 区间/离散/混合查询，语义同 HTTP GET /api/v1/days 的多日模式：
-// 区间左闭右开且跨度 ≤366 天、离散去重升序、并存取并集（mode=list）。
+// 区间左闭右开且跨度 ≤366 天、离散去重升序、并存取并集（mode=list）；
+// 覆盖年份未加载时返回 year_not_loaded（InvalidArgument）。
 func (s *grpcServer) QueryDays(_ context.Context, req *pb.QueryDaysRequest) (*pb.QueryDaysResponse, error) {
-	mq, st, err := s.queryMulti(req)
+	mq, st, err := s.queryMulti(req, true)
 	if err != nil {
 		return nil, err
 	}
-	days := make([]*pb.Day, len(mq.dates))
-	for i, d := range mq.dates {
-		t := s.cal.Query(d)
+	dates := mq.datesForDays()
+	days := make([]*pb.Day, len(dates))
+	for i, d := range dates {
+		t, qerr := s.cal.Query(d)
+		if qerr != nil {
+			return nil, grpcErr(errInternalQuery)
+		}
 		days[i] = &pb.Day{Date: d.Format(dateLayout), Type: uint32(t), TypeLabel: t.String()}
 	}
 	return &pb.QueryDaysResponse{
@@ -104,9 +133,10 @@ func (s *grpcServer) QueryDays(_ context.Context, req *pb.QueryDaysRequest) (*pb
 	}, nil
 }
 
-// QueryStats 统计查询，入参与统计口径同 QueryDays，但不返回 days 明细。
+// QueryStats 统计查询，入参与统计口径同 QueryDays（不限跨度），但不返回
+// days 明细。
 func (s *grpcServer) QueryStats(_ context.Context, req *pb.QueryDaysRequest) (*pb.StatsResponse, error) {
-	mq, st, err := s.queryMulti(req)
+	mq, st, err := s.queryMulti(req, false)
 	if err != nil {
 		return nil, err
 	}

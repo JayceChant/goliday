@@ -65,3 +65,35 @@
 - [x] 各 fuzz 目标逐包 `-fuzz` 冒烟通过；仓库无 `testdata/fuzz/` 语料残留
 - [x] `docs/ARCHITECTURE.md` 目录树与测试分层说明已同步
 - [x] 全量验证通过 + 中文 Conventional Commits 提交（type 为 `test`）
+
+## 追加验收（年份强校验 + 前缀和统计：enforce-year-loading-prefix-stats）
+
+### 年份加载强校验
+- [x] 根包新增导出哨兵错误 `ErrYearNotLoaded`（`errors.Is` 判别）与 `(c *Calendar) HasYear(year int) bool`
+- [x] `Query`/`QueryCoarse`/`IsWorkday`/`IsHoliday`/`QueryRange` 返回 `error`；未加载年份返回包装 `ErrYearNotLoaded` 的错误（message 含年份），不再静默回退周休
+- [x] 单日、区间（含跨年中间整年）、离散、混合：任一覆盖年份未加载 → HTTP 400 `year_not_loaded`，message 列出升序去重的全部未加载年份
+- [x] gRPC 同场景返回 `codes.InvalidArgument`，message 与 HTTP 同源（`year_not_loaded: ...`）
+- [x] 空区间（start==end）不触发校验：200、`total_days=0`、stats 全 0
+- [x] 已加载年份（2025/2026）全部既有查询行为不变（回归）
+
+### 前缀和统计
+- [x] `NewCalendar` 为每个已加载年份构建组合计数前缀和（长度=年天数+1，`prefix[0]=0`，左闭右开语义），构建后只读并发安全
+- [x] `StatsRange(start, end, detailed)`：年内差分、跨年拆段相加，O(覆盖年数)，不限跨度；`Stats(dates, detailed)` 返回 `(StatsResult, error)` 且走前缀和路径
+- [x] 计数导出公式正确：细 `ordinary=C(1)`、`compensate=C(6)`、`weekend=C(4)+C(6)+C(12)`、`festival=C(12)+C(24)`、`adjusted=C(16)+C(24)`；粗 `workday=C(1)+C(6)`、`holiday=C(4)+C(12)+C(16)+C(24)`
+- [x] 前缀和统计与逐日暴力统计对 2025/2026 任意区间/集合完全一致（粗、细、Total，含跨年区间）
+
+### 接口限制与一致性
+- [x] `/api/v1/stats` 与 `QueryStats` 取消 366 天跨度限制：跨 2025→2026 大跨度统计成功
+- [x] `/api/v1/days` 与 `QueryDays` 保留 366 天明细上限：超限 → 400/InvalidArgument `invalid_range`
+- [x] days 明细的 `stats` 复用前缀和路径，与 `/api/v1/stats` 同输入 `stats`、`total_days` 完全一致
+- [x] 混合并集统计 = 区间前缀和 + 列表剔除区间内日期后分段统计，`total_days` 与去重并集大小一致
+- [x] 响应字段结构与 proto 消息不变（无需再生成 proto）；HTTP/gRPC 同输入结果一致
+
+### 测试与文档
+- [x] 根包白盒/黑盒测试适配新签名；「无该年配置回退」契约改写为 `ErrYearNotLoaded` 断言
+- [x] `FuzzQueryConsistency`：已加载年不变量保持、未加载年断言 `ErrYearNotLoaded`；`FuzzDaysHandler`：状态码仅 200/400、stats 无跨度 400、不 panic
+- [x] `docs/API.md`：错误表新增 `year_not_loaded`、跨度限制说明改为「仅 days 366 上限」、stats 前缀和说明、gRPC 错误码同步
+- [x] `docs/ARCHITECTURE.md`：前缀和结构、构建时机、并发语义、统计复杂度与年份强校验说明
+- [x] `go build ./... && go vet ./... && go test -count=1 ./...` 全绿；`gofmt -l .` 为空；fuzz 逐包冒烟通过；无 `testdata/fuzz/` 残留
+- [x] 冒烟：`year_not_loaded`、stats 大跨度成功、days 超限 400 三类行为
+- [x] 按 AGENTS.md 先勾选后提交（中文 Conventional Commits），提交后 `git status --short` 干净

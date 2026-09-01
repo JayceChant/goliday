@@ -292,3 +292,77 @@ func TestGRPCHealthCheck(t *testing.T) {
 		t.Errorf("健康状态 = %v, want SERVING", got)
 	}
 }
+
+// 10. 未加载年份：GetDay/QueryDays/QueryStats 均返回 InvalidArgument
+// year_not_loaded，message 含年份（与 HTTP 同源）。
+func TestGRPCYearNotLoaded(t *testing.T) {
+	client, _ := newBufconnServer(t)
+	ctx := context.Background()
+
+	_, err := client.GetDay(ctx, &pb.GetDayRequest{Date: "2027-05-01"})
+	wantGRPCError(t, "GetDay(2027-05-01)", err, "year_not_loaded")
+	if msg := status.Convert(err).Message(); !strings.Contains(msg, "2027") {
+		t.Errorf("GetDay message = %q, 应包含 2027", msg)
+	}
+
+	// QueryStats 跨年区间含未加载中间年（2025 已加载、2026 已加载，
+	// 用 2025→2028 验证多年份列举）。
+	_, err = client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2025-06-01", End: "2028-12-31"})
+	wantGRPCError(t, "QueryStats(2025→2028)", err, "year_not_loaded")
+	msg := status.Convert(err).Message()
+	for _, want := range []string{"2027", "2028"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("QueryStats message = %q, 应包含 %q", msg, want)
+		}
+	}
+
+	// 离散列表含未加载年。
+	_, err = client.QueryDays(ctx, &pb.QueryDaysRequest{Dates: []string{"2026-02-17", "2029-01-01"}})
+	wantGRPCError(t, "QueryDays(列表含 2029)", err, "year_not_loaded")
+}
+
+// 11. QueryStats 不限跨度（前缀和）：跨 2025→2026 大区间成功且与分段一致；
+// QueryDays 同区间仍被 366 上限拒绝；空区间 200 全零。
+func TestGRPCQueryStatsLargeRangeAndEmptyRange(t *testing.T) {
+	client, _ := newBufconnServer(t)
+	ctx := context.Background()
+
+	resp, err := client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2025-01-01", End: "2027-01-01"})
+	if err != nil {
+		t.Fatalf("QueryStats 大跨度失败: %v", err)
+	}
+	if resp.GetTotalDays() != 730 {
+		t.Errorf("total_days = %d, want 730", resp.GetTotalDays())
+	}
+	st := resp.GetStats()
+	if st.GetWorkday()+st.GetHoliday() != 730 {
+		t.Errorf("workday+holiday = %d, want 730", st.GetWorkday()+st.GetHoliday())
+	}
+
+	// 分段对照。
+	y25, err := client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2025-01-01", End: "2026-01-01"})
+	if err != nil {
+		t.Fatalf("QueryStats(2025) 失败: %v", err)
+	}
+	y26, err := client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2026-01-01", End: "2027-01-01"})
+	if err != nil {
+		t.Fatalf("QueryStats(2026) 失败: %v", err)
+	}
+	if st.GetWorkday() != y25.GetStats().GetWorkday()+y26.GetStats().GetWorkday() {
+		t.Errorf("workday 分段不一致: %d vs %d+%d",
+			st.GetWorkday(), y25.GetStats().GetWorkday(), y26.GetStats().GetWorkday())
+	}
+
+	// QueryDays 同区间：超 366 天被拒。
+	_, err = client.QueryDays(ctx, &pb.QueryDaysRequest{Start: "2025-01-01", End: "2027-01-01"})
+	wantGRPCError(t, "QueryDays(跨度>366)", err, "invalid_range")
+
+	// 空区间（2027 未加载）：无覆盖年份，全零成功。
+	empty, err := client.QueryStats(ctx, &pb.QueryDaysRequest{Start: "2027-01-01", End: "2027-01-01"})
+	if err != nil {
+		t.Fatalf("QueryStats 空区间失败: %v", err)
+	}
+	if empty.GetTotalDays() != 0 || empty.GetStats().GetWorkday() != 0 || empty.GetStats().GetHoliday() != 0 {
+		t.Errorf("空区间结果 = %v, want 全零", empty)
+	}
+}

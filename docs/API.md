@@ -1,6 +1,6 @@
 # goliday HTTP & gRPC API
 
-goliday-server 提供中国法定节假日日期类型查询服务：单日、区间（左闭右开）、离散列表与混合查询，粗/细两级粒度，以及统计接口。同时提供语义一致的 **gRPC 接口**（见第 7 节）。HTTP 处理仅使用 Go 标准库，配置为纯内存、启动时一次性加载。
+goliday-server 提供中国法定节假日日期类型查询服务：单日、区间（左闭右开）、离散列表与混合查询，粗/细两级粒度，以及统计接口。**查询覆盖的每个年份都必须已加载配置**，否则返回 `year_not_loaded` 错误（不再静默回退周休判断）。同时提供语义一致的 **gRPC 接口**（见第 7 节）。HTTP 处理仅使用 Go 标准库，配置为纯内存、启动时一次性加载，统计基于构造期前缀和（O(覆盖年数)，`/stats` 不限查询跨度）。
 
 相关文档：[CONFIG_FORMAT.md](./CONFIG_FORMAT.md)（配置格式与 DayType 掩码详解）、[ARCHITECTURE.md](./ARCHITECTURE.md)。
 
@@ -47,7 +47,7 @@ go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 
 模式判定：仅 `date` → 单日；`start+end`（可叠加 `dates`）→ 区间 / 混合；仅 `dates` → 离散列表。区间与 `dates` 同时提供时取并集去重升序，`mode` 为 `"list"`。`date` 与 `start+end`/`dates` 并存时以 `date` 为准（单日模式），其余参数被忽略；单日响应不含 `mode` 与 `days` 字段。
 
-限制：`end` 不得早于 `start`；区间跨度不得超过 366 天；违反返回 400（见第 5 节）。
+限制：`end` 不得早于 `start`；**区间跨度不得超过 366 天**（仅 `/days` 明细接口，防止响应膨胀；`/stats` 基于前缀和统计，不限跨度）；查询覆盖的年份必须已加载，否则返回 400 `year_not_loaded`（见第 5 节）。空区间（`start == end`）无覆盖年份，直接返回 `total_days=0` 的全零统计，不校验年份。
 
 ### 2.2 单日查询
 
@@ -187,7 +187,9 @@ curl "http://localhost:8080/api/v1/days?start=2026-02-01&end=2026-02-03&dates=20
 
 ## 3. GET /api/v1/stats
 
-参数与 `/api/v1/days` **完全相同**（`date`、`start`、`end`、`dates`、`detailed`），统计口径一致，但**不返回 `days` 明细**。两接口复用同一处理器逻辑，同一输入的 `total_days` 与 `stats` 保证一致。
+参数与 `/api/v1/days` **完全相同**（`date`、`start`、`end`、`dates`、`detailed`），统计口径一致，但**不返回 `days` 明细**。两接口复用同一处理器逻辑与同一统计路径，同一输入的 `total_days` 与 `stats` 保证一致。
+
+实现上统计基于加载时构建的细粒度组合计数前缀和：年内 `prefix[end 下标] - prefix[start 下标]`，跨年各年内差分后加总，粗粒度由细粒度组合线性累加导出，复杂度 O(覆盖年数)。因此 **`/stats` 不限制查询跨度**（`/days` 仍限 366 天）。
 
 区间、粗粒度：
 
@@ -249,8 +251,9 @@ curl "http://localhost:8080/healthz"
 |---|---|---|
 | 400 | `missing_query` | `date`、`start+end`、`dates` 均缺省 |
 | 400 | `invalid_date` | `date=2026-02-30`（不存在的日期）或 `date=20260230`（格式非法） |
-| 400 | `invalid_range` | `start`/`end` 只出现其一；`end` 早于 `start`；区间跨度超过 366 天 |
+| 400 | `invalid_range` | `start`/`end` 只出现其一；`end` 早于 `start`；区间跨度超过 366 天（仅 `/days` 与 gRPC `QueryDays`；`/stats`/`QueryStats` 不限跨度） |
 | 400 | `invalid_detailed` | `detailed` 不是合法布尔值（如 `detailed=abc`） |
+| 400 | `year_not_loaded` | 查询覆盖未加载配置的年份（单日、区间、离散、混合；含跨年区间的中间整年），message 列出全部未加载年份 |
 | 404 | `not_found` | 访问未注册路径，如 `GET /api/v1/unknown` |
 | 405 | `method_not_allowed` | 对 `/api/v1/days` 使用 POST 等非 GET 方法 |
 
@@ -258,6 +261,12 @@ curl "http://localhost:8080/healthz"
 
 ```json
 {"error": {"code": "method_not_allowed", "message": "方法不被允许: POST"}}
+```
+
+`year_not_loaded` 示例（查询覆盖未加载年份，含跨年区间的中间整年；多年份以 `, ` 分隔升序列出）：
+
+```json
+{"error": {"code": "year_not_loaded", "message": "查询范围包含未加载的年份: 2027"}}
 ```
 
 ---
@@ -310,7 +319,7 @@ gRPC 与 HTTP 同进程提供（`-grpc-addr`，默认 `:50051`，空字符串禁
 
 ### 7.2 服务与方法
 
-`GolidayService` 三方法与 HTTP 一一对应，语义完全一致（单日 `detailed` 粗/细切换、多日明细恒细粒度、区间左闭右开 ≤366 天、离散去重升序、区间+离散并集 `mode=list`、`date` 优先、细粒度统计交叉计数）：
+`GolidayService` 三方法与 HTTP 一一对应，语义完全一致（单日 `detailed` 粗/细切换、多日明细恒细粒度、`QueryDays` 区间左闭右开 ≤366 天而 `QueryStats` 不限跨度、离散去重升序、区间+离散并集 `mode=list`、`date` 优先、覆盖年份未加载返回 `year_not_loaded`、细粒度统计交叉计数）：
 
 | rpc 方法 | 对应 HTTP | 说明 |
 |---|---|---|
@@ -322,7 +331,7 @@ gRPC 与 HTTP 同进程提供（`-grpc-addr`，默认 `:50051`，空字符串禁
 
 ### 7.3 错误语义
 
-参数错误统一返回 `codes.InvalidArgument`，message 格式为 `"<code>: <中文说明>"`，code 与 HTTP 完全一致（`invalid_date` / `invalid_range` / `missing_query` / `invalid_detailed`）。
+参数错误统一返回 `codes.InvalidArgument`，message 格式为 `"<code>: <中文说明>"`，code 与 HTTP 完全一致（`invalid_date` / `invalid_range` / `missing_query` / `invalid_detailed` / `year_not_loaded`）。
 
 ### 7.4 Go 调用示例
 

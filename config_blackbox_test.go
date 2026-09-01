@@ -403,13 +403,21 @@ work = [ "2026-01-31" ]
 		}
 		c := goliday.NewCalendar(s)
 		for _, d := range cfg.Adjust.Off {
-			if got := c.Query(d); got&goliday.DayTypeAdjusted == 0 {
+			got, err := c.Query(d)
+			if err != nil {
+				t.Fatalf("off 日期 %s 查询报错: %v", d.Format(layout), err)
+			}
+			if got&goliday.DayTypeAdjusted == 0 {
 				t.Fatalf("off 日期 %s 判型 = %d（%s），应含 Adjusted 位",
 					d.Format(layout), got, got)
 			}
 		}
 		for _, d := range cfg.Adjust.Work {
-			if got, want := c.Query(d), goliday.DayTypeCompensate|goliday.DayTypeWeekend; got != want {
+			got, err := c.Query(d)
+			if err != nil {
+				t.Fatalf("work 日期 %s 查询报错: %v", d.Format(layout), err)
+			}
+			if want := goliday.DayTypeCompensate | goliday.DayTypeWeekend; got != want {
 				t.Fatalf("work 日期 %s 判型 = %d（%s），期望 %d（%s）",
 					d.Format(layout), got, got, want, want)
 			}

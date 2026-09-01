@@ -23,10 +23,11 @@ var fuzzHandler = sync.OnceValue(func() http.Handler {
 	return newHandler(store, goliday.NewCalendar(store))
 })
 
-// FuzzDaysHandler 不变量：任意参数组合不 panic；状态码仅 200/400；响应
-// 恒为合法 JSON；200 时单日模式 total_days == 1，多日模式 days 升序唯一
-// 且 total_days == len(days)；粗粒度 stats 之和 == total_days，细粒度
-// （组合日交叉计数）之和 >= total_days。
+// FuzzDaysHandler 不变量：任意参数组合不 panic；状态码仅 200/400（含
+// year_not_loaded 与 days 跨度超限场景）；响应恒为合法 JSON；200 时
+// 单日模式 total_days == 1，多日模式 days 升序唯一且 total_days ==
+// len(days)；stats 接口不因跨度报错；粗粒度 stats 之和 == total_days，
+// 细粒度（组合日交叉计数）之和 >= total_days。
 func FuzzDaysHandler(f *testing.F) {
 	f.Add("2026-02-20", "", "", "", "")
 	f.Add("2026-02-17", "2026-02-01", "2026-02-28", "2026-03-08", "true")
@@ -34,6 +35,9 @@ func FuzzDaysHandler(f *testing.F) {
 	f.Add("2026-02-30", "2026-03-05", "2026-03-01", "abc,2026-01-01", "yes")
 	f.Add("", "", "", "2026-02-16,2026-02-28,2026-02-17,2026-02-16", "1")
 	f.Add("", "2026-01-01", "2027-06-01", "", "")
+	f.Add("2027-05-01", "", "", "", "")
+	f.Add("", "2025-01-01", "2027-01-01", "", "")
+	f.Add("", "2025-01-01", "2027-01-01", "2030-01-01", "")
 	f.Fuzz(func(t *testing.T, dateParam, start, end, dates, detailed string) {
 		h := fuzzHandler()
 		for _, path := range []string{"/api/v1/days", "/api/v1/stats"} {

@@ -343,6 +343,59 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 - **WHEN** fuzz 发现失败并在 `testdata/fuzz/<Name>/` 落盘语料
 - **THEN** 该语料转写为常规回归用例（种子或普通 Test）后删除语料文件，`git status` 无 fuzz 语料残留
 
+### Requirement: 年份加载强校验（year_not_loaded）
+系统 SHALL 在执行任何查询（单日、区间、离散、混合）前先确定查询实际覆盖的年份集合，并要求其中每个年份均已加载配置文件；任一年份未加载即报错，错误 SHALL 列出全部未加载年份（升序、去重），不得静默回退到系统周休判断。
+
+覆盖年份集合的确定规则：
+- 单日 `date`：`{date.Year()}`；
+- 区间 `[start, end)`：`start==end`（空区间）时为空集（不报错，返回空统计）；否则为 `[start.Year(), (end-1天).Year()]` 闭区间内全部整数年份（含中间整年）；
+- 离散 `dates`：各日期年份的并集；
+- 混合并集：区间覆盖年份 ∪ 列表年份。
+
+错误契约：
+- HTTP：400，`{"error":{"code":"year_not_loaded","message":"查询范围包含未加载的年份: 2027"}}`（多年份以 `", "` 分隔升序）；
+- gRPC：`codes.InvalidArgument`，message 为 `"year_not_loaded: 查询范围包含未加载的年份: 2027"`（与 HTTP 同源文案）。
+
+#### Scenario: 单日未加载年份
+- **WHEN** 已加载 2025、2026，`GET /api/v1/days?date=2027-05-01`
+- **THEN** 返回 400 `year_not_loaded`，message 含 `2027`
+
+#### Scenario: 跨年区间含未加载中间年
+- **WHEN** 已加载 2025、2027，`GET /api/v1/stats?start=2025-06-01&end=2027-12-31`（2026 未加载）
+- **THEN** 返回 400 `year_not_loaded`，message 含 `2026`
+
+#### Scenario: 空区间不触发
+- **WHEN** `GET /api/v1/stats?start=2027-01-01&end=2027-01-01`（2027 未加载）
+- **THEN** 返回 200，`total_days=0`，stats 全 0（空区间无覆盖年份）
+
+#### Scenario: 已加载年份不受影响
+- **WHEN** 查询 2025、2026 任意日期或区间
+- **THEN** 行为与本变更前一致（回归）
+
+### Requirement: 细粒度组合计数前缀和统计
+`Calendar` SHALL 在构造时（`NewCalendar`）为每个已加载年份构建前缀和数组，加载完成后只读、可被多个 goroutine 并发访问：
+
+- 每年数组 `prefix`，长度 = 该年天数 + 1，元素为 6 种合法细粒度组合（`1/4/6/12/16/24`）各自的累计天数（**按组合计数**，非标志位交叉计数）；
+- `prefix[0]` 为全零；`prefix[i] = prefix[i-1] + 第 i 天（元旦起 1-based）类型的组合计数`，即 `prefix[i]` 表示 `[元旦, 元旦+i天)`（左闭右开）的累计；
+- 构建成本 O(年天数)，仅在构造时发生一次。
+
+统计导出规则（由组合计数 `C(v)` 线性组合，语义与逐日统计完全等价）：
+- 细粒度标志位交叉计数：`ordinary=C(1)`、`compensate=C(6)`、`weekend=C(4)+C(6)+C(12)`、`festival=C(12)+C(24)`、`adjusted=C(16)+C(24)`；
+- 粗粒度：`workday=C(1)+C(6)`、`holiday=C(4)+C(12)+C(16)+C(24)`；
+- `Total` = 覆盖天数（区间天数或列表长度）。
+
+#### Scenario: 年内差分
+- **WHEN** 统计 `[a, b)`（a、b 同年，b 可为次年元旦）
+- **THEN** 结果 = `prefix[idx(b)] - prefix[idx(a)]`，`idx(d)` = d 距当年元旦的天数
+
+#### Scenario: 跨年拆分
+- **WHEN** 统计 `[s, e)` 跨多年
+- **THEN** 拆为「首年 `[s, 次年元旦)` + 若干整年 + 末年 `[当年元旦, e)`」各段差分后相加，复杂度 O(覆盖年数)
+
+#### Scenario: 与逐日统计等价
+- **WHEN** 对任意已加载年份的任意区间/日期集合分别用前缀和与逐日 `Query` 暴力统计
+- **THEN** 粗、细全部计数与 `Total` 完全一致
+
 ## MODIFIED Requirements
 
 ### Requirement: 模块结构与依赖约束（本次修订）
@@ -350,13 +403,41 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 **Reason**: 实现 TODO 项 gRPC 接口与 proto 文档，需引入 gRPC 运行时；为守住"核心包最小依赖"初衷，将约束细化为按包分级。
 **Migration**: 根包源码不得 import gRPC/protobuf 包；HTTP 处理仍仅标准库；依赖审计命令相应更新（见该 Requirement 的 Scenario）。
 
+### Requirement: 单日期查询（本次修订：年份强校验）
+核心包 SHALL 提供 `Query(date time.Time) (DayType, error)`（细粒度）与 `QueryCoarse(date time.Time) (DayType, error)`；`IsWorkday`/`IsHoliday` 同步返回 `error`。`date` 年份未加载时返回包装 `ErrYearNotLoaded` 的错误（`errors.Is` 可判别，message 含年份），不再回退周休判断。服务层单日查询在未加载年份时返回 `year_not_loaded`（HTTP 400 / gRPC InvalidArgument）。
+**Reason**: 消除「未配置」与「真实周末」的静默混淆。
+**Migration**: 所有 `Query` 族调用方需处理 error；原「无该年配置回退」的测试契约改为断言 `ErrYearNotLoaded`。
+
+### Requirement: 区间与离散列表查询（本次修订：跨度限制分化与年份强校验）
+区间（左闭右开）与离散列表/混合并集语义不变（去重、升序、`mode=range/list`、`date` 优先），追加：全部覆盖年份须已加载（见「年份加载强校验」）。`/api/v1/days`（含 gRPC `QueryDays`）区间跨度上限 366 天**保留**；`/api/v1/stats`（含 `QueryStats`）**取消**跨度上限；days 响应中的 `stats` 与同输入的 stats 接口完全一致（复用前缀和路径）。
+**Reason**: 明细接口需防响应膨胀，统计接口靠前缀和已无性能顾虑。
+**Migration**: `resolveMultiQuery` 参数化跨度上限（days=366，stats=不限），stats 路径不得展开区间为逐日切片。
+
+### Requirement: 统计接口（本次修订：前缀和实现）
+`GET /api/v1/stats`（及 gRPC `QueryStats`）入参与响应字段不变，统计口径不变（粗 `workday/holiday`；细 5 键交叉计数、组合日各标志计 1），但实现改为前缀和差分（见「细粒度组合计数前缀和统计」），**不限查询跨度**。混合并集统计 = 区间前缀和统计 + 列表中剔除落在区间内日期后的分段统计，二者相加。
+**Reason**: O(覆盖年数) 统计效率，解除范围限制。
+**Migration**: 服务层统计入口统一走 `StatsRange`/`Stats`；`Calendar.Stats(dates, detailed)` 签名增加 `error` 返回，新增 `StatsRange(start, end, detailed) (StatsResult, error)`。
+
+### Requirement: HTTP 服务与 gRPC 错误契约（本次修订：新增 year_not_loaded）
+两协议共用错误表新增 `year_not_loaded`（HTTP 400 ↔ gRPC `InvalidArgument`，message 同源）；跨度校验分化：仅 days/QueryDays 保留 `invalid_range` 超限错误，stats/QueryStats 不再校验跨度。
+**Reason**: 错误契约与两接口差异化限制保持一致。
+**Migration**: `grpc_test.go`/`handlers_test.go` 补充 `year_not_loaded` 与「stats 大跨度成功 / days 大跨度 400」场景。
+
+### Requirement: 测试分层与 fuzz 不变量（本次修订：未加载年契约）
+`FuzzQueryConsistency` 不变量调整：已加载年份 `Query` 结果 ∈ 合法组合全集且粗细一致等原有不变量保持；未加载年份断言返回 `ErrYearNotLoaded`（不再断言「仅 Ordinary/Weekend」）。`FuzzDaysHandler` 不变量调整：状态码仍仅 200/400；`/api/v1/stats` 任意跨度不因跨度报错（未加载年份报 `year_not_loaded` 除外）；粗粒度 stats 之和 == `total_days` 等原有不变量保持。其余测试分层要求不变。
+**Reason**: 契约变更需同步到 fuzz 不变量。
+**Migration**: 黑盒 `calendar_test.go`/`config_blackbox_test.go`/`store_test.go` 适配新签名与错误契约；新增前缀和 vs 暴力一致性测试。
+
 ## REMOVED Requirements
-（无。）
+（无。原「无该年配置整年回退」行为随 MODIFIED「单日期查询（本次修订）」移除，非独立 Requirement。）
 
 ## 附录：核心包 API 形态
 
 ```go
 package goliday // 根包
+
+// ErrYearNotLoaded 查询覆盖了未加载配置的年份；errors.Is 判别，message 含年份。
+var ErrYearNotLoaded = errors.New("年份配置未加载")
 
 type DayType uint8
 func (t DayType) IsWorkday() bool
@@ -371,10 +452,12 @@ type Adjust    struct { Off, Work []time.Time }
 func LoadDir(dir string) (*Store, error)   // 加载 <year>.toml
 func (s *Store) Has(year int) bool
 
-type Calendar struct{ /* 由 Store 构造 */ }
+type Calendar struct{ /* 由 Store 构造：各年索引 + 组合计数前缀和 */ }
 func NewCalendar(s *Store) *Calendar
-func (c *Calendar) Query(date time.Time) DayType       // 细粒度
-func (c *Calendar) QueryCoarse(date time.Time) DayType // 粗粒度
-func (c *Calendar) QueryRange(start, end time.Time) []Dated // 左闭右开
-func (c *Calendar) Stats(dates []time.Time, detailed bool) StatsResult
+func (c *Calendar) HasYear(year int) bool
+func (c *Calendar) Query(date time.Time) (DayType, error)        // 细粒度；未加载年 → ErrYearNotLoaded
+func (c *Calendar) QueryCoarse(date time.Time) (DayType, error)  // 粗粒度；未加载年 → ErrYearNotLoaded
+func (c *Calendar) QueryRange(start, end time.Time) ([]Dated, error) // 左闭右开逐日；未加载年 → ErrYearNotLoaded
+func (c *Calendar) StatsRange(start, end time.Time, detailed bool) (StatsResult, error) // 前缀和差分，不限跨度
+func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error)        // 排序去重集合分段差分
 ```

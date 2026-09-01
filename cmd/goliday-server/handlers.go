@@ -18,7 +18,8 @@ import (
 // dateLayout HTTP 层统一使用的 YYYY-MM-DD 日期格式。
 const dateLayout = "2006-01-02"
 
-// maxRangeDays 区间查询允许的最大跨度（end - start 的天数）。
+// maxRangeDays days 明细接口允许的最大区间跨度（end - start 的天数）；
+// stats 接口基于前缀和统计，不受此限制。
 const maxRangeDays = 366
 
 // server 持有只读的年份存储与日历索引，构造完成后可被多个 goroutine 并发调用。
@@ -123,7 +124,37 @@ var (
 	errRangeUnpaired   = &apiError{http.StatusBadRequest, "invalid_range", "start 与 end 须成对出现"}
 	errRangeOrder      = &apiError{http.StatusBadRequest, "invalid_range", "end 不得早于 start"}
 	errRangeTooWide    = &apiError{http.StatusBadRequest, "invalid_range", fmt.Sprintf("区间跨度超过 %d 天", maxRangeDays)}
+	// errInternalQuery 查询覆盖年份已在入口统一校验，核心包再报错仅作兜底。
+	errInternalQuery = &apiError{http.StatusInternalServerError, "internal_error", "服务器内部错误"}
 )
+
+// yearNotLoadedError 构造未加载年份错误：message 列出升序去重的全部
+// 未加载年份，HTTP 400 ↔ gRPC InvalidArgument 同源。
+func yearNotLoadedError(years []int) *apiError {
+	names := make([]string, len(years))
+	for i, y := range years {
+		names[i] = strconv.Itoa(y)
+	}
+	return &apiError{
+		http.StatusBadRequest, "year_not_loaded",
+		"查询范围包含未加载的年份: " + strings.Join(names, ", "),
+	}
+}
+
+// checkYears 校验查询覆盖的年份均已加载（HTTP 与 gRPC 共用）；
+// 任一未加载返回 year_not_loaded 错误。
+func checkYears(cal *goliday.Calendar, years []int) *apiError {
+	var missing []int
+	for _, y := range years {
+		if !cal.HasYear(y) {
+			missing = append(missing, y)
+		}
+	}
+	if missing == nil {
+		return nil
+	}
+	return yearNotLoadedError(missing)
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -199,66 +230,10 @@ type daysResponse struct {
 	Stats     map[string]int `json:"stats"`
 }
 
-// buildQueryResponse 解析查询参数并构造响应体。参数规则：
-//
-//   - date：单日查询；detailed=false（默认）输出粗粒度 type/type_label，
-//     true 输出细粒度数值与 DayType.String()；
-//   - start+end：左闭右开区间，须成对出现、end>=start 且跨度不超过 maxRangeDays；
-//   - dates：逗号分隔的日期列表，去重后升序；
-//   - start+end 与 dates 并存时取并集（mode=list）；
-//   - date 与其他参数并存时 date 优先，其余被忽略。
-//
-// 多日明细中的 type 始终为细粒度数值，detailed 仅切换 stats 统计口径。
-func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse, *apiError) {
-	detailed := false
-	if v := q.Get("detailed"); v != "" {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			return nil, errInvalidDetailed
-		}
-		detailed = b
-	}
-
-	resp := &daysResponse{}
-	var dates []time.Time
-
-	if dateStr := q.Get("date"); dateStr != "" {
-		// date 优先：与 start+end/dates 并存时忽略其他参数，按单日模式处理。
-		d, aerr := parseDate(dateStr)
-		if aerr != nil {
-			return nil, aerr
-		}
-		dates = []time.Time{d}
-		resp.Date = d.Format(dateLayout)
-		t := s.calendar.Query(d)
-		shown := t
-		if !detailed {
-			shown = t.Coarse()
-		}
-		resp.Type = int(shown)
-		resp.TypeLabel = shown.String()
-	} else {
-		mq, aerr := resolveMultiQuery(q.Get("start"), q.Get("end"), splitDatesParam(q.Get("dates")))
-		if aerr != nil {
-			return nil, aerr
-		}
-		resp.Mode = mq.mode
-		resp.Start = mq.start
-		resp.End = mq.end
-		dates = mq.dates
-
-		if wantDays {
-			resp.Days = make([]dayEntry, len(dates))
-			for i, d := range dates {
-				t := s.calendar.Query(d)
-				resp.Days[i] = dayEntry{Date: d.Format(dateLayout), Type: int(t), TypeLabel: t.String()}
-			}
-		}
-	}
-
-	st := s.calendar.Stats(dates, detailed)
+// fillStats 将统计结果填充为响应的 stats 字段：粗粒度恒为 workday/holiday
+// 两键；细粒度为固定 5 键交叉计数（即使为 0 也输出）。
+func fillStats(resp *daysResponse, st goliday.StatsResult, detailed bool) {
 	if detailed {
-		// 固定 5 个细粒度键，组合日交叉计数，即使为 0 也输出。
 		resp.Stats = map[string]int{
 			"ordinary":   st.Fine[goliday.DayTypeOrdinary],
 			"compensate": st.Fine[goliday.DayTypeCompensate],
@@ -272,33 +247,162 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 			"holiday": st.Coarse[goliday.DayTypeHoliday],
 		}
 	}
+}
+
+// buildQueryResponse 解析查询参数并构造响应体。参数规则：
+//
+//   - date：单日查询；detailed=false（默认）输出粗粒度 type/type_label，
+//     true 输出细粒度数值与 DayType.String()；
+//   - start+end：左闭右开区间，须成对出现、end>=start；days 明细接口
+//     跨度不超过 maxRangeDays（stats 接口不限跨度）；
+//   - dates：逗号分隔的日期列表，去重后升序；
+//   - start+end 与 dates 并存时取并集（mode=list）；
+//   - date 与其他参数并存时 date 优先，其余被忽略。
+//
+// 查询（单日/区间/离散/混合）覆盖的每个年份都必须已加载，否则返回
+// year_not_loaded（400）并指明未加载年份，不再回退系统周休判断；
+// 空区间（start==end）无覆盖年份，不校验并返回全零统计。
+//
+// 统计统一走前缀和路径（StatsRange/Stats），days 与 stats 接口同输入
+// 统计完全一致；多日明细中的 type 始终为细粒度数值，detailed 仅切换
+// stats 统计口径。
+func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse, *apiError) {
+	detailed := false
+	if v := q.Get("detailed"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, errInvalidDetailed
+		}
+		detailed = b
+	}
+
+	resp := &daysResponse{}
+
+	if dateStr := q.Get("date"); dateStr != "" {
+		// date 优先：与 start+end/dates 并存时忽略其他参数，按单日模式处理。
+		d, aerr := parseDate(dateStr)
+		if aerr != nil {
+			return nil, aerr
+		}
+		if aerr := checkYears(s.calendar, []int{d.Year()}); aerr != nil {
+			return nil, aerr
+		}
+		t, err := s.calendar.Query(d)
+		if err != nil {
+			return nil, errInternalQuery
+		}
+		resp.Date = d.Format(dateLayout)
+		shown := t
+		if !detailed {
+			shown = t.Coarse()
+		}
+		resp.Type = int(shown)
+		resp.TypeLabel = shown.String()
+
+		st, err := s.calendar.Stats([]time.Time{d}, detailed)
+		if err != nil {
+			return nil, errInternalQuery
+		}
+		fillStats(resp, st, detailed)
+		resp.TotalDays = st.Total
+		return resp, nil
+	}
+
+	// 仅 days 明细接口限制区间跨度；stats 基于前缀和不限跨度。
+	maxSpan := 0
+	if wantDays {
+		maxSpan = maxRangeDays
+	}
+	mq, aerr := resolveMultiQuery(q.Get("start"), q.Get("end"), splitDatesParam(q.Get("dates")), maxSpan)
+	if aerr != nil {
+		return nil, aerr
+	}
+	if aerr := checkYears(s.calendar, mq.coveredYears()); aerr != nil {
+		return nil, aerr
+	}
+	resp.Mode = mq.mode
+	resp.Start = mq.start
+	resp.End = mq.end
+
+	if wantDays {
+		dates := mq.datesForDays()
+		resp.Days = make([]dayEntry, len(dates))
+		for i, d := range dates {
+			t, err := s.calendar.Query(d)
+			if err != nil {
+				return nil, errInternalQuery
+			}
+			resp.Days[i] = dayEntry{Date: d.Format(dateLayout), Type: int(t), TypeLabel: t.String()}
+		}
+	}
+
+	st, aerr := statsFor(s.calendar, mq, detailed)
+	if aerr != nil {
+		return nil, aerr
+	}
+	fillStats(resp, st, detailed)
 	resp.TotalDays = st.Total
 	return resp, nil
 }
 
-// multiQuery 多日查询（区间/离散/混合）的归一化结果：dates 为去重升序的
-// 日期集合；mode 区分仅区间（range）与离散/混合（list）；start/end 仅在
-// range 模式回显，与 HTTP 响应的省略行为一致。
+// multiQuery 多日查询（区间/离散/混合）的归一化结果。
+//
+// 区间不展开为逐日切片（大区间统计走前缀和）：仅保留 startT/endT 与
+// 去重升序的 listDates，由调用方按需展开（days 明细）或差分统计（stats）。
+// mode 区分仅区间（range）与离散/混合（list）；start/end 仅在 range
+// 模式回显，与 HTTP 响应的省略行为一致。
 type multiQuery struct {
-	mode  string
-	start string
-	end   string
-	dates []time.Time
+	mode      string
+	start     string
+	end       string
+	hasRange  bool
+	startT    time.Time
+	endT      time.Time
+	listDates []time.Time
+}
+
+// coveredYears 返回该查询覆盖的全部年份（升序去重）：区间 [startT, endT)
+// 覆盖的整年（含中间整年；空区间为空集）并上列表各日期年份。
+func (mq *multiQuery) coveredYears() []int {
+	var years []int
+	if mq.hasRange && mq.endT.After(mq.startT) {
+		for y := mq.startT.Year(); y <= mq.endT.AddDate(0, 0, -1).Year(); y++ {
+			years = append(years, y)
+		}
+	}
+	for _, d := range mq.listDates {
+		years = append(years, d.Year())
+	}
+	slices.Sort(years)
+	return slices.Compact(years)
+}
+
+// datesForDays 展开该查询的完整日期集合（去重升序），供 days 明细使用；
+// 仅在区间跨度已受限（≤366 天）的前提下调用。
+func (mq *multiQuery) datesForDays() []time.Time {
+	if !mq.hasRange {
+		return mq.listDates
+	}
+	if len(mq.listDates) == 0 {
+		return eachDay(mq.startT, mq.endT)
+	}
+	return mergeUnique(eachDay(mq.startT, mq.endT), mq.listDates)
 }
 
 // resolveMultiQuery 校验并归一化多日查询入参（HTTP 与 gRPC 共用）：
 //
-//   - start/end 须成对出现、均为合法日期、end>=start 且跨度不超过 maxRangeDays；
-//   - dateStrs 为离散日期字符串列表（HTTP 逗号分列后、gRPC repeated 字段原样
-//     传入），逐项解析后去重升序，任一非法即报错；
+//   - start/end 须成对出现、均为合法日期、end>=start；maxSpanDays>0 时
+//     跨度不超过 maxSpanDays（0 表示不限跨度）；
+//   - dateStrs 为离散日期字符串列表（HTTP 逗号分列后、gRPC repeated 字段
+//     原样传入），逐项解析后去重升序，任一非法即报错；
 //   - 区间与列表并存时取并集（mode=list），仅区间 mode=range；
-//   - 全部缺省返回 missing_query。
-func resolveMultiQuery(startStr, endStr string, dateStrs []string) (*multiQuery, *apiError) {
+//   - 全部缺省返回 missing_query；
+//   - 查询覆盖年份的加载校验由调用方经 coveredYears + checkYears 统一执行。
+func resolveMultiQuery(startStr, endStr string, dateStrs []string, maxSpanDays int) (*multiQuery, *apiError) {
 	if startStr == "" && endStr == "" && len(dateStrs) == 0 {
 		return nil, errMissingQuery
 	}
 
-	var rangeDays []time.Time
 	var start, end time.Time
 	hasRange := false
 	if startStr != "" || endStr != "" {
@@ -315,10 +419,9 @@ func resolveMultiQuery(startStr, endStr string, dateStrs []string) (*multiQuery,
 		if end.Before(start) {
 			return nil, errRangeOrder
 		}
-		if int(end.Sub(start).Hours()/24) > maxRangeDays {
+		if maxSpanDays > 0 && int(end.Sub(start).Hours()/24) > maxSpanDays {
 			return nil, errRangeTooWide
 		}
-		rangeDays = eachDay(start, end)
 		hasRange = true
 	}
 
@@ -331,22 +434,79 @@ func resolveMultiQuery(startStr, endStr string, dateStrs []string) (*multiQuery,
 		listDays = ds
 	}
 
-	mq := &multiQuery{}
+	mq := &multiQuery{hasRange: hasRange, startT: start, endT: end, listDates: listDays}
 	switch {
 	case hasRange && listDays != nil:
 		// start+end 与 dates 并存：取并集去重升序。
-		mq.dates = mergeUnique(rangeDays, listDays)
 		mq.mode = "list"
 	case hasRange:
-		mq.dates = rangeDays
 		mq.mode = "range"
 		mq.start = start.Format(dateLayout)
 		mq.end = end.Format(dateLayout)
 	default:
-		mq.dates = listDays
 		mq.mode = "list"
 	}
 	return mq, nil
+}
+
+// statsFor 计算多日查询的统计（HTTP 与 gRPC 共用），统一走前缀和路径：
+// 区间用 StatsRange 差分；离散列表中剔除落在区间内的日期后单独分段
+// 统计，再与区间统计相加（混合并集），因此 days 与 stats 接口、任意
+// 跨度口径一致。覆盖年份已在入口校验，此处错误仅作兜底。
+func statsFor(cal *goliday.Calendar, mq *multiQuery, detailed bool) (goliday.StatsResult, *apiError) {
+	var st goliday.StatsResult
+	if mq.hasRange {
+		r, err := cal.StatsRange(mq.startT, mq.endT, detailed)
+		if err != nil {
+			return goliday.StatsResult{}, errInternalQuery
+		}
+		st = r
+	}
+	if len(mq.listDates) > 0 {
+		dates := mq.listDates
+		if mq.hasRange {
+			dates = filterOutsideRange(dates, mq.startT, mq.endT)
+		}
+		if len(dates) > 0 {
+			r, err := cal.Stats(dates, detailed)
+			if err != nil {
+				return goliday.StatsResult{}, errInternalQuery
+			}
+			st = addStats(st, r)
+		}
+	}
+	return st, nil
+}
+
+// addStats 将两组统计相加（Total 与 Coarse/Fine 各计数键）。
+func addStats(a, b goliday.StatsResult) goliday.StatsResult {
+	a.Total += b.Total
+	if a.Coarse == nil {
+		a.Coarse = make(map[goliday.DayType]int, len(b.Coarse))
+	}
+	for k, v := range b.Coarse {
+		a.Coarse[k] += v
+	}
+	if b.Fine != nil {
+		if a.Fine == nil {
+			a.Fine = make(map[goliday.DayType]int, len(b.Fine))
+		}
+		for k, v := range b.Fine {
+			a.Fine[k] += v
+		}
+	}
+	return a
+}
+
+// filterOutsideRange 返回列表中不落在左闭右开区间 [start, end) 内的日期。
+func filterOutsideRange(dates []time.Time, start, end time.Time) []time.Time {
+	out := make([]time.Time, 0, len(dates))
+	for _, d := range dates {
+		if d.Before(start) || !d.Before(end) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // ---- 参数解析 helper ----

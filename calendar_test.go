@@ -1,8 +1,10 @@
 // 黑盒测试（package goliday_test）：仅经导出 API 验证 Calendar 判定、
-// 区间与统计的对外契约（判断算法、粗细映射、无配置年回退）。
+// 区间与统计的对外契约（判断算法、粗细映射、未加载年份报错、前缀和统计）。
 package goliday_test
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,7 +17,26 @@ func newTestCalendar(t *testing.T) *goliday.Calendar {
 	return goliday.NewCalendar(mustLoadDir(t, "testdata"))
 }
 
-// TestCalendarQuery 单日细/粗粒度查询断言（2026 假设方案、2025 真实数据、无配置年份回退）。
+// wantDayType 断言 Query/QueryCoarse 返回值与错误。
+func wantDayType(t *testing.T, c *goliday.Calendar, name string, d time.Time, want, coarse goliday.DayType) {
+	t.Helper()
+	got, err := c.Query(d)
+	if err != nil {
+		t.Fatalf("%s: Query 意外报错: %v", name, err)
+	}
+	if got != want {
+		t.Errorf("%s: Query = %d（%s），期望 %d（%s）", name, got, got, want, want)
+	}
+	gotC, err := c.QueryCoarse(d)
+	if err != nil {
+		t.Fatalf("%s: QueryCoarse 意外报错: %v", name, err)
+	}
+	if gotC != coarse {
+		t.Errorf("%s: QueryCoarse = %d（%s），期望 %d（%s）", name, gotC, gotC, coarse, coarse)
+	}
+}
+
+// TestCalendarQuery 单日细/粗粒度查询断言（2026 假设方案、2025 真实数据）。
 func TestCalendarQuery(t *testing.T) {
 	c := newTestCalendar(t)
 
@@ -31,21 +52,13 @@ func TestCalendarQuery(t *testing.T) {
 		{"2026-04-05 周日清明当天不在off/work", "2026-04-05", goliday.DayTypeFestival | goliday.DayTypeWeekend, goliday.DayTypeHoliday},
 		{"2026-03-03 周二未覆盖", "2026-03-03", goliday.DayTypeOrdinary, goliday.DayTypeWorkday},
 		{"2026-02-21 周六春节假期内自然周末", "2026-02-21", goliday.DayTypeWeekend, goliday.DayTypeHoliday},
-		{"2027-05-01 周六无2027配置", "2027-05-01", goliday.DayTypeWeekend, goliday.DayTypeHoliday},
-		{"2027-03-02 周一无配置", "2027-03-02", goliday.DayTypeOrdinary, goliday.DayTypeWorkday},
 		{"2025-01-26 周日补班", "2025-01-26", goliday.DayTypeCompensate | goliday.DayTypeWeekend, goliday.DayTypeWorkday},
 		{"2025-01-29 正月初一", "2025-01-29", goliday.DayTypeFestival | goliday.DayTypeAdjusted, goliday.DayTypeHoliday},
 		{"2025-10-06 中秋当天周一", "2025-10-06", goliday.DayTypeFestival | goliday.DayTypeAdjusted, goliday.DayTypeHoliday},
 		{"2025-04-05 周六假期内自然周末", "2025-04-05", goliday.DayTypeWeekend, goliday.DayTypeHoliday},
 	}
 	for _, tt := range tests {
-		d := date(t, tt.date)
-		if got := c.Query(d); got != tt.want {
-			t.Errorf("%s: Query = %d（%s），期望 %d（%s）", tt.name, got, got, tt.want, tt.want)
-		}
-		if got := c.QueryCoarse(d); got != tt.coarse {
-			t.Errorf("%s: QueryCoarse = %d（%s），期望 %d（%s）", tt.name, got, got, tt.coarse, tt.coarse)
-		}
+		wantDayType(t, c, tt.name, date(t, tt.date), tt.want, tt.coarse)
 	}
 }
 
@@ -60,18 +73,85 @@ func TestCalendarQueryNormalization(t *testing.T) {
 		time.Date(2026, 2, 17, 23, 59, 59, 0, time.FixedZone("CST", 8*3600)),
 	}
 	for i, v := range variants {
-		if got := c.Query(v); got != want {
+		got, err := c.Query(v)
+		if err != nil {
+			t.Fatalf("variants[%d] Query 意外报错: %v", i, err)
+		}
+		if got != want {
 			t.Errorf("variants[%d]（%s）Query = %d（%s），期望 %d（%s）",
 				i, v.Format("2006-01-02 15:04:05 MST"), got, got, want, want)
 		}
 	}
 }
 
+// TestCalendarYearNotLoaded 未加载年份：Query/QueryCoarse/IsWorkday/
+// IsHoliday/QueryRange/StatsRange/Stats 均返回包装 ErrYearNotLoaded 的
+// 错误（不再静默回退周休判断），错误消息包含年份。
+func TestCalendarYearNotLoaded(t *testing.T) {
+	c := newTestCalendar(t)
+
+	d := date(t, "2027-05-01")
+	for name, fn := range map[string]func() error{
+		"Query":       func() error { _, err := c.Query(d); return err },
+		"QueryCoarse": func() error { _, err := c.QueryCoarse(d); return err },
+		"IsWorkday":   func() error { _, err := c.IsWorkday(d); return err },
+		"IsHoliday":   func() error { _, err := c.IsHoliday(d); return err },
+	} {
+		err := fn()
+		if !errors.Is(err, goliday.ErrYearNotLoaded) {
+			t.Errorf("%s(2027-05-01) 错误 = %v，期望包装 ErrYearNotLoaded", name, err)
+			continue
+		}
+		if got := err.Error(); !stringsContains(got, "2027") {
+			t.Errorf("%s 错误消息 %q 应包含年份 2027", name, got)
+		}
+	}
+
+	if _, err := c.QueryRange(date(t, "2027-01-01"), date(t, "2027-01-05")); !errors.Is(err, goliday.ErrYearNotLoaded) {
+		t.Errorf("QueryRange(2027) 错误 = %v，期望包装 ErrYearNotLoaded", err)
+	}
+	if _, err := c.QueryRange(date(t, "2026-12-30"), date(t, "2027-01-05")); !errors.Is(err, goliday.ErrYearNotLoaded) {
+		t.Errorf("QueryRange 跨入 2027 错误 = %v，期望包装 ErrYearNotLoaded", err)
+	}
+	if _, err := c.StatsRange(date(t, "2025-06-01"), date(t, "2027-12-31"), true); !errors.Is(err, goliday.ErrYearNotLoaded) {
+		t.Errorf("StatsRange 含未加载中间年 2026 之外场景错误 = %v，期望包装 ErrYearNotLoaded", err)
+	}
+	if _, err := c.Stats([]time.Time{date(t, "2025-01-02"), date(t, "2028-03-01")}, true); !errors.Is(err, goliday.ErrYearNotLoaded) {
+		t.Errorf("Stats 含未加载年错误 = %v，期望包装 ErrYearNotLoaded", err)
+	}
+
+	// 空区间无覆盖年份，不校验且返回全零。
+	r, err := c.StatsRange(date(t, "2027-01-01"), date(t, "2027-01-01"), true)
+	if err != nil {
+		t.Fatalf("空区间 StatsRange 意外报错: %v", err)
+	}
+	if r.Total != 0 || len(r.Coarse) != 0 || len(r.Fine) != 0 {
+		t.Errorf("空区间 StatsRange = %+v，期望全零", r)
+	}
+	ds, err := c.QueryRange(date(t, "2027-01-01"), date(t, "2027-01-01"))
+	if err != nil || len(ds) != 0 {
+		t.Errorf("空区间 QueryRange = %v, %v，期望空且无错", ds, err)
+	}
+}
+
+// stringsContains 简易包含判断（避免引入额外依赖分支）。
+func stringsContains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 // TestCalendarQueryRange 区间查询：左闭右开逐日、end<=start 返回空切片。
 func TestCalendarQueryRange(t *testing.T) {
 	c := newTestCalendar(t)
 
-	got := c.QueryRange(date(t, "2026-02-14"), date(t, "2026-02-17"))
+	got, err := c.QueryRange(date(t, "2026-02-14"), date(t, "2026-02-17"))
+	if err != nil {
+		t.Fatalf("QueryRange 意外报错: %v", err)
+	}
 	want := []goliday.Dated{
 		{date(t, "2026-02-14"), goliday.DayTypeCompensate | goliday.DayTypeWeekend},
 		{date(t, "2026-02-15"), goliday.DayTypeWeekend},
@@ -88,20 +168,72 @@ func TestCalendarQueryRange(t *testing.T) {
 		}
 	}
 
-	if d := c.QueryRange(date(t, "2026-02-14"), date(t, "2026-02-14")); len(d) != 0 {
-		t.Errorf("start == end 应返回空切片，got %v", d)
+	if d, err := c.QueryRange(date(t, "2026-02-14"), date(t, "2026-02-14")); err != nil || len(d) != 0 {
+		t.Errorf("start == end 应返回空切片且无错，got %v, %v", d, err)
 	}
-	if d := c.QueryRange(date(t, "2026-02-17"), date(t, "2026-02-14")); len(d) != 0 {
-		t.Errorf("end < start 应返回空切片，got %v", d)
+	if d, err := c.QueryRange(date(t, "2026-02-17"), date(t, "2026-02-14")); err != nil || len(d) != 0 {
+		t.Errorf("end < start 应返回空切片且无错，got %v, %v", d, err)
 	}
 }
 
-// TestCalendarStats 统计：细粒度交叉计数与粗粒度模式断言。
+// bruteForceStats 逐日 Query 暴力统计，作为前缀和路径的一致性基准。
+func bruteForceStats(t *testing.T, c *goliday.Calendar, start, end time.Time, detailed bool) goliday.StatsResult {
+	t.Helper()
+	r := goliday.StatsResult{Total: 0, Coarse: map[goliday.DayType]int{}}
+	if detailed {
+		r.Fine = map[goliday.DayType]int{}
+	}
+	for d := start; d.Before(end); d = d.AddDate(0, 0, 1) {
+		dt, err := c.Query(d)
+		if err != nil {
+			t.Fatalf("暴力统计 Query(%s) 意外报错: %v", d.Format(layout), err)
+		}
+		r.Total++
+		r.Coarse[dt.Coarse()]++
+		if detailed {
+			for i := range 5 {
+				bit := goliday.DayType(1) << i
+				if dt&bit != 0 {
+					r.Fine[bit]++
+				}
+			}
+		}
+	}
+	return r
+}
+
+// wantSameStats 断言前缀和结果与暴力基准完全一致。
+func wantSameStats(t *testing.T, name string, got, want goliday.StatsResult) {
+	t.Helper()
+	if got.Total != want.Total {
+		t.Errorf("%s: Total = %d，期望 %d", name, got.Total, want.Total)
+	}
+	if got.Coarse[goliday.DayTypeWorkday] != want.Coarse[goliday.DayTypeWorkday] ||
+		got.Coarse[goliday.DayTypeHoliday] != want.Coarse[goliday.DayTypeHoliday] {
+		t.Errorf("%s: Coarse = %v，期望 %v", name, got.Coarse, want.Coarse)
+	}
+	if len(want.Fine) > 0 {
+		fineKeys := []goliday.DayType{
+			goliday.DayTypeOrdinary, goliday.DayTypeCompensate, goliday.DayTypeWeekend,
+			goliday.DayTypeFestival, goliday.DayTypeAdjusted,
+		}
+		for _, k := range fineKeys {
+			if got.Fine[k] != want.Fine[k] {
+				t.Errorf("%s: Fine[%s] = %d，期望 %d", name, k, got.Fine[k], want.Fine[k])
+			}
+		}
+	}
+}
+
+// TestCalendarStats 统计：细粒度交叉计数与粗粒度模式断言（前缀和路径）。
 func TestCalendarStats(t *testing.T) {
 	c := newTestCalendar(t)
 	dates := []time.Time{date(t, "2026-02-17"), date(t, "2026-02-28"), date(t, "2026-03-03")}
 
-	r := c.Stats(dates, true)
+	r, err := c.Stats(dates, true)
+	if err != nil {
+		t.Fatalf("Stats 意外报错: %v", err)
+	}
 	if r.Total != 3 {
 		t.Errorf("Total = %d，期望 3", r.Total)
 	}
@@ -124,7 +256,10 @@ func TestCalendarStats(t *testing.T) {
 		}
 	}
 
-	rc := c.Stats(dates, false)
+	rc, err := c.Stats(dates, false)
+	if err != nil {
+		t.Fatalf("Stats（粗粒度）意外报错: %v", err)
+	}
 	if rc.Total != 3 {
 		t.Errorf("粗粒度模式 Total = %d，期望 3", rc.Total)
 	}
@@ -135,8 +270,88 @@ func TestCalendarStats(t *testing.T) {
 		t.Errorf("粗粒度模式 Fine 应无计数，got %v", rc.Fine)
 	}
 
-	if r := c.Stats(nil, true); r.Total != 0 || len(r.Coarse) != 0 || len(r.Fine) != 0 {
-		t.Errorf("空输入 Stats = %+v，期望全零", r)
+	if r, err := c.Stats(nil, true); err != nil || r.Total != 0 || len(r.Coarse) != 0 || len(r.Fine) != 0 {
+		t.Errorf("空输入 Stats = %+v, %v，期望全零且无错", r, err)
+	}
+}
+
+// TestStatsRangeMatchesBruteForce 前缀和 vs 暴力一致性：全年、随机子区间、
+// 跨年区间，粗/细/Total 完全一致。
+func TestStatsRangeMatchesBruteForce(t *testing.T) {
+	c := newTestCalendar(t)
+
+	ranges := []struct {
+		name           string
+		start, end     string
+		expectedConfig bool // 是否显式给出期望总数（全年区间）
+	}{
+		{"2025 全年", "2025-01-01", "2026-01-01", true},
+		{"2026 全年", "2026-01-01", "2027-01-01", true},
+		{"2026 春节段", "2026-02-14", "2026-02-23", false},
+		{"2026 年末跨年界", "2026-12-25", "2027-01-01", false},
+		{"跨年 2025→2026", "2025-11-01", "2026-03-01", false},
+		{"2025 元旦段", "2025-01-01", "2025-01-08", false},
+		{"单日", "2026-10-01", "2026-10-02", false},
+	}
+	for _, rg := range ranges {
+		s, e := date(t, rg.start), date(t, rg.end)
+		for _, detailed := range []bool{false, true} {
+			got, err := c.StatsRange(s, e, detailed)
+			if err != nil {
+				t.Fatalf("%s（detailed=%v）StatsRange 意外报错: %v", rg.name, detailed, err)
+			}
+			want := bruteForceStats(t, c, s, e, detailed)
+			wantSameStats(t, fmt.Sprintf("%s detailed=%v", rg.name, detailed), got, want)
+		}
+	}
+}
+
+// TestStatsMatchesBruteForceList 离散列表（含跨年）前缀和 vs 暴力一致性。
+func TestStatsMatchesBruteForceList(t *testing.T) {
+	c := newTestCalendar(t)
+	dates := []time.Time{
+		date(t, "2025-12-31"), date(t, "2026-01-01"), date(t, "2026-01-02"),
+		date(t, "2026-02-17"), date(t, "2026-02-28"),
+	}
+	for _, detailed := range []bool{false, true} {
+		got, err := c.Stats(dates, detailed)
+		if err != nil {
+			t.Fatalf("Stats（detailed=%v）意外报错: %v", detailed, err)
+		}
+		want := goliday.StatsResult{Total: len(dates), Coarse: map[goliday.DayType]int{}}
+		if detailed {
+			want.Fine = map[goliday.DayType]int{}
+		}
+		for _, d := range dates {
+			dt, err := c.Query(d)
+			if err != nil {
+				t.Fatalf("Query(%s) 意外报错: %v", d.Format(layout), err)
+			}
+			want.Coarse[dt.Coarse()]++
+			if detailed {
+				for i := range 5 {
+					bit := goliday.DayType(1) << i
+					if dt&bit != 0 {
+						want.Fine[bit]++
+					}
+				}
+			}
+		}
+		wantSameStats(t, fmt.Sprintf("list detailed=%v", detailed), got, want)
+	}
+}
+
+// TestStatsRangeEmpty 空区间与非法区间返回全零且不校验年份。
+func TestStatsRangeEmpty(t *testing.T) {
+	c := newTestCalendar(t)
+	for _, rg := range [][2]string{
+		{"2027-05-01", "2027-05-01"}, // 空区间：未加载年也不报错
+		{"2026-05-01", "2025-05-01"}, // end < start
+	} {
+		r, err := c.StatsRange(date(t, rg[0]), date(t, rg[1]), true)
+		if err != nil || r.Total != 0 || len(r.Coarse) != 0 || len(r.Fine) != 0 {
+			t.Errorf("StatsRange(%v) = %+v, %v，期望全零且无错", rg, r, err)
+		}
 	}
 }
 
@@ -153,51 +368,67 @@ func TestCalendarIsWorkdayIsHoliday(t *testing.T) {
 		{"2026-02-21", false, true},
 		{"2026-02-28", true, false},
 		{"2026-03-03", true, false},
-		{"2027-03-02", true, false},
 	}
 	for _, tt := range tests {
 		d := date(t, tt.date)
-		if got := c.IsWorkday(d); got != tt.workday {
-			t.Errorf("IsWorkday(%s) = %v，期望 %v", tt.date, got, tt.workday)
+		if got, err := c.IsWorkday(d); err != nil || got != tt.workday {
+			t.Errorf("IsWorkday(%s) = %v, %v，期望 %v", tt.date, got, err, tt.workday)
 		}
-		if got := c.IsHoliday(d); got != tt.holiday {
-			t.Errorf("IsHoliday(%s) = %v，期望 %v", tt.date, got, tt.holiday)
+		if got, err := c.IsHoliday(d); err != nil || got != tt.holiday {
+			t.Errorf("IsHoliday(%s) = %v, %v，期望 %v", tt.date, got, err, tt.holiday)
 		}
 	}
 }
 
 // TestCalendarConfiguredYearExhaustive 对已配置年份（2025、2026）全年逐日
-// 校验：结果恒属于 6 种合法细粒度组合、粗细一致、无配置的 2027 全年
-// 仅 Ordinary/Weekend。
+// 校验：结果恒属于 6 种合法细粒度组合、粗细一致。
 func TestCalendarConfiguredYearExhaustive(t *testing.T) {
 	c := newTestCalendar(t)
 
-	for _, year := range []int{2025, 2026, 2027} {
+	for _, year := range []int{2025, 2026} {
 		start := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
 		for i := 0; i < 366; i++ {
 			d := start.AddDate(0, 0, i)
 			if d.Year() != year {
 				break
 			}
-			got := c.Query(d)
+			got, err := c.Query(d)
+			if err != nil {
+				t.Fatalf("%s: Query 意外报错: %v", d.Format(layout), err)
+			}
 			if !legalCombos[got] {
 				t.Fatalf("%s: Query = %d（%s），不在合法组合全集内", d.Format(layout), got, got)
 			}
-			if c.QueryCoarse(d) != got.Coarse() {
-				t.Fatalf("%s: QueryCoarse 与 Query().Coarse() 不一致", d.Format(layout))
+			gotC, err := c.QueryCoarse(d)
+			if err != nil || gotC != got.Coarse() {
+				t.Fatalf("%s: QueryCoarse 与 Query().Coarse() 不一致（%v）", d.Format(layout), err)
 			}
-			if c.IsWorkday(d) == c.IsHoliday(d) {
-				t.Fatalf("%s: IsWorkday/IsHoliday 必须恰一为真", d.Format(layout))
-			}
-			if year == 2027 && got != goliday.DayTypeOrdinary && got != goliday.DayTypeWeekend {
-				t.Fatalf("无配置年 2027 的 %s 判型 = %d（%s），应仅 Ordinary/Weekend", d.Format(layout), got, got)
+			w, werr := c.IsWorkday(d)
+			h, herr := c.IsHoliday(d)
+			if werr != nil || herr != nil || w == h {
+				t.Fatalf("%s: IsWorkday/IsHoliday 必须恰一为真（%v/%v）", d.Format(layout), werr, herr)
 			}
 		}
 	}
 }
 
+// TestCalendarHasYear HasYear 与 Store.Years 一致。
+func TestCalendarHasYear(t *testing.T) {
+	c := newTestCalendar(t)
+	for _, y := range []int{2025, 2026} {
+		if !c.HasYear(y) {
+			t.Errorf("HasYear(%d) = false，期望 true", y)
+		}
+	}
+	for _, y := range []int{2024, 2027, 2030} {
+		if c.HasYear(y) {
+			t.Errorf("HasYear(%d) = true，期望 false", y)
+		}
+	}
+}
+
 // FuzzQueryConsistency 不变量：任意构造的时间点，Query 结果合法、粗细一致、
-// 同一日不同时刻与时区表示结果不变；无配置年份仅 Ordinary/Weekend。
+// 同一日不同时刻与时区表示结果不变；未加载年份返回 ErrYearNotLoaded。
 func FuzzQueryConsistency(f *testing.F) {
 	for _, seed := range [][5]int{
 		{2026, 2, 17, 0, 0},
@@ -230,41 +461,48 @@ func FuzzQueryConsistency(f *testing.F) {
 		ts := time.Date(year, time.Month(month), day, hour, minute, 0, 0, time.UTC)
 
 		c := newTestCalendar(t)
-		got := c.Query(ts)
+		if !c.HasYear(year) {
+			for _, fn := range []func() error{
+				func() error { _, err := c.Query(ts); return err },
+				func() error { _, err := c.QueryCoarse(ts); return err },
+				func() error { _, err := c.IsWorkday(ts); return err },
+				func() error { _, err := c.IsHoliday(ts); return err },
+			} {
+				if err := fn(); !errors.Is(err, goliday.ErrYearNotLoaded) {
+					t.Fatalf("未加载年 %s 应返回 ErrYearNotLoaded，got %v", ts.Format(layout), err)
+				}
+			}
+			return
+		}
+
+		got, err := c.Query(ts)
+		if err != nil {
+			t.Fatalf("Query(%s) 意外报错: %v", ts.Format(layout), err)
+		}
 		if !legalCombos[got] {
 			t.Fatalf("Query(%s) = %d（%s），不在合法组合全集内", ts.Format(layout), got, got)
 		}
-		if coarse := c.QueryCoarse(ts); coarse != got.Coarse() {
-			t.Fatalf("QueryCoarse(%s) = %d，Query().Coarse() = %d", ts.Format(layout), coarse, got.Coarse())
+		if coarse, err := c.QueryCoarse(ts); err != nil || coarse != got.Coarse() {
+			t.Fatalf("QueryCoarse(%s) 与 Query().Coarse() 不一致（%v）", ts.Format(layout), err)
 		}
-		if c.IsWorkday(ts) == c.IsHoliday(ts) {
+		if w, werr := c.IsWorkday(ts); werr != nil || w == got.IsHoliday() {
 			t.Fatalf("IsWorkday/IsHoliday(%s) 必须恰一为真", ts.Format(layout))
 		}
 
 		// 同一日不同时刻/时区表示不变（基于当日午夜构造，确保不跨日）。
 		midnight := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-		base := c.Query(midnight)
+		base, err := c.Query(midnight)
+		if err != nil {
+			t.Fatalf("Query(%s) 意外报错: %v", midnight.Format(layout), err)
+		}
 		for _, v := range []time.Time{
 			midnight.Add(5 * time.Hour),
 			midnight.Add(23 * time.Hour),
 			time.Date(year, time.Month(month), day, hour, minute, 0, 0, time.FixedZone("CST", 8*3600)),
 		} {
-			if got2 := c.Query(v); got2 != base {
-				t.Fatalf("同一日 %s 的另一表示 %s 判型不一致：%d vs %d",
-					midnight.Format(layout), v.Format("2006-01-02 15:04 MST"), base, got2)
-			}
-		}
-
-		// 无配置年份（2027 之外再取 2030）仅周休回退。
-		for _, y := range []int{2027, 2030} {
-			d := time.Date(y, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-			wd := d.Weekday()
-			want := goliday.DayTypeOrdinary
-			if wd == time.Saturday || wd == time.Sunday {
-				want = goliday.DayTypeWeekend
-			}
-			if got := c.Query(d); got != want {
-				t.Fatalf("无配置年 %s 判型 = %d（%s），期望 %d（%s）", d.Format(layout), got, got, want, want)
+			if got2, err := c.Query(v); err != nil || got2 != base {
+				t.Fatalf("同一日 %s 的另一表示 %s 判型不一致：%d vs %d（%v）",
+					midnight.Format(layout), v.Format("2006-01-02 15:04 MST"), base, got2, err)
 			}
 		}
 	})

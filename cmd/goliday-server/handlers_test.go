@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"goliday"
@@ -282,5 +283,103 @@ func TestHealthzAndRouting(t *testing.T) {
 	}
 	if _, ok := body["error"].(map[string]any); !ok {
 		t.Errorf("405 响应应为 JSON 错误格式: %v", body)
+	}
+}
+
+// 10. 未加载年份：单日/区间/离散/混合均 400 year_not_loaded，
+// message 列出升序去重的未加载年份；不再回退周休判断。
+func TestYearNotLoaded(t *testing.T) {
+	h := newTestHandler(t)
+	cases := []struct {
+		target   string
+		wantMsgs []string
+	}{
+		{"/api/v1/days?date=2027-05-01", []string{"2027"}},
+		{"/api/v1/stats?date=2027-05-01", []string{"2027"}},
+		{"/api/v1/days?dates=2026-02-17,2027-03-01,2028-04-01", []string{"2027", "2028"}},
+		// 区间含未加载中间年（跨度 ≤366，days 亦触发年份校验）。
+		{"/api/v1/days?start=2026-12-20&end=2027-01-05", []string{"2027"}},
+		// 混合并集：区间 + 列表含未加载年。
+		{"/api/v1/days?start=2026-02-01&end=2026-02-03&dates=2027-03-08", []string{"2027"}},
+	}
+	for _, c := range cases {
+		code, body := doRequest(t, h, http.MethodGet, c.target)
+		if code != http.StatusBadRequest {
+			t.Errorf("%s 状态码 = %d, want 400", c.target, code)
+			continue
+		}
+		errObj, ok := body["error"].(map[string]any)
+		if !ok {
+			t.Errorf("%s 响应缺少 error 对象: %v", c.target, body)
+			continue
+		}
+		wantStr(t, "error.code("+c.target+")", errObj["code"], "year_not_loaded")
+		msg, _ := errObj["message"].(string)
+		for _, want := range c.wantMsgs {
+			if !strings.Contains(msg, want) {
+				t.Errorf("%s message = %q, 应包含 %q", c.target, msg, want)
+			}
+		}
+	}
+}
+
+// 11. stats 不限跨度（前缀和统计）：跨 2025→2026 大区间成功且等于
+// 分段统计之和；days 同区间仍被 366 上限拒绝；空区间 200 全零。
+func TestStatsLargeRangeAndEmptyRange(t *testing.T) {
+	h := newTestHandler(t)
+
+	code, body := doRequest(t, h, http.MethodGet, "/api/v1/stats?start=2025-01-01&end=2027-01-01")
+	if code != http.StatusOK {
+		t.Fatalf("stats 大跨度状态码 = %d, want 200（body: %v）", code, body)
+	}
+	wantNum(t, "total_days", body["total_days"], 730)
+	got := statsOf(t, body)
+	wantNum(t, "stats.workday+holiday 之和",
+		got["workday"].(float64)+got["holiday"].(float64), 730)
+
+	// 分段对照：2025 全年 + 2026 全年。
+	_, y2025 := doRequest(t, h, http.MethodGet, "/api/v1/stats?start=2025-01-01&end=2026-01-01")
+	_, y2026 := doRequest(t, h, http.MethodGet, "/api/v1/stats?start=2026-01-01&end=2027-01-01")
+	s25, s26 := statsOf(t, y2025), statsOf(t, y2026)
+	wantNum(t, "分段 workday 之和",
+		got["workday"].(float64), s25["workday"].(float64)+s26["workday"].(float64))
+	wantNum(t, "分段 holiday 之和",
+		got["holiday"].(float64), s25["holiday"].(float64)+s26["holiday"].(float64))
+
+	// days 明细同区间：超 366 天被拒。
+	code, body = doRequest(t, h, http.MethodGet, "/api/v1/days?start=2025-01-01&end=2027-01-01")
+	if code != http.StatusBadRequest {
+		t.Fatalf("days 大跨度状态码 = %d, want 400", code)
+	}
+	errObj, _ := body["error"].(map[string]any)
+	wantStr(t, "days 大跨度 error.code", errObj["code"], "invalid_range")
+
+	// 空区间（2027 未加载）：无覆盖年份，200 全零。
+	code, body = doRequest(t, h, http.MethodGet, "/api/v1/stats?start=2027-01-01&end=2027-01-01")
+	if code != http.StatusOK {
+		t.Fatalf("stats 空区间状态码 = %d, want 200", code)
+	}
+	wantNum(t, "空区间 total_days", body["total_days"], 0)
+	st := statsOf(t, body)
+	wantNum(t, "空区间 workday", st["workday"], 0)
+	wantNum(t, "空区间 holiday", st["holiday"], 0)
+}
+
+// 12. 混合模式下 days 与 stats 口径一致（前缀和路径统一）。
+func TestMixedStatsMatchesDays(t *testing.T) {
+	h := newTestHandler(t)
+	query := "start=2026-02-01&end=2026-02-03&dates=2026-02-17,2026-02-28"
+	_, daysBody := doRequest(t, h, http.MethodGet, "/api/v1/days?"+query)
+	code, statsBody := doRequest(t, h, http.MethodGet, "/api/v1/stats?"+query)
+	if code != http.StatusOK {
+		t.Fatalf("stats 混合模式状态码 = %d, want 200", code)
+	}
+	if !reflect.DeepEqual(daysBody["stats"], statsBody["stats"]) {
+		t.Errorf("混合模式 stats 不一致: days 接口 %#v, stats 接口 %#v",
+			daysBody["stats"], statsBody["stats"])
+	}
+	if daysBody["total_days"] != statsBody["total_days"] {
+		t.Errorf("混合模式 total_days 不一致: %#v vs %#v",
+			daysBody["total_days"], statsBody["total_days"])
 	}
 }
