@@ -10,7 +10,7 @@ goliday 是一个基于 Go 1.27 的中国法定节假日服务：以**按年组�
 
 ```
 goliday/
-├── go.mod                          # module goliday，go 1.27
+├── go.mod                          # module github.com/JayceChant/goliday，go 1.27
 ├── go.sum
 ├── daytype.go                      # DayType 位掩码枚举、Coarse/String 映射
 ├── config.go                       # TOML 解析（LoadYear）与校验（YearConfig.Validate）

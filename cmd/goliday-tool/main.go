@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 const usageText = `用法：

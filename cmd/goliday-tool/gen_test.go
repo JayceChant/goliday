@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // ann2026 模拟 2026 年假设方案的官方公告（对应 testdata/2026.toml 的元旦/春节/清明/劳动/国庆部分）。

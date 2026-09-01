@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // FuzzGenDraft 不变量：解析条目区间有效且在年内；草稿 off 全为周一~五、

@@ -16,8 +16,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	"goliday"
-	pb "goliday/proto/goliday/v1"
+	"github.com/JayceChant/goliday"
+	pb "github.com/JayceChant/goliday/proto/goliday/v1"
 )
 
 // newBufconnServer 从 ../../testdata 加载配置，在 bufconn 上启动 gRPC 服务

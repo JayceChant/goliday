@@ -1,4 +1,4 @@
-module goliday
+module github.com/JayceChant/goliday
 
 go 1.27
 

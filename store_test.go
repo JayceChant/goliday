@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 func TestStoreTempDirScenario(t *testing.T) {

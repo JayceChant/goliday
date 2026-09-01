@@ -10,7 +10,7 @@
 
 ### Requirement: 模块结构与依赖约束
 
-系统 SHALL 在仓库根创建 Go module（module 名 `goliday`，go 指令 1.27）；核心逻辑 SHALL 位于根包 `goliday`；服务与工具 SHALL 分别位于 `cmd/goliday-server`、`cmd/goliday-tool`。依赖按包分级：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**，不得导入 gRPC/protobuf；HTTP 处理仅标准库；gRPC 三件套（`google.golang.org/grpc`、`google.golang.org/protobuf` 及传递依赖）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包。
+系统 SHALL 在仓库根创建 Go module（module 名 `github.com/JayceChant/goliday`，go 指令 1.27）；核心逻辑 SHALL 位于根包 `goliday`（导入路径 `github.com/JayceChant/goliday`）；服务与工具 SHALL 分别位于 `cmd/goliday-server`、`cmd/goliday-tool`。依赖按包分级：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**，不得导入 gRPC/protobuf；HTTP 处理仅标准库；gRPC 三件套（`google.golang.org/grpc`、`google.golang.org/protobuf` 及传递依赖）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包。
 
 **决策依据**：核心库保持最小依赖面，gRPC 运行时隔离在入口与生成代码中。
 
@@ -247,7 +247,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 ### Requirement: proto 定义与生成代码
 
-系统 SHALL 提供 `proto/goliday/v1/goliday.proto`（syntax proto3，package `goliday.v1`，`option go_package = "goliday/proto/goliday/v1;golidayv1"`），供调用方直接引用；生成的 Go 代码 SHALL 入库于 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}`（调用方无需本地 protoc）。
+系统 SHALL 提供 `proto/goliday/v1/goliday.proto`（syntax proto3，package `goliday.v1`，`option go_package = "github.com/JayceChant/goliday/proto/goliday/v1;golidayv1"`），供调用方直接引用；生成的 Go 代码 SHALL 入库于 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}`（调用方无需本地 protoc）。
 
 proto 内容约定：
 - `DayType` 掩码以 `uint32` 表达并附注释（proto3 enum 无法表达位组合），注释标明细粒度位值（1/2/4/8/16）、粗粒度段值（3/28）与 6 种合法组合（1/4/6/12/16/24），与根包 `DayType` 完全一致；
@@ -258,7 +258,7 @@ proto 内容约定：
 
 #### Scenario: proto 可供调用方引用
 - **WHEN** 调用方获取本仓库后查找 `proto/goliday/v1/goliday.proto` 与生成代码
-- **THEN** 无需 protoc 即可 `import "goliday/proto/goliday/v1"`（同模块）或复制 .proto 生成其他语言桩代码
+- **THEN** 无需 protoc 即可 `import "github.com/JayceChant/goliday/proto/goliday/v1"`（同模块）或复制 .proto 生成其他语言桩代码
 
 #### Scenario: 再生成
 - **WHEN** 在仓库根按 proto 头注释的 protoc 命令重新生成

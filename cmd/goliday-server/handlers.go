@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // dateLayout HTTP 层统一使用的 YYYY-MM-DD 日期格式。

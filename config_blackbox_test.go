@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // layout 黑盒侧自带的 YYYY-MM-DD 格式（根包 dateLayout 为未导出标识符）。

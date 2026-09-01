@@ -297,7 +297,7 @@ gRPC 与 HTTP 同进程提供（`-grpc-addr`，默认 `:50051`，空字符串禁
 | proto 文件 | `proto/goliday/v1/goliday.proto`（package `goliday.v1`） |
 | 生成代码（已入库） | `proto/goliday/v1/goliday.pb.go`、`goliday_grpc.pb.go`（包名 `golidayv1`） |
 
-调用方无需本地 protoc：同模块直接 `import "goliday/proto/goliday/v1"`；跨语言可复制 `.proto` 自行生成桩代码。`DayType` 掩码在 proto 中以 `uint32` 表达并附位注释（proto3 enum 无法表达位组合），取值与第 6 节掩码表完全一致。
+调用方无需本地 protoc：同模块直接 `import "github.com/JayceChant/goliday/proto/goliday/v1"`；跨语言可复制 `.proto` 自行生成桩代码。`DayType` 掩码在 proto 中以 `uint32` 表达并附位注释（proto3 enum 无法表达位组合），取值与第 6 节掩码表完全一致。
 
 ### 7.2 服务与方法
 
@@ -335,8 +335,8 @@ resp, err := client.GetDay(ctx, &golidayv1.GetDayRequest{
 修改 `.proto` 后在仓库根重新生成（需 `protoc` 与两个插件在 PATH，生成文件随仓库提交）：
 
 ```bash
-protoc --go_out=. --go_opt=module=goliday \
-       --go-grpc_out=. --go-grpc_opt=module=goliday \
+protoc --go_out=. --go_opt=module=github.com/JayceChant/goliday \
+       --go-grpc_out=. --go-grpc_opt=module=github.com/JayceChant/goliday \
        proto/goliday/v1/goliday.proto
 ```
 

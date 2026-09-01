@@ -18,8 +18,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"goliday"
-	pb "goliday/proto/goliday/v1"
+	"github.com/JayceChant/goliday"
+	pb "github.com/JayceChant/goliday/proto/goliday/v1"
 )
 
 // grpcServer GolidayService 服务端实现，持有只读日历索引，

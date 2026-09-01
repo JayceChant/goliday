@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // validFineCombos 细粒度合法组合全集（6 种）及其期望数值与字符串。

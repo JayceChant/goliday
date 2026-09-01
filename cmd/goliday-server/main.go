@@ -18,7 +18,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // version 服务版本号。

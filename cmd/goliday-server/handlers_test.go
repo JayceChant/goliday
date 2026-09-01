@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // newTestHandler 从 ../../testdata 加载配置，构造与 main 一致的处理链。

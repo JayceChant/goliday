@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // newTestCalendar 加载 testdata 真实配置（2025、2026）构造 Calendar。

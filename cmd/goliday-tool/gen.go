@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // dateLayoutTool 与根包一致的 YYYY-MM-DD 日期格式。

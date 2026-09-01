@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"goliday"
+	"github.com/JayceChant/goliday"
 )
 
 // fuzzHandler 进程内仅构造一次处理链：store/calendar 构造完成后只读、

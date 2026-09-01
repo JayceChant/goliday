@@ -8,8 +8,8 @@
 //   - 细粒度统计对组合日按标志位交叉计数（各键之和可大于 total_days）。
 //
 // 再生成（需 protoc 与两个插件在 PATH，在仓库根执行）：
-//   protoc --go_out=. --go_opt=module=goliday \
-//         --go-grpc_out=. --go-grpc_opt=module=goliday \
+//   protoc --go_out=. --go_opt=module=github.com/JayceChant/goliday \
+//         --go-grpc_out=. --go-grpc_opt=module=github.com/JayceChant/goliday \
 //         proto/goliday/v1/goliday.proto
 // 参考版本：protoc v29.3、protoc-gen-go v1.36.5、protoc-gen-go-grpc v1.5.1。
 

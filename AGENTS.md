@@ -29,7 +29,7 @@
 
 ## 5. 技术约束（遵循 spec）
 
-- Go 1.27；模块名 `goliday`；核心逻辑位于根包 `goliday`，服务 `cmd/goliday-server`，工具 `cmd/goliday-tool`。
+- Go 1.27；模块名 `github.com/JayceChant/goliday`；核心逻辑位于根包 `goliday`，服务 `cmd/goliday-server`，工具 `cmd/goliday-tool`。
 - 依赖按包分级：根包仅 `github.com/BurntSushi/toml`（不得导入 gRPC/protobuf）；gRPC 三件套仅限 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包；HTTP 服务仅标准库。新增依赖前必须先在 spec 中论证并获准。
 - 提交前必须全部通过（在所选 shell 环境中执行）：
 

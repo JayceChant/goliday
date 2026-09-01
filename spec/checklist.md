@@ -35,3 +35,10 @@
 
 - [x] `README-CN.md` 为原中文版内容（仅新增语言互链），`README.md` 为语义对应的英文版；开头互链可相互跳转
 - [x] 验证命令全绿（纯文档变更，无代码改动）；执行提交（docs: README 改为英文版并新增中文版与语言互链）
+
+## 模块路径迁移（Task 20）
+
+- [x] `go.mod` module 为 `github.com/JayceChant/goliday`；全部 Go 文件 import 路径同步，`grep` 无残留旧路径
+- [x] proto `go_package` 更新为 `github.com/JayceChant/goliday/proto/goliday/v1;golidayv1` 并按 spec 命令重新生成 pb 代码（protoc v29.3 / protoc-gen-go v1.36.5 / protoc-gen-go-grpc v1.5.1）
+- [x] spec.md / AGENTS.md / docs（ARCHITECTURE、API）中的 module、go_package、import 示例与再生成命令全部同步
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（refactor: 模块路径迁移为 github.com/JayceChant/goliday）
