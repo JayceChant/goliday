@@ -9,3 +9,4 @@
 - [x] Task 13（测试强化）：根包测试黑盒化（`package goliday_test`，仅用导出 API）、DayType 全 256 取值穷举、已配置年份全年逐日穷举、5 个原生 fuzz 目标（种子内联，无语料残留）。
 - [x] Task 14~19（年份强校验 + 统计前缀和化）：`ErrYearNotLoaded` / `year_not_loaded`（四种查询形态，不再静默回退周休）、构造期组合计数前缀和（统计 O(覆盖年数)）、stats 取消 366 天跨度限制（days 保留上限防响应膨胀）、测试与文档同步。
 - [x] 文档精简：README 改为用户视角并修正过时的「无配置年回退」表述；spec.md 合并 ADDED/MODIFIED 为单一当前契约（保留决策依据）；tasks/checklist 压缩为批次总览；AGENTS.md 轻度精简并同步依赖分级表述；docs 修正过时条目与重复示例。
+- [x] README 双语化：原中文版移至 `README-CN.md`，`README.md` 改为英文版，两文件开头提供语言切换互链；纯文档变更，无代码改动。

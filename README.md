@@ -1,36 +1,38 @@
-# goliday — 中国法定节假日 API 服务
+# goliday — Chinese Public Holiday API Service
 
-基于 Go 1.27 的节假日查询服务：以**按年组织的稀疏配置文件**记录国务院假日办公布的放假与补班安排，其余日期由标准库周休规则推导，对外提供语义一致的 **HTTP 与 gRPC 双协议**接口，支持粗/细两级粒度的日期类型查询与区间统计。
+**English** | [简体中文](README-CN.md)
 
-## 核心设计
+A holiday lookup service built on Go 1.27: it records the holiday and workday-swap arrangements published by China's State Council in **sparse, per-year config files**, derives all other dates from standard-library weekend rules, and exposes semantically identical **HTTP and gRPC** interfaces supporting date-type queries and range statistics at both coarse and fine granularity.
 
-- **位掩码日期类型**：`DayType`（uint8）以可组合位标志表达 5 种细粒度（普通工作日/补班/周末/节日/调休）与 2 种粗粒度段值（工作日/节假日），细→粗用位运算与优先级规则（补班优先归工作日）映射。
-- **稀疏配置**：每年一个 TOML 文件，只记录"被调整过"的日期（`off` 仅工作日变休息、`work` 仅周末变上班），周末与普通工作日由标准库按星期推导、一律不写入——年文件仅 20~30 行，可人工审计。
-- **配置优先 + 年份强校验**：有配置年份以配置为准，未覆盖日期回退周六/周日判断；查询覆盖未加载配置的年份时返回 `year_not_loaded` 错误而非静默回退，避免"未配置"被误读为"真实周末"。
-- **前缀和统计**：加载时为每年构建细粒度组合计数前缀和，统计为 O(覆盖年数) 差分，`/stats` 接口不限查询跨度。
-- **极小依赖面**：核心包仅依赖 `github.com/BurntSushi/toml`；gRPC 运行时隔离在服务入口与生成代码包中。零框架、零数据库，配置启动时一次性加载纯内存。
+## Core Design
 
-## 快速开始
+- **Bitmask day types**: `DayType` (uint8) uses composable bit flags to express 5 fine-grained types (plain workday / swapped workday / weekend / festival / adjusted rest) plus 2 coarse-grained values (workday / holiday); fine→coarse mapping is pure bit arithmetic with priority rules (swapped workdays always count as workdays).
+- **Sparse config**: one TOML file per year, containing only "adjusted" dates (`off` marks weekdays turned into rest days, `work` marks weekends turned into workdays); weekends and plain weekdays are derived from the weekday, never written down — a yearly file is only 20–30 lines and human-auditable.
+- **Config-first with strict year validation**: for years with a config, the config wins; uncovered dates fall back to Saturday/Sunday checks. Queries touching a year whose config is not loaded return a `year_not_loaded` error instead of silently falling back, so "not configured" can never be misread as "actually a weekend".
+- **Prefix-sum statistics**: per-year prefix sums over fine-grained flag counts are built at load time, making statistics an O(years-covered) difference — the `/stats` endpoint has no span limit.
+- **Minimal dependency surface**: the core package depends only on `github.com/BurntSushi/toml`; the gRPC runtime is isolated to service entrypoints and generated-code packages. Zero frameworks, zero databases; configs are loaded once at startup into pure memory.
 
-环境要求：Go 1.27+。
+## Quick Start
+
+Requires Go 1.27+.
 
 ```bash
-# 启动（HTTP :8080，gRPC :50051）
+# Start the server (HTTP :8080, gRPC :50051)
 go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 
-# 单日查询（默认粗粒度）
+# Single-day query (coarse granularity by default)
 curl "http://localhost:8080/api/v1/days?date=2026-02-20"
 # {"date":"2026-02-20","type":28,"type_label":"holiday","total_days":1,"stats":{"holiday":1,"workday":0}}
 
-# 细粒度：节日当天调休 → festival|adjusted = 24
+# Fine granularity: adjusted rest on festival day → festival|adjusted = 24
 curl "http://localhost:8080/api/v1/days?date=2026-02-17&detailed=true"
 # {"date":"2026-02-17","type":24,"type_label":"festival|adjusted",...}
 
-# 区间统计（左闭右开）
+# Range statistics (half-open interval)
 curl "http://localhost:8080/api/v1/stats?start=2026-02-14&end=2026-02-17"
 # {"mode":"range",...,"total_days":3,"stats":{"workday":1,"holiday":2}}
 
-# gRPC（Go 客户端）
+# gRPC (Go client)
 conn, _ := grpc.NewClient("localhost:50051",
     grpc.WithTransportCredentials(insecure.NewCredentials()))
 client := golidayv1.NewGolidayServiceClient(conn)
@@ -38,66 +40,66 @@ resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detai
 // resp.Type == 24, resp.TypeLabel == "festival|adjusted"
 ```
 
-> 示例基于 `configs/2026.toml`（假设示例方案，非官方）。正式使用请按[年度配置更新流程](#年度配置更新)以官方公告生成。
+> Examples are based on `configs/2026.toml` (a hypothetical sample, not official). For production use, generate the config from official announcements following the [annual config update process](#annual-config-update).
 
-## API 概览
+## API Overview
 
-| 协议 | 入口 | 说明 |
+| Protocol | Endpoint | Description |
 |---|---|---|
-| HTTP | `GET /api/v1/days` | 单日 / 区间（左闭右开）/ 离散 / 混合并集查询，含逐日明细；区间跨度 ≤366 天 |
-| HTTP | `GET /api/v1/stats` | 与 `/days` 统计口径一致，无明细；不限跨度 |
-| HTTP | `GET /healthz` | 健康检查，返回已加载年份 |
-| gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`，与 HTTP 一一对应，另注册 gRPC 标准健康检查 |
+| HTTP | `GET /api/v1/days` | Single-day / range (half-open) / discrete / mixed-union queries with per-day details; range span ≤366 days |
+| HTTP | `GET /api/v1/stats` | Same statistics as `/days`, without details; no span limit |
+| HTTP | `GET /healthz` | Health check, returns loaded years |
+| gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`, one-to-one with HTTP; standard gRPC health checking also registered |
 
-日期类型掩码（`type_label` 即 `DayType.String()`，组合按位从低到高以 `|` 连接）：
+Day-type bitmask (`type_label` is exactly `DayType.String()`; combinations are joined by `|` from low to high bits):
 
-| 值 | 含义 | | 值 | 含义 |
+| Value | Meaning | | Value | Meaning |
 |---|---|---|---|---|
-| 1 | 普通工作日 | | 3 | **粗粒度：工作日**（1\|2） |
-| 2 | 补班 | | 28 | **粗粒度：节假日**（4\|8\|16） |
-| 4 | 周末 | | 6 | 补班逢周末 |
-| 8 | 节日 | | 12 | 节日逢周末 |
-| 16 | 调休 | | 24 | 节日当天调休 |
+| 1 | Plain workday | | 3 | **Coarse: workday** (1\|2) |
+| 2 | Swapped workday | | 28 | **Coarse: holiday** (4\|8\|16) |
+| 4 | Weekend | | 6 | Swapped workday on weekend |
+| 8 | Festival | | 12 | Festival on weekend |
+| 16 | Adjusted rest | | 24 | Adjusted rest on festival day |
 
-细粒度统计（`detailed=true`）为单标志位交叉计数：组合日对其每个标志各计 1 天，各键之和可大于 `total_days`；总休息/上班天数请用粗粒度 `stats.holiday`/`stats.workday`。
+Fine-grained statistics (`detailed=true`) cross-count single flags: a combined day counts 1 day toward each of its flags, so the sum of keys may exceed `total_days`; for total rest/workday days use the coarse `stats.holiday`/`stats.workday`.
 
-完整契约（参数、响应结构、错误码、gRPC 调用示例、proto 再生成命令）见 [docs/API.md](docs/API.md)。
+Full contract (parameters, response structures, error codes, gRPC examples, proto regeneration) in [docs/API.md](docs/API.md) (Chinese).
 
-## 年度配置更新
+## Annual Config Update
 
-每年 11 月左右国务院公布次年安排后：
+Around November each year, after the State Council publishes next year's arrangement:
 
-1. 用官方公告生成草稿：`go run ./cmd/goliday-tool gen -year 2027 -out configs/2027.toml -file 公告.txt`（或使用 [docs/generate_prompt.md](docs/generate_prompt.md) 的 LLM 提示词模板）；
-2. 校验：`go run ./cmd/goliday-tool validate configs/2027.toml`；
-3. 人工抽查若干日期后放入 `configs/`，重启服务并经 `/healthz` 确认年份已加载。
+1. Generate a draft from the official announcement: `go run ./cmd/goliday-tool gen -year 2027 -out configs/2027.toml -file announcement.txt` (or use the LLM prompt template in [docs/generate_prompt.md](docs/generate_prompt.md));
+2. Validate: `go run ./cmd/goliday-tool validate configs/2027.toml`;
+3. Spot-check several dates manually, place the file into `configs/`, restart the service and confirm via `/healthz` that the year is loaded.
 
-配置格式（选型依据、字段语义、校验规则、判定算法）见 [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md)，完整注释示例见 [docs/holiday_config_example.toml](docs/holiday_config_example.toml)。
+Config format (rationale, field semantics, validation rules, determination algorithm) in [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) (Chinese); fully annotated example in [docs/holiday_config_example.toml](docs/holiday_config_example.toml).
 
-## 架构与依赖
+## Architecture & Dependencies
 
 ```
-cmd/goliday-server（HTTP + gRPC 入口）   cmd/goliday-tool（gen/validate）
+cmd/goliday-server (HTTP + gRPC entry)   cmd/goliday-tool (gen/validate)
         │                                      │
-        └────────────► 根包 goliday（核心库）◄──┘
-     daytype（掩码）→ config（TOML）→ store（按年装载）→ calendar（判定/区间/统计）
+        └────────────► root package goliday (core lib) ◄──┘
+     daytype (bitmask) → config (TOML) → store (per-year loading) → calendar (determination/range/stats)
 ```
 
-依赖按包分级：根包仅 `BurntSushi/toml`（零 gRPC 导入）；gRPC 三件套仅限 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包。详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+Dependencies are tiered per package: the root package uses only `BurntSushi/toml` (zero gRPC imports); the gRPC trio is confined to the `proto/goliday/v1/` generated-code package and `cmd/` subpackages. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Chinese).
 
-## 开发
+## Development
 
 ```bash
 go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .
 ```
 
-测试数据：`testdata/2025.toml`（真实官方方案）、`testdata/2026.toml`（假设示例）、`testdata/invalid/`（非法样例）。
+Test data: `testdata/2025.toml` (real official plan), `testdata/2026.toml` (hypothetical sample), `testdata/invalid/` (invalid samples).
 
-## 文档索引
+## Documentation Index
 
-| 文档 | 内容 |
+| Doc | Contents |
 |---|---|
-| [docs/API.md](docs/API.md) | HTTP 与 gRPC 完整契约、掩码对照、调用示例 |
-| [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | 配置格式选型、稀疏表原则、校验规则、判定算法 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 目录结构、分层、依赖约束、数据流 |
-| [docs/generate_prompt.md](docs/generate_prompt.md) | 官方公告 → 年度配置的 LLM 提示词模板 |
-| [spec/](spec/) | 需求规格、任务清单与验收清单（遵循 [AGENTS.md](AGENTS.md)） |
+| [docs/API.md](docs/API.md) | Full HTTP & gRPC contract, bitmask reference, examples (Chinese) |
+| [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | Config format rationale, sparse-table principles, validation rules, algorithm (Chinese) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Directory layout, layering, dependency constraints, data flow (Chinese) |
+| [docs/generate_prompt.md](docs/generate_prompt.md) | LLM prompt template: official announcement → yearly config (Chinese) |
+| [spec/](spec/) | Requirements spec, task list and acceptance checklist (see [AGENTS.md](AGENTS.md)) |
