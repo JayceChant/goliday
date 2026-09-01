@@ -300,7 +300,7 @@ pkg.go.dev 文档为 Go 官方服务自动抓取（模块可解析、可编译�
 
 SonarCloud 侧：仓库不预置 workflow（CI-based 分析需 `SONAR_TOKEN` secret，另行配置），质量门禁徽章与结果链接依赖 SonCloud 端绑定仓库并启用 Go automatic analysis（push 后自动分析）。
 
-README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg.go.dev、OpenSSF Scorecard、SonarCloud 徽章，并设「质量与持续集成」章节以表格链接各服务结果页。
+README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg.go.dev、OpenSSF Scorecard、SonarCloud 徽章；各服务的说明与结果页链接 SHALL 收录于 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)（质量门禁与 CI 章节），README 不设「质量与持续集成」章节——徽章保持可发现性，详细内容仅面向维护者，避免对使用者构成干扰。
 
 **决策依据**：Actions/Codecov/Scorecard/CodeQL/govulncheck/pkg.go.dev 均可直接在仓库内落地且无需注册；SonarCloud 徽章仅依赖其在 SonCloud 端启用项目；Snyk/Socket 需 GitHub App 绑定，不在仓库内预置，避免空配置导致流水线常红。
 
@@ -469,13 +469,13 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 仓库根 SHALL 提供 `LICENSE` 文件，采用 **MIT 许可证**标准文本，版权行 `Copyright (c) 2026 Jayce Chant (陈思杰)`。
 
-README 双语 SHALL 在标题下接入 MIT License 徽章（链接 `LICENSE`），并在「质量与持续集成」章节表格中新增许可证条目。
+README 双语 SHALL 在标题下接入 MIT License 徽章（链接 `LICENSE`）；许可证说明收录在 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 质量门禁表格的条目中。
 
 **决策依据**：MIT 为最宽松的常用许可证，利于嵌入调用与 Scorecard 的 License 检测项；版权人保留中文名以便实名归属。
 
 #### Scenario: License 检测通过
 - **WHEN** GitHub 或 OpenSSF Scorecard 检测仓库许可证
-- **THEN** 识别为 MIT；README 双语徽章与表格条目均可跳转至 `LICENSE`
+- **THEN** 识别为 MIT；README 双语徽章均可跳转至 `LICENSE`
 
 ## 附录：核心包 API 形态
 

@@ -191,3 +191,19 @@ JSON 序列化返回
 | `FuzzGenDraft` | tool（白盒） | 任意公告解析出的草稿恒满足稀疏表不变量，自检通过可加载 |
 
 冒烟：`go test -run=^$ -fuzz=Fuzz<Name> -fuzztime=10s`（逐包逐目标）。fuzz 发现的崩溃语料按 Go 惯例落盘 `testdata/fuzz/`，须转写为常规回归用例后删除，仓库不保留语料文件。
+
+---
+
+## 7. 质量门禁与 CI
+
+面向维护者的服务状态索引（徽章见 README 顶部），与代码行为无关。
+
+| 服务 | 说明 |
+|---|---|
+| [GitHub Actions](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | Go 1.27.x（go.mod 最低要求）+ stable 双版本矩阵：build、vet、gofmt、`go test -race`，另设 golangci-lint 零告警作业（[工作流](../.github/workflows/ci.yml)） |
+| [Codecov](https://codecov.io/gh/JayceChant/goliday) | `go test -coverprofile` 覆盖率上报，逐行查看覆盖详情 |
+| [CodeQL](https://github.com/JayceChant/goliday/security/code-scanning) | GitHub 官方静态安全分析，每周定时 + push/PR 触发，告警见 code scanning（[工作流](../.github/workflows/codeql.yml)） |
+| [govulncheck](https://github.com/JayceChant/goliday/actions/workflows/govulncheck.yml) | Go 官方漏洞扫描（golang.org/x/vuln），仅可被调用路径触达的漏洞会阻塞（[工作流](../.github/workflows/govulncheck.yml)） |
+| [pkg.go.dev](https://pkg.go.dev/github.com/JayceChant/goliday) | Go 官方文档构建与导入检查，随模块版本自动更新 |
+| [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | 仓库安全实践自动评分，每周定时运行，SARIF 同步至 code scanning（[工作流](../.github/workflows/scorecard.yml)） |
+| [SonarCloud](https://sonarcloud.io/summary/new_code?id=JayceChant_goliday) | 独立质量门禁：代码异味/漏洞/重复率/覆盖率，push 后自动分析 |

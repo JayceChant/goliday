@@ -124,25 +124,12 @@ go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .
 
 测试数据：`testdata/2025.toml`（真实官方方案）、`testdata/2026.toml`（假设示例）、`testdata/invalid/`（非法样例）。
 
-## 质量与持续集成
-
-| 服务 | 结果 | 说明 |
-|---|---|---|
-| [GitHub Actions](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | [![ci](https://github.com/JayceChant/goliday/actions/workflows/ci.yml/badge.svg)](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | Go 1.27.x（go.mod 最低要求）+ stable 双版本矩阵：build、vet、gofmt、`go test -race`，另设 golangci-lint 零告警作业（[工作流](.github/workflows/ci.yml)） |
-| [Codecov](https://codecov.io/gh/JayceChant/goliday) | [![codecov](https://codecov.io/gh/JayceChant/goliday/graph/badge.svg)](https://codecov.io/gh/JayceChant/goliday) | `go test -coverprofile` 覆盖率上报，逐行查看覆盖详情 |
-| [CodeQL](https://github.com/JayceChant/goliday/security/code-scanning) | [![CodeQL](https://github.com/JayceChant/goliday/actions/workflows/codeql.yml/badge.svg)](https://github.com/JayceChant/goliday/actions/workflows/codeql.yml) | GitHub 官方静态安全分析，每周定时 + push/PR 触发，告警见 code scanning（[工作流](.github/workflows/codeql.yml)） |
-| [govulncheck](https://github.com/JayceChant/goliday/actions/workflows/govulncheck.yml) | [![govulncheck](https://github.com/JayceChant/goliday/actions/workflows/govulncheck.yml/badge.svg)](https://github.com/JayceChant/goliday/actions/workflows/govulncheck.yml) | Go 官方漏洞扫描（golang.org/x/vuln），仅可被调用路径触达的漏洞会阻塞（[工作流](.github/workflows/govulncheck.yml)） |
-| [pkg.go.dev](https://pkg.go.dev/github.com/JayceChant/goliday) | [![Go Reference](https://pkg.go.dev/badge/github.com/JayceChant/goliday.svg)](https://pkg.go.dev/github.com/JayceChant/goliday) | Go 官方文档构建与导入检查，随模块版本自动更新 |
-| [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JayceChant/goliday/badge)](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | 仓库安全实践自动评分，每周定时运行，SARIF 同步至 code scanning（[工作流](.github/workflows/scorecard.yml)） |
-| [SonarCloud](https://sonarcloud.io/summary/new_code?id=JayceChant_goliday) | [![SonarCloud](https://sonarcloud.io/api/project_badges/quality_gate?project=JayceChant_goliday)](https://sonarcloud.io/summary/new_code?id=JayceChant_goliday) | 独立质量门禁：代码异味/漏洞/重复率/覆盖率，push 后自动分析 |
-| [MIT License](LICENSE) | ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) | 以 [MIT 许可证](LICENSE)发布，Copyright (c) 2026 Jayce Chant（陈思杰） |
-
 ## 文档索引
 
 | 文档 | 内容 |
 |---|---|
 | [docs/API.md](docs/API.md) | HTTP 与 gRPC 完整契约、掩码对照、调用示例 |
 | [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | 配置格式选型、稀疏表原则、校验规则、判定算法 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 目录结构、分层、依赖约束、数据流 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 目录结构、分层、依赖约束、数据流、测试分层、质量门禁与 CI |
 | [docs/generate_prompt.md](docs/generate_prompt.md) | 官方公告 → 年度配置的 LLM 提示词模板 |
 | [spec/](spec/) | 需求规格、任务清单与验收清单（遵循 [AGENTS.md](AGENTS.md)） |

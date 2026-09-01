@@ -101,3 +101,10 @@
 - [x] 修复：`Validate` 新增校验规则「festival.date 为周一~周五时须在 off 中」（spec 校验规则清单、CONFIG_FORMAT.md 规则 10 与注 1、generate_prompt.md 自检清单、holiday_config_example.toml 注释同步）；`configs/` 现有配置经验证工具确认仍通过
 - [x] `FuzzGenDraft` 允许的 selfCheck 失败类别同步扩展（spec 不变量表与测试注释一致）；5 个 fuzz 目标冒烟复跑全部 PASS
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（test: 提升测试覆盖率并修复 fuzz 发现的索引越界缺陷）
+
+## README 移除质量与 CI 章节
+
+- [x] README 双语删除「质量与持续集成 / Quality & CI」章节（标题下徽章保留），文档索引中 ARCHITECTURE.md 条目补充「质量门禁与 CI」描述
+- [x] docs/ARCHITECTURE.md 新增第 7 节「质量门禁与 CI」：收录原 README 表格（工作流链接改为 `../` 相对路径），许可证条目按徽章语义移除
+- [x] spec.md 同步修订：「在线质量门禁与 CI」与「开源许可证」Requirement 中 README 章节表述改为徽章 + 指向 ARCHITECTURE.md；tasks.md 追加批次条目
+- [x] README 双语语义一致、无本地绝对路径；验证命令全绿（纯文档变更，无 Go 代码改动）；执行提交（docs: README 移除质量与 CI 章节并迁移至架构文档）

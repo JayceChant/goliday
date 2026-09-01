@@ -143,6 +143,6 @@ Test data: `testdata/2025.toml` (real official plan), `testdata/2026.toml` (hypo
 |---|---|
 | [docs/API.md](docs/API.md) | Full HTTP & gRPC contract, bitmask reference, examples (Chinese) |
 | [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | Config format rationale, sparse-table principles, validation rules, algorithm (Chinese) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Directory layout, layering, dependency constraints, data flow (Chinese) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Directory layout, layering, dependency constraints, data flow, testing layers, quality gates & CI (Chinese) |
 | [docs/generate_prompt.md](docs/generate_prompt.md) | LLM prompt template: official announcement → yearly config (Chinese) |
 | [spec/](spec/) | Requirements spec, task list and acceptance checklist (see [AGENTS.md](AGENTS.md)) |
