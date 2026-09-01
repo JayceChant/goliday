@@ -229,6 +229,8 @@ func TestBadRequest(t *testing.T) {
 		{"/api/v1/days?start=2026-01-01&end=2027-06-01", "invalid_range"},
 		{"/api/v1/days", "missing_query"},
 		{"/api/v1/days?dates=abc", "invalid_date"},
+		{"/api/v1/days?start=abc&end=2026-03-05", "invalid_date"},
+		{"/api/v1/days?start=2026-03-05&end=abc", "invalid_date"},
 	}
 	for _, c := range cases {
 		code, body := doRequest(t, h, http.MethodGet, c.target)
@@ -363,6 +365,86 @@ func TestStatsLargeRangeAndEmptyRange(t *testing.T) {
 	st := statsOf(t, body)
 	wantNum(t, "空区间 workday", st["workday"], 0)
 	wantNum(t, "空区间 holiday", st["holiday"], 0)
+}
+
+// 13. start/end 未成对（仅提供其一）返回 invalid_range。
+func TestRangeUnpaired(t *testing.T) {
+	h := newTestHandler(t)
+	for _, target := range []string{
+		"/api/v1/days?start=2026-03-05",
+		"/api/v1/days?end=2026-03-05",
+		"/api/v1/stats?start=2026-03-05",
+	} {
+		code, body := doRequest(t, h, http.MethodGet, target)
+		if code != http.StatusBadRequest {
+			t.Errorf("%s 状态码 = %d, want 400", target, code)
+			continue
+		}
+		errObj, ok := body["error"].(map[string]any)
+		if !ok {
+			t.Errorf("%s 响应缺少 error 对象: %v", target, body)
+			continue
+		}
+		wantStr(t, "error.code("+target+")", errObj["code"], "invalid_range")
+	}
+}
+
+// 14. 混合查询中列表日期全部落在区间内：剔除后列表统计为空，
+// total_days 即区间天数。
+func TestMixedDatesAllInsideRange(t *testing.T) {
+	h := newTestHandler(t)
+	code, body := doRequest(t, h, http.MethodGet,
+		"/api/v1/days?start=2026-02-01&end=2026-02-28&dates=2026-02-17,2026-02-20")
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, want 200", code)
+	}
+	wantStr(t, "mode", body["mode"], "list")
+	wantNum(t, "total_days", body["total_days"], 27)
+}
+
+// 15. recover 中间件：下游 panic 统一转为 500 JSON 错误，不退出进程。
+func TestRecoverMiddlewarePanic(t *testing.T) {
+	h := recoverMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("boom")
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("状态码 = %d, want 500", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("响应不是合法 JSON: %v", err)
+	}
+	errObj, ok := body["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("响应缺少 error 对象: %v", body)
+	}
+	wantStr(t, "error.code", errObj["code"], "internal_error")
+}
+
+// 16. 日志中间件：下游未写任何响应时状态码兜底为 200。
+func TestLoggingMiddlewareNoWrite(t *testing.T) {
+	h := loggingMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	req := httptest.NewRequest(http.MethodGet, "/empty", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("状态码 = %d, want 200", rec.Code)
+	}
+}
+
+// 17. statusRecorder：未先 WriteHeader 直接 Write 时状态码兜底为 200。
+func TestStatusRecorderWriteDefaultStatus(t *testing.T) {
+	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
+	n, err := rec.Write([]byte("ok"))
+	if err != nil || n != 2 {
+		t.Fatalf("Write = %d, %v, want 2, nil", n, err)
+	}
+	if rec.status != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.status)
+	}
 }
 
 // 12. 混合模式下 days 与 stats 口径一致（前缀和路径统一）。

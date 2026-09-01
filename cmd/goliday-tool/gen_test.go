@@ -259,6 +259,77 @@ func TestParseWarningsAndSkipRules(t *testing.T) {
 	if len(res.warnings) == 0 || !strings.Contains(strings.Join(res.warnings, ";"), "未解析出假期日期") {
 		t.Errorf("无日期条目应告警，got %v", res.warnings)
 	}
+
+	// 重复条目：同节日名再次出现 → 忽略并告警，区间仍取首次。
+	res, d = genFor(t, 2026, "一、元旦：1月1日至2日放假，共2天。二、元旦：1月1日至2日放假，共2天。")
+	if len(res.entries) != 1 {
+		t.Errorf("entries = %d，期望 1", len(res.entries))
+	}
+	if len(d.festivals) != 1 || len(d.off) != 2 {
+		t.Errorf("festivals=%+v off=%v，期望 1 条节日与 2 天 off", d.festivals, d.off)
+	}
+	if !strings.Contains(strings.Join(res.warnings, ";"), "忽略重复") {
+		t.Errorf("重复条目应告警，got %v", res.warnings)
+	}
+
+	// 补班日期非法（2月30日）→ 告警且不写入。
+	res, _ = genFor(t, 2026, "2月30日（星期六）上班。")
+	if len(res.work) != 0 || !strings.Contains(strings.Join(res.warnings, ";"), "忽略不存在的日期") {
+		t.Errorf("work=%v warnings=%v，期望空与非周末外的不存在日期告警", res.work, res.warnings)
+	}
+
+	// 重复补班日期 → 去重，仅写入一次。
+	_, d = genFor(t, 2026, "1月24日（星期六）、1月24日上班。")
+	if len(d.work) != 1 {
+		t.Errorf("work = %v，期望去重后仅 1 条", d.work)
+	}
+
+	// 多节日共假期：一段含两个节日名 → 各生成一条 festival 条目。
+	res, d = genFor(t, 2026, "一、清明节：4月4日至6日放假。二、劳动节：4月4日至6日放假。")
+	if len(res.entries) != 2 || len(d.festivals) != 2 {
+		t.Errorf("entries=%d festivals=%d，期望各 2", len(res.entries), len(d.festivals))
+	}
+}
+
+// 农历标注给出的日期在该年不存在时，festival 日期回退 TODO 占位。
+func TestBuildDraftMarkDateInvalid(t *testing.T) {
+	res, d := genFor(t, 2026, "一、春节：2月15日至2月20日放假调休，共6天。2月30日（正月初一）为春节。")
+	if len(res.entries) != 1 {
+		t.Fatalf("entries = %d，期望 1", len(res.entries))
+	}
+	if len(d.festivals) != 1 || d.festivals[0].Date != dateTODO {
+		t.Errorf("festivals = %+v，期望春节 TODO 占位", d.festivals)
+	}
+	if len(d.todos) != 1 || d.todos[0] != "春节" {
+		t.Errorf("todos = %v，期望 [春节]", d.todos)
+	}
+}
+
+// festival 排序：TODO 占位排在末尾，其余按日期升序。
+func TestFestivalSortTODOAtEnd(t *testing.T) {
+	_, d := genFor(t, 2026, "一、端午节：6月19日至21日放假。二、元旦：1月1日至3日放假。")
+	if len(d.festivals) != 2 {
+		t.Fatalf("festivals = %+v", d.festivals)
+	}
+	if d.festivals[0].Name != "元旦" || d.festivals[1].Date != dateTODO {
+		t.Errorf("排序结果 = %+v，期望元旦在前、TODO 在末尾", d.festivals)
+	}
+}
+
+// lunarMarks 同名农历标注取首次出现。
+func TestLunarMarksFirstWins(t *testing.T) {
+	marks := lunarMarks("2月16日（正月初一）。（2月16日正月初一）重复标注。")
+	if len(marks) != 1 || marks["春节"] != (dateMD{2, 16}) {
+		t.Fatalf("marks = %v，期望仅 春节=2月16日", marks)
+	}
+}
+
+// selfCheck 对非 TODO 的非法 festival 日期返回解析错误。
+func TestSelfCheckInvalidFestivalDate(t *testing.T) {
+	d := &draft{year: 2026, festivals: []draftFestival{{Name: "春节", Date: "2026-13-01"}}}
+	if err := selfCheck(d); err == nil || errors.Is(err, errFestivalTODO) {
+		t.Fatalf("selfCheck = %v，期望日期解析错误", err)
+	}
 }
 
 func TestParseCNNum(t *testing.T) {
@@ -267,7 +338,7 @@ func TestParseCNNum(t *testing.T) {
 		want int
 	}{
 		{"一", 1}, {"九", 9}, {"十", 10}, {"十五", 15}, {"二十", 20},
-		{"二十一", 21}, {"三十", 30}, {"三十一", 31},
+		{"二十一", 21}, {"三十", 30}, {"三十一", 31}, {"一十", 10},
 	}
 	for _, c := range cases {
 		got, ok := parseCNNum(c.in)
@@ -275,8 +346,11 @@ func TestParseCNNum(t *testing.T) {
 			t.Errorf("parseCNNum(%q) = %d,%v，期望 %d", c.in, got, ok, c.want)
 		}
 	}
-	if _, ok := parseCNNum("百"); ok {
-		t.Errorf("parseCNNum(\"百\") 不应成功")
+	// 非法结构：无十位且多字、十不在次位、十位后接非数字、空串。
+	for _, s := range []string{"百", "十一十", "一一十", "甲十", "十甲", "十十一", ""} {
+		if v, ok := parseCNNum(s); ok {
+			t.Errorf("parseCNNum(%q) = %d, true，期望失败", s, v)
+		}
 	}
 }
 
@@ -299,6 +373,13 @@ func TestExtractDates(t *testing.T) {
 			if got[i] != c.want[i] {
 				t.Errorf("extractDates(%q)[%d] = %v，期望 %v", c.in, i, got[i], c.want[i])
 			}
+		}
+	}
+
+	// 中文月/日超出可解析范围时放弃该日期。
+	for _, s := range []string{"十十月五日", "十月十十日"} {
+		if got := extractDates(s); len(got) != 0 {
+			t.Errorf("extractDates(%q) = %v，期望空", s, got)
 		}
 	}
 }
@@ -413,6 +494,10 @@ func TestRunGenUsageErrors(t *testing.T) {
 	if rc := runGen([]string{"-year", "abc", "-out", "-"}); rc != 2 {
 		t.Errorf("非法 -year 退出码 = %d，期望 2", rc)
 	}
+	// 年份越界（>9999）与 -out 缺省同属用法错误。
+	if rc := runGen([]string{"-year", "10000", "-out", "-"}); rc != 2 {
+		t.Errorf("越界 -year 退出码 = %d，期望 2", rc)
+	}
 }
 
 func TestRunGenFileErrors(t *testing.T) {
@@ -422,5 +507,57 @@ func TestRunGenFileErrors(t *testing.T) {
 	if rc := runGen([]string{"-year", "2026", "-file", writeTempFile(t, "empty.txt", "本通知自发布之日起执行。"),
 		"-out", filepath.Join(t.TempDir(), "2026.toml")}); rc != 1 {
 		t.Errorf("无可解析条目退出码 = %d，期望 1", rc)
+	}
+}
+
+// -out 为 "-" 时草稿写到 stdout。
+func TestRunGenStdoutOut(t *testing.T) {
+	ann := writeTempFile(t, "notice.txt", ann2026)
+	out := captureStdout(t, func() {
+		if rc := runGen([]string{"-year", "2026", "-file", ann, "-out", "-"}); rc != 0 {
+			t.Errorf("runGen 退出码 = %d，期望 0", rc)
+		}
+	})
+	if !strings.Contains(out, "year = 2026") || !strings.Contains(out, "[[festival]]") {
+		t.Errorf("stdout 输出缺少 TOML 骨架: %q", out)
+	}
+}
+
+// runGen 各结果路径：警告输出、TODO 跳过整体校验、自检失败、写出失败、
+// 公告内容读取失败。
+func TestRunGenOutcomes(t *testing.T) {
+	// 带警告的正常公告（补班非周末被跳过）：退出码仍 0。
+	ann := writeTempFile(t, "warn.txt", "一、元旦：1月1日放假1天。3月3日（星期二）上班。")
+	if rc := runGen([]string{"-year", "2026", "-file", ann, "-out", filepath.Join(t.TempDir(), "2026.toml")}); rc != 0 {
+		t.Errorf("带警告公告退出码 = %d，期望 0", rc)
+	}
+
+	// TODO 占位：跳过整体校验仅告警，退出码 0。
+	ann = writeTempFile(t, "todo.txt", "一、端午节：6月19日至21日放假，共3天。")
+	if rc := runGen([]string{"-year", "2026", "-file", ann, "-out", "-"}); rc != 0 {
+		t.Errorf("TODO 公告退出码 = %d，期望 0", rc)
+	}
+
+	// 自检失败：除夕与春节的农历标注推断出同一天 → festival 日期重复，
+	// 退出码 1，文件仍写出供人工核对。
+	ann = writeTempFile(t, "dup.txt", "一、除夕：2月16日（除夕）放假。二、春节：2月16日（正月初一）放假。")
+	out := filepath.Join(t.TempDir(), "2026.toml")
+	if rc := runGen([]string{"-year", "2026", "-file", ann, "-out", out}); rc != 1 {
+		t.Errorf("自检失败退出码 = %d，期望 1", rc)
+	}
+	if _, err := goliday.LoadYear(out); err == nil || !strings.Contains(err.Error(), "重复") {
+		t.Errorf("产物 LoadYear 错误 = %v，期望 festival 日期重复", err)
+	}
+
+	// 写出失败：-out 指向不存在的目录。
+	ann = writeTempFile(t, "ok.txt", ann2026)
+	if rc := runGen([]string{"-year", "2026", "-file", ann,
+		"-out", filepath.Join(t.TempDir(), "no-such-dir", "2026.toml")}); rc != 1 {
+		t.Errorf("写出失败退出码 = %d，期望 1", rc)
+	}
+
+	// -file 为目录：读取公告内容失败。
+	if rc := runGen([]string{"-year", "2026", "-file", t.TempDir(), "-out", "-"}); rc != 1 {
+		t.Errorf("目录公告退出码 = %d，期望 1", rc)
 	}
 }

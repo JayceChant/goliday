@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
@@ -21,7 +20,7 @@ import (
 )
 
 // newBufconnServer 从 ../../testdata 加载配置，在 bufconn 上启动 gRPC 服务
-// （GolidayService + 标准健康检查，与 newGRPCServer 注册一致），
+// （经 newGRPCServer 注册 GolidayService + 标准健康检查，与 main 一致），
 // 返回两个客户端；连接与服务端随测试结束清理。
 func newBufconnServer(t *testing.T) (pb.GolidayServiceClient, grpc_health_v1.HealthClient) {
 	t.Helper()
@@ -32,11 +31,7 @@ func newBufconnServer(t *testing.T) (pb.GolidayServiceClient, grpc_health_v1.Hea
 	cal := goliday.NewCalendar(store)
 
 	lis := bufconn.Listen(1024 * 1024)
-	srv := grpc.NewServer()
-	pb.RegisterGolidayServiceServer(srv, &grpcServer{cal: cal})
-	healthSrv := health.NewServer()
-	healthSrv.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-	grpc_health_v1.RegisterHealthServer(srv, healthSrv)
+	srv := newGRPCServer(cal)
 	// Serve 在 t.Cleanup 的 srv.Stop 时返回错误，属预期，无需处理。
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
@@ -281,6 +276,12 @@ func TestGRPCInvalidArgument(t *testing.T) {
 
 	_, err = client.QueryDays(ctx, &pb.QueryDaysRequest{})
 	wantGRPCError(t, "QueryDays(全空)", err, "missing_query")
+
+	_, err = client.GetDay(ctx, &pb.GetDayRequest{})
+	wantGRPCError(t, "GetDay(缺 date)", err, "missing_query")
+
+	_, err = client.QueryDays(ctx, &pb.QueryDaysRequest{Dates: []string{"abc"}})
+	wantGRPCError(t, "QueryDays(dates 非法)", err, "invalid_date")
 }
 
 // 9. gRPC 标准健康检查：整体状态 SERVING。

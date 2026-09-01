@@ -300,6 +300,17 @@ func TestValidateRules(t *testing.T) {
 			},
 			kw: "年份",
 		},
+		{
+			// 回归用例（转写自 FuzzLoadYearTOML 发现的语料）：festival 当天为
+			// 工作日且不在 off 时，判型将得到 Ordinary|Festival（9），不在
+			// 合法细粒度组合全集内，构造索引会越界，须在校验阶段拒绝。
+			name: "festival 当天为工作日但不在 off",
+			cfg: goliday.YearConfig{
+				Year:      2026,
+				Festivals: []goliday.Festival{{Name: "元旦", Date: date(t, "2026-01-05")}}, // 周一
+			},
+			kw: "工作日",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -322,6 +333,52 @@ func TestLoadYearBadFilename(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "文件名") {
 		t.Errorf("错误信息 %q 未包含关键词 文件名", err)
+	}
+}
+
+// festival 与 work 中的非法日期在转换阶段即报错，错误信息定位到条目。
+func TestLoadYearInvalidDatesInSections(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		kw   string
+	}{
+		{
+			name: "festival 日期非法",
+			body: `year = 2026
+
+[[festival]]
+name = "春节"
+date = "2026-02-30"
+
+[adjust]
+off = [ "2026-02-17" ]
+work = [ ]
+`,
+			kw: "festival[0]",
+		},
+		{
+			name: "work 日期非法",
+			body: `year = 2026
+
+[adjust]
+off = [ "2026-02-17" ]
+work = [ "2026-2-28" ]
+`,
+			kw: "adjust.work[0]",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeYearFile(t, t.TempDir(), "2026.toml", tc.body)
+			_, err := goliday.LoadYear(path)
+			if err == nil {
+				t.Fatal("LoadYear 未报错")
+			}
+			if !strings.Contains(err.Error(), tc.kw) {
+				t.Errorf("错误信息 %q 未包含 %q", err, tc.kw)
+			}
+		})
 	}
 }
 

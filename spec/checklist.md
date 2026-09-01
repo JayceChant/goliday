@@ -89,4 +89,12 @@
 - [x] 仓库根 `LICENSE` 为 MIT 标准文本，版权行 `Copyright (c) 2026 Jayce Chant (陈思杰)`；文件 UTF-8 无 BOM、LF 换行，无本地绝对路径
 - [x] spec.md 新增「开源许可证」Requirement（含决策依据与 Scenario）；tasks.md 追加批次条目
 - [x] README 双语语义一致：标题下新增 MIT License 徽章（链接 `LICENSE`），「质量与持续集成 / Quality & CI」表格新增许可证条目
-- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯新增 LICENSE/文档变更，无 Go 代码改动）；执行提交（docs: 新增 MIT 许可证并在 README 双语接入 License 徽章）
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯新增 LICENSE/文档变更，无 Go 代码改动）；执行提交（docs: 新增 MIT 许可证并在 README 接入徽章）
+
+## 测试覆盖率提升（含 fuzz 发现缺陷修复）
+- [x] 覆盖率：根包 98.1%→99.6%、`cmd/goliday-server` 73.4%→77.2%（未覆盖项仅剩 `main()` 与「年份已校验后查询再报错」的不可达防御分支）、`cmd/goliday-tool` 85.2%→96.1%（仅剩 `main()` 与正则保证不可达的防御分支）；全仓 `-coverpkg` 口径 64.4%→83.4%
+- [x] spec 分层文件表新增 `calendar_internal_test.go`（白盒）；gRPC 测试 helper 改经生产构造函数 `newGRPCServer` 挂载（0%→100%，与 main 注册一致）
+- [x] fuzz 冒烟（`FuzzLoadYearTOML` 5s）发现真实缺陷：festival 当天为工作日且不在 off 时判型为 `Ordinary|Festival`（9，非法组合），`comboIndex` 返回 -1 致 `buildPrefix` 越界 panic；按 spec 第 7 节流程将语料转写为回归用例（festival 当天周一不在 off → Validate 拒绝）后删除语料，`testdata/fuzz/` 无残留
+- [x] 修复：`Validate` 新增校验规则「festival.date 为周一~周五时须在 off 中」（spec 校验规则清单、CONFIG_FORMAT.md 规则 10 与注 1、generate_prompt.md 自检清单、holiday_config_example.toml 注释同步）；`configs/` 现有配置经验证工具确认仍通过
+- [x] `FuzzGenDraft` 允许的 selfCheck 失败类别同步扩展（spec 不变量表与测试注释一致）；5 个 fuzz 目标冒烟复跑全部 PASS
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues）；执行提交（test: 提升测试覆盖率并修复 fuzz 发现的索引越界缺陷）

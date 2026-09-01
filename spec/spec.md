@@ -372,6 +372,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 | 包 | 文件 | 视角 |
 |---|---|---|
 | 根包 `goliday` | `config_test.go`（未导出 `parseDate` 的严格解析 + `FuzzParseDate`） | 白盒 |
+| 根包 `goliday` | `calendar_internal_test.go`（未导出 `comboIndex` 非法组合、`NewCalendar` nil 配置兜底） | 白盒 |
 | 根包 `goliday_test` | `daytype_test.go`（枚举契约 + 256 值穷举不变量） | 黑盒 |
 | 根包 `goliday_test` | `calendar_test.go`（判定/区间/统计契约 + `FuzzQueryConsistency`） | 黑盒 |
 | 根包 `goliday_test` | `config_blackbox_test.go`（LoadYear/LoadDir/Validate 契约 + `FuzzLoadYearTOML`，含黑盒公用 helper 与内联 TOML 常量） | 黑盒 |
@@ -387,7 +388,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 | `FuzzQueryConsistency` | 根包 `package goliday_test`（黑盒） | 任意构造的 `time.Time`：已加载年份 `Query` 结果 ∈ 合法细粒度组合全集 {1,4,6,12,16,24} 且 `QueryCoarse == Query().Coarse()`、`IsWorkday/IsHoliday` 与之互斥一致、同一日不同时刻（+5h/+23h）与 UTC/+08:00 表示结果不变；未加载年份断言返回 `ErrYearNotLoaded` |
 | `FuzzLoadYearTOML` | 根包 `package goliday_test`（黑盒） | 任意年份 + TOML 文本：`LoadYear` 成功 ⟹ `Validate()` 幂等通过、off 全为周一~五、work 全为周六/日、两集合互斥无重复、全部日期在 `year` 年内；经 `LoadDir` 构造的 `Calendar` 对 off 日含 `Adjusted` 位、work 日为 `Compensate\|Weekend` |
 | `FuzzDaysHandler` | `cmd/goliday-server` `package main`（白盒） | 任意查询串打到 `/api/v1/days` 与 `/api/v1/stats`：不 panic、状态码仅 200/400、响应恒为合法 JSON；200 且含 `days` 时升序唯一、`total_days == len(days)`；粗粒度 stats 之和 == `total_days`，细粒度（交叉计数）之和 ≥ `total_days`；单日模式 `total_days == 1`；stats 路径不因跨度报错（未加载年份报 `year_not_loaded` 除外） |
-| `FuzzGenDraft` | `cmd/goliday-tool` `package main`（白盒） | 任意年份 + 公告文本：解析条目区间有效且在年内；草稿 off 全为周一~五、work 全为周六/日、互斥无重复、全在年内；festival 日期非 TODO 则为合法 `YYYY-MM-DD`；`selfCheck` 失败仅允许 TODO 占位或"节日当天不得补班"；自检通过且文件名年份合法时 `render` 产物可被 `LoadYear` 加载 |
+| `FuzzGenDraft` | `cmd/goliday-tool` `package main`（白盒） | 任意年份 + 公告文本：解析条目区间有效且在年内；草稿 off 全为周一~五、work 全为周六/日、互斥无重复、全在年内；festival 日期非 TODO 则为合法 `YYYY-MM-DD`；`selfCheck` 失败仅允许 TODO 占位、"festival 日期重复"、"节日当天不得补班"或"节日当天为工作日但不在 off"；自检通过且文件名年份合法时 `render` 产物可被 `LoadYear` 加载 |
 
 补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`Coarse` 结果 ∈ {Workday, Holiday} 且幂等、`IsWorkday`/`IsHoliday` 恰一为真、`String` 分段均为合法名）覆盖，不再另设 fuzz 目标。
 

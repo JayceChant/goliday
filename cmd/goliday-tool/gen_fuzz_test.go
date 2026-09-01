@@ -91,9 +91,10 @@ func FuzzGenDraft(f *testing.F) {
 		switch {
 		case err == nil, errors.Is(err, errFestivalTODO):
 			// 通过或仅因 TODO 占位跳过整体校验。
-		case strings.Contains(err.Error(), "重复"), strings.Contains(err.Error(), "不得补班"):
-			// 不同节日推断出同一天（festival 日期重复）或公告要求节日当天
-			// 补班，均属输入自身的矛盾，由人工核对修正。
+		case strings.Contains(err.Error(), "重复"), strings.Contains(err.Error(), "不得补班"),
+			strings.Contains(err.Error(), "不在 off"):
+			// 输入自身矛盾（节日日期重复、节日当天补班或节日当天为工作日
+			// 却不在放假区间内），均由人工核对修正。
 		default:
 			t.Fatalf("selfCheck 意外失败: %v", err)
 		}
