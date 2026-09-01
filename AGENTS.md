@@ -38,9 +38,9 @@
   ```
 
   （`gofmt -l .` 输出必须为空）
-- 静态检查：`golangci-lint run ./...` 须零告警（配置见 `.golangci.yml`；本机未安装时可通过 `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` 安装，不要求入库）。
-- 自动现代化：`go fix ./...` 须无任何改动（幂等）；新代码直接采用下述现代写法，避免过时风格。
-- 现代 Go 风格基线（go fix 实际落地的改写规则，依 Go 版本）：
+- 自动现代化：**每次有代码改动，提交前先执行 `go fix ./...`，且重复执行直到无任何改动**（到达不动点）；期间实际落地的典型改写，须及时归纳补充到下方"现代 Go 风格基线"。新代码直接采用下述现代写法，避免过时风格。
+- 静态检查：**每次有代码改动，提交前执行** `golangci-lint run ./...`，须零告警（配置见 `.golangci.yml`；本机未安装时可通过 `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` 安装，不要求入库）。
+- 现代 Go 风格基线（go fix 实际落地的改写规则，依 Go 版本；随 go fix 产出持续补充）：
   - 整数计数循环用 range-over-int（Go 1.22+）：`for i := range 366`，不写 `for i := 0; i < 366; i++`。
   - 循环变量每轮迭代独立作用域（Go 1.22+）：禁止 `tc := tc`、`name, keywords := name, keywords` 等影子拷贝（含 `t.Run` 闭包、goroutine 捕获场景）。
   - 仅遍历、不保留结果时用零分配迭代器（Go 1.24+）：`for part := range strings.SplitSeq(s, "|")` 替代 `strings.Split`；后者仅在需要切片本身时使用。
@@ -55,7 +55,7 @@
 1. 读本文件与 `spec/`（含任务清单），确认任务范围与验收标准。
 2. 按第 4 节选择 shell 环境，按第 3 节读取/创建 `.env.<os/platform>`。
 3. 实现遵循 spec；最小改动，不做 spec 之外的发挥。
-4. 运行第 5 节验证命令，全绿后更新 `spec/tasks.md`、`spec/checklist.md` 勾选。
+4. **有代码改动时**：先跑 `go fix ./...`（重复直到无改动，典型改写回补到第 5 节基线）与 `golangci-lint run ./...`，再运行第 5 节验证命令；全绿后更新 `spec/tasks.md`、`spec/checklist.md` 勾选。
 5. 按第 2 节规范提交 commit（一个被接受的变更对应一次提交）。
 
 **勾选与提交的次序约束**：第 4 步的全部勾选（含「执行提交」这类自指项——其含义是"本次提交将完成该动作"）必须**先勾选、后提交**，并纳入同一次提交；严禁提交后再补勾选。循环结束时必须执行 `git status --short` 确认工作区干净。
