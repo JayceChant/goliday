@@ -13,3 +13,4 @@
 - [x] Task 20（模块路径迁移）：module 由 `goliday` 改为 `github.com/JayceChant/goliday`；同步全部 import 路径、proto `go_package` 与重新生成 pb 代码、spec/AGENTS/docs 引用；验证命令全绿。
 - [x] Task 21（proto 工具链迁移至 buf）：新增 `buf.yaml`（模块/lint/breaking，豁免项附理由）与 `buf.gen.yaml`（本地 protoc-gen-go/go-grpc，版本固定）；再生成命令改为仓库根 `buf generate`，`buf lint` 通过；spec/API.md/ARCHITECTURE.md/proto 头注释同步；产物与 protoc 仅差生成头 protoc 版本行（`(unknown)`，预期）。
 - [x] Task 22（buf lint 豁免收敛）：`buf.yaml` 改为 v2 工作区（模块根 `proto/`，buf 官方标准布局，目录与 package `goliday.v1` 对应），消除 PACKAGE_DIRECTORY_MATCH 豁免；`QueryStats` 拆分独立 `QueryStatsRequest`/`QueryStatsResponse`（字段与 QueryDaysRequest 同构，符合 buf BP「每 RPC 独立消息」），消除 RPC_* 三条豁免；`buf lint` STANDARD 零豁免通过；服务端代码与测试、spec/API 文档同步。
+- [x] 依赖升级巡检：`go list -m -u all` 确认直接依赖（toml v1.6.0 / grpc v1.83.2 / protobuf v1.36.12）均为最新稳定版；仅间接依赖 `google.golang.org/genproto/googleapis/rpc` 升至 `v0.0.0-20260831171406-18b4a7587f8a`；依赖分级不变，无新增依赖；验证命令全绿。

@@ -52,3 +52,8 @@
 - [x] `buf.yaml` 改为 v2 工作区（模块根 `proto/`），目录 `goliday/v1` 与 package `goliday.v1` 对应（buf 官方标准布局），`buf lint` 默认 STANDARD 规则零豁免通过；proto 包名与 Go import 路径不变
 - [x] `QueryStats` 使用独立 `QueryStatsRequest`/`QueryStatsResponse`（字段与 QueryDaysRequest 同构，语义不变）；服务端 `grpc.go`/`grpc_test.go` 同步；spec.md 与 docs/API.md 7.2 消息清单更新；生成代码 `source:` 为模块相对路径 `goliday/v1/goliday.proto`
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（build: buf lint 收敛为零豁免并拆分 QueryStats 消息）
+
+## 依赖升级巡检
+- [x] `go list -m -u all` 巡检：直接依赖（toml/grpc/protobuf）已为最新稳定版；间接依赖 `genproto/googleapis/rpc` 升级一版，`go mod tidy` 后 go.mod/go.sum 无冗余变更
+- [x] 依赖分级审计不变（根包仅 toml，gRPC 三件套限于 proto 生成包与 cmd/，HTTP 服务仅标准库），无新增依赖
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（chore: 升级间接依赖 genproto/googleapis/rpc 至最新版）
