@@ -111,8 +111,9 @@ func weekdayCN(t time.Time) string {
 //   - off 中日期须为周一~周五，work 中日期须为周六/周日；
 //   - off、work 各自无重复，且两者互斥；
 //   - work 不得包含任何 festival.date（节日当天不得补班）；
-//   - festival.date 为周一~周五时须在 off 中（节日当天为工作日必放假，
-//     否则判型得 Ordinary|Festival，不在合法细粒度组合全集内）；
+//   - festival.date 为周一~周五时必须在 off 中——节日当天必为放假日，
+//     工作日节日须经 off 落地（否则该日在类型上无合法状态可归，
+//     Work|Festival 为非法值）；
 //   - festival.date 之间无重复。
 func (c *YearConfig) Validate() error {
 	// festival：年份匹配、无重复。
@@ -172,7 +173,7 @@ func (c *YearConfig) Validate() error {
 	}
 
 	// festival 当天为工作日（周一~周五）时必须在 off 中：节日当天必放假，
-	// 否则判型为 Ordinary|Festival（9），不在合法细粒度组合全集内。
+	// 否则判型为 Work|Festival（5），不在合法细粒度值全集内。
 	for _, f := range c.Festivals {
 		if _, ok := seenOff[f.Date]; ok {
 			continue

@@ -115,6 +115,7 @@ work = [ "2026-02-14", "2026-02-28" ]   # 春节补班
 | 7 | `off` 与 `work` 互斥（同一日期不得同时出现） | — |
 | 8 | `work` 不含任何 `festival.date`（节日当天不得补班） | — |
 | 9 | `festival.date` 之间无重复 | — |
+| 10 | `festival.date` 为周一~周五时必须出现在 `off` 中（节日当天必为放假日，工作日节日须经 `off` 落地） | `festival_workday_no_off.toml` |
 
 校验失败行为：`LoadYear` 返回以文件路径开头的错误；服务启动失败；`goliday-tool validate` 打印错误并以非 0 退出码结束。
 
@@ -124,46 +125,45 @@ work = [ "2026-02-14", "2026-02-28" ]   # 春节补班
 
 ### 6.1 单日期判定（优先级从高到低）
 
-1. 命中该年 `work` → `Compensate|Weekend`（补班日必为周末）；
-2. 命中该年 `off` → `Adjusted`（放假日必为工作日，覆盖周休基线）；
-3. 为某 `festival.date`（节日当天）→ 在上述结果上**追加** `Festival` 位（`t |= Festival`）；
-4. 否则周休回退：周六/周日 → `Weekend`，周一~周五 → `Ordinary`；
+1. 为某 `festival.date`（节日当天）→ `Rest|Festival(6)`——节日当天必为放假日（落周末为自然休息、落工作日由 `off` 落地），统称「节日放假日」，不另标调休位；
+2. 命中该年 `work` → `Work|Compensate(17)`（补班日必为周末，校验保证）；
+3. 命中该年 `off` → `Rest|Adjusted(10)`（放假日必为工作日）；
+4. 否则周休回退：周六/周日 → `Rest(2)`，周一~周五 → `Work(1)`；
 5. 该年无配置文件 → 不回退，返回 `year_not_loaded`（见 [API.md](./API.md) 第 5 节）：避免「未配置」被误读为「真实周末」。
 
-等价表达：`t = 周末 ? Weekend : Ordinary`；`if off 命中 { t = Adjusted }`；`if work 命中 { t = Compensate|Weekend }`；`if 节日当天 { t |= Festival }`。
+等价表达：`t = 节日当天 ? Rest|Festival : work 命中 ? Work|Compensate : off 命中 ? Rest|Adjusted : (周末 ? Rest : Work)`。
 
 ### 6.2 DayType 掩码值表
 
-`DayType` 为 `uint8` 位掩码：
+`DayType` 为 `uint8` 位掩码，采用「终态双层」编码：基本位互斥恰一（当日最终是否上班），调整位互斥至多一（依附基本位）；全部组合的 `|` 均为 all-of（合取）语义，粗粒度即基本位投影（`t & 3`）：
 
-| 常量 | 数值 | 二进制 | 含义 | 粗粒度归属 |
+| 常量 | 数值 | 二进制 | 层 | 含义 |
 |---|---|---|---|---|
-| `DayTypeOrdinary` | 1 | `0b00001` | 普通工作日（细） | 上班日 |
-| `DayTypeCompensate` | 2 | `0b00010` | 补班（细） | 上班日 |
-| `DayTypeWeekend` | 4 | `0b00100` | 周末（细） | 休息日 |
-| `DayTypeFestival` | 8 | `0b01000` | 节日（细） | 休息日 |
-| `DayTypeAdjusted` | 16 | `0b10000` | 调休（细） | 休息日 |
-| `DayTypeWorkday` | 3 | — | 粗粒度：上班日 = `Ordinary\|Compensate` | — |
-| `DayTypeHoliday` | 28 | — | 粗粒度：休息日 = `Weekend\|Festival\|Adjusted` | — |
+| `DayTypeWork` | 1 | `0b00001` | 基本位 | 上班（单值即普通工作日） |
+| `DayTypeRest` | 2 | `0b00010` | 基本位 | 放假（单值即普通周休；未调整时必然为周末） |
+| `DayTypeFestival` | 4 | `0b00100` | 调整位 | 过节：法定节日当天（放假），当日新增法定假期 |
+| `DayTypeAdjusted` | 8 | `0b01000` | 调整位 | 调休：原工作日被调整为休息（非节日当天），不新增假期 |
+| `DayTypeCompensate` | 16 | `0b10000` | 调整位 | 补班：原周末被调整为上班 |
 
-细→粗映射（`Coarse()`）：含 `Compensate` 位 → `Workday`（**补班优先归上班日**，即使当天是周末）；否则含 `Weekend/Festival/Adjusted` 任一位 → `Holiday`；否则 → `Workday`。
+细→粗投影（`Coarse()`）：`t & (Work|Rest)`，单次按位与；判类仅需 `t & 1 != 0`（上班）/ `t & 2 != 0`（放假），无优先级消歧。
 
-### 6.3 六种细粒度合法组合
+### 6.3 五种细粒度合法值
 
-由真实方案数据与周休推导产生的组合全集：
+由真实方案数据与周休推导产生的值全集（MECE）：
 
 | 数值 | 组合 | `String()` | 典型场景（2026 假设方案） | 粗粒度 |
 |---|---|---|---|---|
-| 1 | `Ordinary` | `ordinary` | 普通工作日：2026-03-03（周二） | workday |
-| 4 | `Weekend` | `weekend` | 自然周末：2026-02-15（周日） | holiday |
-| 6 | `Compensate\|Weekend` | `compensate\|weekend` | 周末补班：2026-02-28（周六） | workday |
-| 12 | `Festival\|Weekend` | `weekend\|festival` | 节日恰逢周末：2026-04-05（周日，清明） | holiday |
-| 16 | `Adjusted` | `adjusted` | 工作日调休：2026-02-20（周五） | holiday |
-| 24 | `Festival\|Adjusted` | `festival\|adjusted` | 节日当天且为工作日：2026-02-17（周二，春节） | holiday |
+| 1 | `Work` | `work` | 普通工作日：2026-03-03（周二） | work |
+| 2 | `Rest` | `rest` | 自然周末：2026-02-15（周日） | rest |
+| 6 | `Rest\|Festival` | `rest\|festival` | 节日放假日：2026-02-17（周二，春节）、2026-04-05（周日，清明） | rest |
+| 10 | `Rest\|Adjusted` | `rest\|adjusted` | 调休放假日（原工作日）：2026-02-20（周五） | rest |
+| 17 | `Work\|Compensate` | `work\|compensate` | 补班日（原周末）：2026-02-28（周六） | work |
 
-> 注 1：该全集的前提是配置符合真实方案——节日当天要么是工作日（必在 `off`，得 24）、要么恰逢自然周末（得 12）；校验规则 8（work 不含节日当天）保证了不会出现「补班 × 节日」的组合，校验规则 10（工作日节日须在 off）保证了不会出现「工作日 × 节日」的组合。
+> 注 1：节日无论落在工作日（经 `off` 落地）还是自然周末，细粒度同为 `rest|festival`——「调整前是工作日还是周末」不进入类型值，可由日期星期推导。校验规则保证不会产生矛盾值：work 不含节日当天（不会出现「补班×过节」）、工作日节日必须在 `off`（不会出现「普通上班×过节」）。
 >
-> 注 2：`String()` 组合名按细粒度位**从低到高**连接，故 `Festival|Weekend` 输出 `weekend|festival`（weekend=4 低于 festival=8，低位在前），而 `Festival|Adjusted` 输出 `festival|adjusted`（festival=8 低于 adjusted=16）。
+> 注 2：`String()` 按位**从低到高**连接小写位名，故 `Rest|Festival`（2|4 = 6）输出 `rest|festival`，`Work|Compensate`（1|16 = 17）输出 `work|compensate`；粗粒度值 1/2 天然输出 `work`/`rest`。
+>
+> 注 3：净增假日审计参考：净增 = 过节数（`rest|festival` 天数）− 补班数（`work|compensate` 天数）；「调休放假日」不新增假期（挪移自周末或节日逢周末的补休）。此为公告层不变式，不做硬校验。
 
 ---
 

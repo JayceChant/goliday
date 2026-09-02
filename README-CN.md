@@ -15,7 +15,7 @@
 
 ## 核心设计
 
-- **位掩码日期类型**：`DayType`（uint8）以可组合位标志表达 5 种细粒度（普通工作日/补班/周末/节日/调休）与 2 种粗粒度段值（工作日/节假日），细→粗用位运算与优先级规则（补班优先归工作日）映射。
+- **终态双层位掩码**：`DayType`（uint8）以 2 个互斥**基本位**（1=上班、2=放假）表达粗粒度，3 个互斥**调整位**（4=过节、8=调休、16=补班）组合出 5 种细粒度值（1/2/6/10/17）；全部组合的 `|` 均为 all-of（合取）语义，粗细归属用单次按位与判定（`t & 2` 放假、`t & 1` 上班），无优先级消歧。
 - **稀疏配置**：每年一个 TOML 文件，只记录"被调整过"的日期（`off` 仅工作日变休息、`work` 仅周末变上班），周末与普通工作日由标准库按星期推导、一律不写入——年文件仅 20~30 行，可人工审计。
 - **配置优先 + 年份强校验**：有配置年份以配置为准，未覆盖日期回退周六/周日判断；查询覆盖未加载配置的年份时返回 `year_not_loaded` 错误而非静默回退，避免"未配置"被误读为"真实周末"。
 - **前缀和统计**：加载时为每年构建细粒度组合计数前缀和，统计为 O(覆盖年数) 差分，`/stats` 接口不限查询跨度。
@@ -31,11 +31,11 @@ go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 
 # 单日查询（默认粗粒度）
 curl "http://localhost:8080/api/v1/days?date=2026-02-20"
-# {"date":"2026-02-20","type":28,"type_label":"holiday","total_days":1,"stats":{"holiday":1,"workday":0}}
+# {"date":"2026-02-20","type":2,"type_label":"rest","total_days":1,"stats":{"holiday":1,"workday":0}}
 
-# 细粒度：节日当天调休 → festival|adjusted = 24
+# 细粒度：节日当天 → rest|festival = 6
 curl "http://localhost:8080/api/v1/days?date=2026-02-17&detailed=true"
-# {"date":"2026-02-17","type":24,"type_label":"festival|adjusted",...}
+# {"date":"2026-02-17","type":6,"type_label":"rest|festival",...}
 
 # 区间统计（左闭右开）
 curl "http://localhost:8080/api/v1/stats?start=2026-02-14&end=2026-02-17"
@@ -46,7 +46,7 @@ conn, _ := grpc.NewClient("localhost:50051",
     grpc.WithTransportCredentials(insecure.NewCredentials()))
 client := golidayv1.NewGolidayServiceClient(conn)
 resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detailed: true})
-// resp.Type == 24, resp.TypeLabel == "festival|adjusted"
+// resp.Type == 6, resp.TypeLabel == "rest|festival"
 ```
 
 > 示例基于 `configs/2026.toml`（假设示例方案，非官方）。正式使用请按[年度配置更新流程](#年度配置更新)以官方公告生成。
@@ -81,17 +81,21 @@ docker pull ghcr.io/jaycechant/goliday:latest
 | HTTP | `GET /healthz` | 健康检查，返回已加载年份 |
 | gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`，与 HTTP 一一对应，另注册 gRPC 标准健康检查 |
 
-日期类型掩码（`type_label` 即 `DayType.String()`，组合按位从低到高以 `|` 连接）：
+日期类型掩码（`type_label` 即 `DayType.String()`，组合按位从低到高以 `|` 连接；`|` 在全部取值上均为 all-of 语义，粗粒度即基本位投影）：
 
-| 值 | 含义 | | 值 | 含义 |
-|---|---|---|---|---|
-| 1 | 普通工作日 | | 3 | **粗粒度：工作日**（1\|2） |
-| 2 | 补班 | | 28 | **粗粒度：节假日**（4\|8\|16） |
-| 4 | 周末 | | 6 | 补班逢周末 |
-| 8 | 节日 | | 12 | 节日逢周末 |
-| 16 | 调休 | | 24 | 节日当天调休 |
+| 值 | 组合 | 含义 | | 值 | 组合 | 含义 |
+|---|---|---|---|---|---|---|
+| 1 | `Work` | 普通工作日 | | 6 | `Rest\|Festival` | 节日放假日 |
+| 2 | `Rest` | 普通周休 | | 10 | `Rest\|Adjusted` | 调休放假日（原工作日） |
+| 4 | — | 调整位：过节 | | 17 | `Work\|Compensate` | 补班日（原周末） |
+| 8 | — | 调整位：调休 | | | | |
+| 16 | — | 调整位：补班 | | | | |
 
-细粒度统计（`detailed=true`）为单标志位交叉计数：组合日对其每个标志各计 1 天，各键之和可大于 `total_days`；总休息/上班天数请用粗粒度 `stats.holiday`/`stats.workday`。
+粗粒度即基本位本身：`detailed=false` 时 `type` 为 1（上班）或 2（放假），判类仅需 `t & 1` / `t & 2`。
+
+细粒度统计（`detailed=true`）为五键 MECE 计数：普通工作日（`ordinary`）/普通周休（`weekend`）/节日放假日（`festival`）/调休放假日（`adjusted`）/补班日（`compensate`）各计一类日，**各键之和恒等于 `total_days`**；总休息/上班天数请用粗粒度 `stats.holiday`/`stats.workday`。
+
+语义约定：本项目"节日"均指产生法定假期的全体公民节日（不放假的纪念日不纳入）；"调休"为窄义（原工作日因安排变休息且非节日当天，不新增假期），"过节"当日新增假期；节日无论落在工作日还是周末，细粒度同为 `rest|festival`。
 
 完整契约（参数、响应结构、错误码、gRPC 调用示例、proto 再生成命令）见 [docs/API.md](docs/API.md)。
 

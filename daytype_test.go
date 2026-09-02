@@ -9,54 +9,52 @@ import (
 	"github.com/JayceChant/goliday"
 )
 
-// validFineCombos 细粒度合法组合全集（6 种）及其期望数值与字符串。
-var validFineCombos = []struct {
+// validFineValues 细粒度合法值全集（5 种）及其期望数值与字符串。
+var validFineValues = []struct {
 	name string
 	dt   goliday.DayType
 	val  goliday.DayType
 	str  string
 }{
-	{"Ordinary", goliday.DayTypeOrdinary, 1, "ordinary"},
-	{"Weekend", goliday.DayTypeWeekend, 4, "weekend"},
-	{"Compensate|Weekend", goliday.DayTypeCompensate | goliday.DayTypeWeekend, 6, "compensate|weekend"},
-	{"Festival|Weekend", goliday.DayTypeFestival | goliday.DayTypeWeekend, 12, "weekend|festival"},
-	{"Adjusted", goliday.DayTypeAdjusted, 16, "adjusted"},
-	{"Festival|Adjusted", goliday.DayTypeFestival | goliday.DayTypeAdjusted, 24, "festival|adjusted"},
+	{"Work", goliday.DayTypeWork, 1, "work"},
+	{"Rest", goliday.DayTypeRest, 2, "rest"},
+	{"Rest|Festival", goliday.DayTypeRest | goliday.DayTypeFestival, 6, "rest|festival"},
+	{"Rest|Adjusted", goliday.DayTypeRest | goliday.DayTypeAdjusted, 10, "rest|adjusted"},
+	{"Work|Compensate", goliday.DayTypeWork | goliday.DayTypeCompensate, 17, "work|compensate"},
 }
 
-// legalCombos 细粒度合法组合全集（数值集合），供穷举与 Calendar 校验复用。
-var legalCombos = map[goliday.DayType]bool{
-	1: true, 4: true, 6: true, 12: true, 16: true, 24: true,
+// legalFineValues 细粒度合法值全集（数值集合），供穷举与 Calendar 校验复用。
+var legalFineValues = map[goliday.DayType]bool{
+	1: true, 2: true, 6: true, 10: true, 17: true,
 }
 
-// TestFineGrainedValues 细粒度合法组合全集的数值断言。
+// TestFineGrainedValues 细粒度合法值全集的数值断言。
 func TestFineGrainedValues(t *testing.T) {
-	for _, tt := range validFineCombos {
+	for _, tt := range validFineValues {
 		if tt.dt != tt.val {
 			t.Errorf("%s = %d, want %d", tt.name, tt.dt, tt.val)
 		}
 	}
-	if goliday.DayTypeWorkday != 3 {
-		t.Errorf("DayTypeWorkday = %d, want 3", goliday.DayTypeWorkday)
+	if goliday.DayTypeWork != 1 {
+		t.Errorf("DayTypeWork = %d, want 1", goliday.DayTypeWork)
 	}
-	if goliday.DayTypeHoliday != 28 {
-		t.Errorf("DayTypeHoliday = %d, want 28", goliday.DayTypeHoliday)
+	if goliday.DayTypeRest != 2 {
+		t.Errorf("DayTypeRest = %d, want 2", goliday.DayTypeRest)
 	}
 }
 
-// TestCoarse Coarse() 的粗粒度映射断言。
+// TestCoarse Coarse() 的粗粒度投影断言（基本位掩码）。
 func TestCoarse(t *testing.T) {
 	tests := []struct {
 		name string
 		dt   goliday.DayType
 		want goliday.DayType
 	}{
-		{"Ordinary", goliday.DayTypeOrdinary, goliday.DayTypeWorkday},
-		{"Compensate|Weekend", goliday.DayTypeCompensate | goliday.DayTypeWeekend, goliday.DayTypeWorkday},
-		{"Weekend", goliday.DayTypeWeekend, goliday.DayTypeHoliday},
-		{"Festival|Weekend", goliday.DayTypeFestival | goliday.DayTypeWeekend, goliday.DayTypeHoliday},
-		{"Adjusted", goliday.DayTypeAdjusted, goliday.DayTypeHoliday},
-		{"Festival|Adjusted", goliday.DayTypeFestival | goliday.DayTypeAdjusted, goliday.DayTypeHoliday},
+		{"Work", goliday.DayTypeWork, goliday.DayTypeWork},
+		{"Work|Compensate", goliday.DayTypeWork | goliday.DayTypeCompensate, goliday.DayTypeWork},
+		{"Rest", goliday.DayTypeRest, goliday.DayTypeRest},
+		{"Rest|Festival", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
+		{"Rest|Adjusted", goliday.DayTypeRest | goliday.DayTypeAdjusted, goliday.DayTypeRest},
 	}
 	for _, tt := range tests {
 		if got := tt.dt.Coarse(); got != tt.want {
@@ -65,7 +63,7 @@ func TestCoarse(t *testing.T) {
 	}
 }
 
-// TestIsWorkdayIsHoliday IsWorkday/IsHoliday 与 Coarse 一致性断言。
+// TestIsWorkdayIsHoliday IsWorkday/IsHoliday 与位与判类一致性断言。
 func TestIsWorkdayIsHoliday(t *testing.T) {
 	all := []struct {
 		name    string
@@ -73,23 +71,20 @@ func TestIsWorkdayIsHoliday(t *testing.T) {
 		workday bool
 		holiday bool
 	}{
-		{"Workday(粗粒度)", goliday.DayTypeWorkday, true, false},
-		{"Holiday(粗粒度)", goliday.DayTypeHoliday, false, true},
-		{"Ordinary", goliday.DayTypeOrdinary, true, false},
-		{"Weekend", goliday.DayTypeWeekend, false, true},
-		{"Compensate|Weekend", goliday.DayTypeCompensate | goliday.DayTypeWeekend, true, false},
-		{"Festival|Weekend", goliday.DayTypeFestival | goliday.DayTypeWeekend, false, true},
-		{"Adjusted", goliday.DayTypeAdjusted, false, true},
-		{"Festival|Adjusted", goliday.DayTypeFestival | goliday.DayTypeAdjusted, false, true},
+		{"Work(粗粒度)", goliday.DayTypeWork, true, false},
+		{"Rest(粗粒度)", goliday.DayTypeRest, false, true},
+		{"Work|Compensate", goliday.DayTypeWork | goliday.DayTypeCompensate, true, false},
+		{"Rest|Festival", goliday.DayTypeRest | goliday.DayTypeFestival, false, true},
+		{"Rest|Adjusted", goliday.DayTypeRest | goliday.DayTypeAdjusted, false, true},
 	}
 	for _, tt := range all {
-		if wantWorkday := tt.dt.Coarse() == goliday.DayTypeWorkday; tt.dt.IsWorkday() != wantWorkday {
+		if wantWorkday := tt.dt.Coarse() == goliday.DayTypeWork; tt.dt.IsWorkday() != wantWorkday {
 			t.Errorf("%s.IsWorkday() = %v, want %v", tt.name, tt.dt.IsWorkday(), wantWorkday)
 		}
 		if tt.dt.IsWorkday() != tt.workday {
 			t.Errorf("%s.IsWorkday() = %v, want %v", tt.name, tt.dt.IsWorkday(), tt.workday)
 		}
-		if wantHoliday := tt.dt.Coarse() == goliday.DayTypeHoliday; tt.dt.IsHoliday() != wantHoliday {
+		if wantHoliday := tt.dt.Coarse() == goliday.DayTypeRest; tt.dt.IsHoliday() != wantHoliday {
 			t.Errorf("%s.IsHoliday() = %v, want %v", tt.name, tt.dt.IsHoliday(), wantHoliday)
 		}
 		if tt.dt.IsHoliday() != tt.holiday {
@@ -98,53 +93,71 @@ func TestIsWorkdayIsHoliday(t *testing.T) {
 	}
 }
 
-// TestString String() 的字符串断言（含粗粒度值）。
+// TestString String() 的字符串断言（粗粒度值 1/2 天然输出 work/rest）。
 func TestString(t *testing.T) {
-	for _, tt := range validFineCombos {
+	for _, tt := range validFineValues {
 		if got := tt.dt.String(); got != tt.str {
 			t.Errorf("%s.String() = %q, want %q", tt.name, got, tt.str)
 		}
 	}
-	if got := goliday.DayTypeWorkday.String(); got != "workday" {
-		t.Errorf("DayTypeWorkday.String() = %q, want %q", got, "workday")
+	if got := goliday.DayTypeWork.String(); got != "work" {
+		t.Errorf("DayTypeWork.String() = %q, want %q", got, "work")
 	}
-	if got := goliday.DayTypeHoliday.String(); got != "holiday" {
-		t.Errorf("DayTypeHoliday.String() = %q, want %q", got, "holiday")
+	if got := goliday.DayTypeRest.String(); got != "rest" {
+		t.Errorf("DayTypeRest.String() = %q, want %q", got, "rest")
+	}
+}
+
+// TestLegalValueBitAndDisjoint 对全部合法值断言 t & Work 与 t & Rest
+// 恰一非零（单次位与判类无歧义）。
+func TestLegalValueBitAndDisjoint(t *testing.T) {
+	for _, tt := range validFineValues {
+		hasWork := tt.dt&goliday.DayTypeWork != 0
+		hasRest := tt.dt&goliday.DayTypeRest != 0
+		if hasWork == hasRest {
+			t.Errorf("%s(%d) 位与判类必须恰一非零: work=%v rest=%v",
+				tt.name, tt.dt, hasWork, hasRest)
+		}
+		if hasWork != tt.dt.IsWorkday() || hasRest != tt.dt.IsHoliday() {
+			t.Errorf("%s(%d) 位与判类与 IsWorkday/IsHoliday 不一致", tt.name, tt.dt)
+		}
 	}
 }
 
 // TestDayTypeExhaustiveInvariants 穷举 uint8 全部 256 个取值，验证
-// Coarse 映射封闭且幂等、IsWorkday/IsHoliday 恰一为真、String 输出的
-// 每个分段均为合法名称（细粒度 5 名 + 粗粒度 2 名 + unknown）。
+// String 输出的每个分段均为合法位名或 unknown、不 panic；
+// 对 5 个合法值另断言 Coarse 幂等且 ∈ {Work, Rest}、
+// IsWorkday/IsHoliday 恰一为真、位与判类恰一非零。
 func TestDayTypeExhaustiveInvariants(t *testing.T) {
 	legalNames := map[string]bool{
-		"ordinary": true, "compensate": true, "weekend": true,
-		"festival": true, "adjusted": true,
-		"workday": true, "holiday": true, "unknown": true,
+		"work": true, "rest": true, "festival": true,
+		"adjusted": true, "compensate": true, "unknown": true,
 	}
 	for v := 0; v <= 255; v++ {
 		dt := goliday.DayType(v)
 		t.Run(dt.String(), func(t *testing.T) {
-			coarse := dt.Coarse()
-			if coarse != goliday.DayTypeWorkday && coarse != goliday.DayTypeHoliday {
-				t.Fatalf("DayType(%d).Coarse() = %d，必须 ∈ {Workday, Holiday}", v, coarse)
-			}
-			if coarse.Coarse() != coarse {
-				t.Fatalf("Coarse 不幂等: %d → %d → %d", v, coarse, coarse.Coarse())
-			}
-			if dt.IsWorkday() == dt.IsHoliday() {
-				t.Fatalf("DayType(%d) IsWorkday/IsHoliday 必须恰一为真", v)
-			}
 			for part := range strings.SplitSeq(dt.String(), "|") {
 				if !legalNames[part] {
 					t.Fatalf("DayType(%d).String() = %q 含非法分段 %q", v, dt.String(), part)
 				}
 			}
-			// 合法组合之外不应出现 IsWorkday 分支歧义：粗值自身合法。
-			if v == int(goliday.DayTypeWorkday) || v == int(goliday.DayTypeHoliday) {
-				if dt.String() != "workday" && dt.String() != "holiday" {
-					t.Fatalf("粗粒度值 %d 的 String = %q", v, dt.String())
-				}
+			if !legalFineValues[dt] {
+				return
+			}
+			coarse := dt.Coarse()
+			if coarse != goliday.DayTypeWork && coarse != goliday.DayTypeRest {
+				t.Fatalf("合法值 %d 的 Coarse() = %d，必须 ∈ {Work, Rest}", v, coarse)
+			}
+			if coarse.Coarse() != coarse {
+				t.Fatalf("Coarse 不幂等: %d → %d → %d", v, coarse, coarse.Coarse())
+			}
+			if dt.IsWorkday() == dt.IsHoliday() {
+				t.Fatalf("合法值 %d IsWorkday/IsHoliday 必须恰一为真", v)
+			}
+			hasWork := dt&goliday.DayTypeWork != 0
+			hasRest := dt&goliday.DayTypeRest != 0
+			if hasWork == hasRest {
+				t.Fatalf("合法值 %d 位与判类必须恰一非零", v)
 			}
 		})
 	}

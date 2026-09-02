@@ -3,11 +3,11 @@
 # work 仅含周六/周日（周末变上班）；假期中的自然周末日一律不写入。
 # [[festival]] 仅含 name 与节日当天 date。
 # 供其他任务测试引用的关键约定：
-#   2026-02-20（周五）→ 调休 off；
-#   2026-02-17（周二）→ 春节当天且在 off（Festival|Adjusted）；
-#   2026-02-28（周六）→ 补班 work（Compensate|Weekend）；
-#   2026-04-05（周日）→ 清明节日当天、不在 off/work（Festival|Weekend）；
-#   2026-03-03（周二）→ 未覆盖普通工作日。
+#   2026-02-20（周五）→ 调休 off（Rest|Adjusted = 10）；
+#   2026-02-17（周二）→ 春节当天且在 off（Rest|Festival = 6）；
+#   2026-02-28（周六）→ 补班 work（Work|Compensate = 17）；
+#   2026-04-05（周日）→ 清明节日当天、不在 off/work（Rest|Festival = 6）；
+#   2026-03-03（周二）→ 未覆盖普通工作日（Work = 1）。
 
 year = 2026
 

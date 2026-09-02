@@ -193,11 +193,12 @@ func TestLoadYear2026(t *testing.T) {
 // 注：year_mismatch 经 LoadYear 直读时触发"文件名非纯数字年份"错误（含"年份"），
 // 经 LoadDir（重命名为 2026.toml）时触发"文件名年份与 year 不一致"错误。
 var invalidFiles = map[string][]string{
-	"year_mismatch.toml": {"年份"},
-	"invalid_date.toml":  {"非法日期"},
-	"off_weekend.toml":   {"周末"},
-	"work_weekday.toml":  {"工作日"},
-	"dup.toml":           {"重复"},
+	"year_mismatch.toml":           {"年份"},
+	"invalid_date.toml":            {"非法日期"},
+	"off_weekend.toml":             {"周末"},
+	"work_weekday.toml":            {"工作日"},
+	"dup.toml":                     {"重复"},
+	"festival_workday_no_off.toml": {"不在 off"},
 }
 
 func TestLoadYearInvalid(t *testing.T) {
@@ -462,9 +463,14 @@ work = [ "2026-01-31" ]
 			if err != nil {
 				t.Fatalf("off 日期 %s 查询报错: %v", d.Format(layout), err)
 			}
-			if got&goliday.DayTypeAdjusted == 0 {
-				t.Fatalf("off 日期 %s 判型 = %d（%s），应含 Adjusted 位",
-					d.Format(layout), got, got)
+			// 节日当天为 Rest|Festival，其余为 Rest|Adjusted。
+			want := goliday.DayTypeRest | goliday.DayTypeAdjusted
+			if isFestivalDate(cfg, d) {
+				want = goliday.DayTypeRest | goliday.DayTypeFestival
+			}
+			if got != want {
+				t.Fatalf("off 日期 %s 判型 = %d（%s），期望 %d（%s）",
+					d.Format(layout), got, got, want, want)
 			}
 		}
 		for _, d := range cfg.Adjust.Work {
@@ -472,10 +478,20 @@ work = [ "2026-01-31" ]
 			if err != nil {
 				t.Fatalf("work 日期 %s 查询报错: %v", d.Format(layout), err)
 			}
-			if want := goliday.DayTypeCompensate | goliday.DayTypeWeekend; got != want {
+			if want := goliday.DayTypeWork | goliday.DayTypeCompensate; got != want {
 				t.Fatalf("work 日期 %s 判型 = %d（%s），期望 %d（%s）",
 					d.Format(layout), got, got, want, want)
 			}
 		}
 	})
+}
+
+// isFestivalDate 报告 d 是否为 cfg 的某个节日当天。
+func isFestivalDate(cfg *goliday.YearConfig, d time.Time) bool {
+	for _, f := range cfg.Festivals {
+		if f.Date.Equal(d) {
+			return true
+		}
+	}
+	return false
 }

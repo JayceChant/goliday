@@ -135,16 +135,16 @@ HTTP GET /api/v1/days|/api/v1/stats
     不再回退周休判断。空区间（start==end）无覆盖年份，返回全零统计。
       ▼
 Calendar.Query（逐日，明细/单日判定）：
-    周休基线（周六/日→Weekend，否则 Ordinary）
-    → work 命中：Compensate|Weekend
-    → off 命中：Adjusted
-    → 节日当天：追加 Festival 位
+    节日当天 → Rest|Festival（必放假）
+    → work 命中：Work|Compensate
+    → off 命中：Rest|Adjusted
+    → 周休基线（周六/日→Rest，否则 Work）
     （未加载年已在入口拦截）
       ▼
 StatsRange / Stats（前缀和差分，O(覆盖年数)）：
     年内 prefix[endIdx] - prefix[startIdx]；跨年拆「首年段+整年段+末年段」
-    相加；粗粒度由组合计数线性累加（workday=C(1)+C(6)、
-    holiday=C(4)+C(12)+C(16)+C(24)）；混合并集 = 区间差分
+    相加；粗粒度由按值计数线性累加（work=C(1)+C(17)、
+    holiday=C(2)+C(6)+C(10)）；混合并集 = 区间差分
     + 列表剔除区间内日期后分段统计
       ▼
 JSON 序列化返回
@@ -153,7 +153,7 @@ JSON 序列化返回
 关键设计点：
 
 - **稀疏表 + 年份强校验**：配置只存「被调整过」的日期，年文件仅 20~30 行，可人工审计；其余日期由标准库按星期推导。查询覆盖未加载年份直接报 `year_not_loaded`（含跨年区间中间整年），不再静默回退周休判断，避免「未配置」被误读为「真实周末」。
-- **组合计数前缀和**：`NewCalendar` 为每年构建长度 = 年天数+1 的前缀数组（`prefix[i]` 为 `[元旦, 元旦+i 天)` 的 6 种合法组合累计天数，左闭右开），构建 O(年天数) 一次完成、构建后只读；统计为年内 O(1) 差分、跨年 O(覆盖年数) 拆段相加，因此 `/stats` 无需限制查询跨度。
+- **按值计数前缀和**：`NewCalendar` 为每年构建长度 = 年天数+1 的前缀数组（`prefix[i]` 为 `[元旦, 元旦+i 天)` 的 5 种合法细粒度值累计天数，左闭右开、五值 MECE），构建 O(年天数) 一次完成、构建后只读；统计为年内 O(1) 差分、跨年 O(覆盖年数) 拆段相加，因此 `/stats` 无需限制查询跨度。
 - **日期键规范化**：索引与查询统一用 `normalizeDate`（所在日的 UTC 午夜）作键，消除时刻与时区差异。
 - **并发模型**：`Store` 以 `RWMutex` 保障并发读安全；`Calendar`（含前缀和）构建后不可变，可被任意多 goroutine 并发调用。请求路径上无锁竞争、无内存分配热点。
 - **无热加载**：配置仅在启动时加载，更新配置的流程是「改文件 → 重启 → `/healthz` 确认 years」（见 CONFIG_FORMAT.md 第 7 节）。
@@ -179,7 +179,7 @@ JSON 序列化返回
 
 补充两类强化用例：
 
-- **穷举不变量**：`DayType` 为 uint8 小域，`TestDayTypeExhaustiveInvariants` 遍历全部 256 个取值验证 `Coarse` 封闭且幂等、`IsWorkday/IsHoliday` 恰一为真、`String` 分段合法；`TestCalendarConfiguredYearExhaustive` 对已配置年份全年逐日验证判型 ∈ 6 种合法组合。
+- **穷举不变量**：`DayType` 为 uint8 小域，`TestDayTypeExhaustiveInvariants` 遍历全部 256 个取值验证 `String` 分段合法且不 panic，对 5 个合法值 {1,2,6,10,17} 另验证 `Coarse` ∈ {Work, Rest} 且幂等、`IsWorkday/IsHoliday` 恰一为真、位与判类恰一非零；`TestCalendarConfiguredYearExhaustive` 对已配置年份全年逐日验证判型 ∈ 5 种合法值。
 - **fuzz 测试**（Go 原生 `testing.F`，种子内联，`go test` 常规运行即执行种子回归）：
 
 | 目标 | 位置 | 不变量 |

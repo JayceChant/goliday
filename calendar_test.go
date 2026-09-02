@@ -46,16 +46,16 @@ func TestCalendarQuery(t *testing.T) {
 		want   goliday.DayType
 		coarse goliday.DayType
 	}{
-		{"2026-02-20 周五调休off", "2026-02-20", goliday.DayTypeAdjusted, goliday.DayTypeHoliday},
-		{"2026-02-17 春节当天且off", "2026-02-17", goliday.DayTypeFestival | goliday.DayTypeAdjusted, goliday.DayTypeHoliday},
-		{"2026-02-28 周六补班work", "2026-02-28", goliday.DayTypeCompensate | goliday.DayTypeWeekend, goliday.DayTypeWorkday},
-		{"2026-04-05 周日清明当天不在off/work", "2026-04-05", goliday.DayTypeFestival | goliday.DayTypeWeekend, goliday.DayTypeHoliday},
-		{"2026-03-03 周二未覆盖", "2026-03-03", goliday.DayTypeOrdinary, goliday.DayTypeWorkday},
-		{"2026-02-21 周六春节假期内自然周末", "2026-02-21", goliday.DayTypeWeekend, goliday.DayTypeHoliday},
-		{"2025-01-26 周日补班", "2025-01-26", goliday.DayTypeCompensate | goliday.DayTypeWeekend, goliday.DayTypeWorkday},
-		{"2025-01-29 正月初一", "2025-01-29", goliday.DayTypeFestival | goliday.DayTypeAdjusted, goliday.DayTypeHoliday},
-		{"2025-10-06 中秋当天周一", "2025-10-06", goliday.DayTypeFestival | goliday.DayTypeAdjusted, goliday.DayTypeHoliday},
-		{"2025-04-05 周六假期内自然周末", "2025-04-05", goliday.DayTypeWeekend, goliday.DayTypeHoliday},
+		{"2026-02-20 周五调休off", "2026-02-20", goliday.DayTypeRest | goliday.DayTypeAdjusted, goliday.DayTypeRest},
+		{"2026-02-17 春节当天且off", "2026-02-17", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
+		{"2026-02-28 周六补班work", "2026-02-28", goliday.DayTypeWork | goliday.DayTypeCompensate, goliday.DayTypeWork},
+		{"2026-04-05 周日清明当天不在off/work", "2026-04-05", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
+		{"2026-03-03 周二未覆盖", "2026-03-03", goliday.DayTypeWork, goliday.DayTypeWork},
+		{"2026-02-21 周六春节假期内自然周末", "2026-02-21", goliday.DayTypeRest, goliday.DayTypeRest},
+		{"2025-01-26 周日补班", "2025-01-26", goliday.DayTypeWork | goliday.DayTypeCompensate, goliday.DayTypeWork},
+		{"2025-01-29 正月初一", "2025-01-29", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
+		{"2025-10-06 中秋当天周一", "2025-10-06", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
+		{"2025-04-05 周六假期内自然周末", "2025-04-05", goliday.DayTypeRest, goliday.DayTypeRest},
 	}
 	for _, tt := range tests {
 		wantDayType(t, c, tt.name, date(t, tt.date), tt.want, tt.coarse)
@@ -66,7 +66,7 @@ func TestCalendarQuery(t *testing.T) {
 func TestCalendarQueryNormalization(t *testing.T) {
 	c := newTestCalendar(t)
 
-	want := goliday.DayTypeFestival | goliday.DayTypeAdjusted
+	want := goliday.DayTypeRest | goliday.DayTypeFestival
 	variants := []time.Time{
 		date(t, "2026-02-17"),
 		date(t, "2026-02-17").Add(15*time.Hour + 30*time.Minute),
@@ -153,9 +153,9 @@ func TestCalendarQueryRange(t *testing.T) {
 		t.Fatalf("QueryRange 意外报错: %v", err)
 	}
 	want := []goliday.Dated{
-		{date(t, "2026-02-14"), goliday.DayTypeCompensate | goliday.DayTypeWeekend},
-		{date(t, "2026-02-15"), goliday.DayTypeWeekend},
-		{date(t, "2026-02-16"), goliday.DayTypeAdjusted},
+		{date(t, "2026-02-14"), goliday.DayTypeWork | goliday.DayTypeCompensate},
+		{date(t, "2026-02-15"), goliday.DayTypeRest},
+		{date(t, "2026-02-16"), goliday.DayTypeRest | goliday.DayTypeAdjusted},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("QueryRange 返回 %d 个元素，期望 %d（左闭右开不含 end）：%v", len(got), len(want), got)
@@ -176,7 +176,22 @@ func TestCalendarQueryRange(t *testing.T) {
 	}
 }
 
+// fineKeyOf 将细粒度值映射为 Fine 计数键（位名键）：五值各对应一个键
+// ——Work 单值计 ordinary 键、Rest 单值计 weekend 键、三个组合值计其调整位键。
+func fineKeyOf(dt goliday.DayType) goliday.DayType {
+	switch dt {
+	case goliday.DayTypeRest | goliday.DayTypeFestival:
+		return goliday.DayTypeFestival
+	case goliday.DayTypeRest | goliday.DayTypeAdjusted:
+		return goliday.DayTypeAdjusted
+	case goliday.DayTypeWork | goliday.DayTypeCompensate:
+		return goliday.DayTypeCompensate
+	}
+	return dt // Work(1)→ordinary 键、Rest(2)→weekend 键
+}
+
 // bruteForceStats 逐日 Query 暴力统计，作为前缀和路径的一致性基准。
+// 细粒度为按值 MECE 计数（键即五位名键），粗粒度为基本位投影。
 func bruteForceStats(t *testing.T, c *goliday.Calendar, start, end time.Time, detailed bool) goliday.StatsResult {
 	t.Helper()
 	r := goliday.StatsResult{Total: 0, Coarse: map[goliday.DayType]int{}}
@@ -191,12 +206,7 @@ func bruteForceStats(t *testing.T, c *goliday.Calendar, start, end time.Time, de
 		r.Total++
 		r.Coarse[dt.Coarse()]++
 		if detailed {
-			for i := range 5 {
-				bit := goliday.DayType(1) << i
-				if dt&bit != 0 {
-					r.Fine[bit]++
-				}
-			}
+			r.Fine[fineKeyOf(dt)]++
 		}
 	}
 	return r
@@ -208,14 +218,14 @@ func wantSameStats(t *testing.T, name string, got, want goliday.StatsResult) {
 	if got.Total != want.Total {
 		t.Errorf("%s: Total = %d，期望 %d", name, got.Total, want.Total)
 	}
-	if got.Coarse[goliday.DayTypeWorkday] != want.Coarse[goliday.DayTypeWorkday] ||
-		got.Coarse[goliday.DayTypeHoliday] != want.Coarse[goliday.DayTypeHoliday] {
+	if got.Coarse[goliday.DayTypeWork] != want.Coarse[goliday.DayTypeWork] ||
+		got.Coarse[goliday.DayTypeRest] != want.Coarse[goliday.DayTypeRest] {
 		t.Errorf("%s: Coarse = %v，期望 %v", name, got.Coarse, want.Coarse)
 	}
 	if len(want.Fine) > 0 {
 		fineKeys := []goliday.DayType{
-			goliday.DayTypeOrdinary, goliday.DayTypeCompensate, goliday.DayTypeWeekend,
-			goliday.DayTypeFestival, goliday.DayTypeAdjusted,
+			goliday.DayTypeWork, goliday.DayTypeRest, goliday.DayTypeFestival,
+			goliday.DayTypeAdjusted, goliday.DayTypeCompensate,
 		}
 		for _, k := range fineKeys {
 			if got.Fine[k] != want.Fine[k] {
@@ -225,7 +235,7 @@ func wantSameStats(t *testing.T, name string, got, want goliday.StatsResult) {
 	}
 }
 
-// TestCalendarStats 统计：细粒度交叉计数与粗粒度模式断言（前缀和路径）。
+// TestCalendarStats 统计：细粒度五键 MECE 与粗粒度模式断言（前缀和路径）。
 func TestCalendarStats(t *testing.T) {
 	c := newTestCalendar(t)
 	dates := []time.Time{date(t, "2026-02-17"), date(t, "2026-02-28"), date(t, "2026-03-03")}
@@ -237,23 +247,30 @@ func TestCalendarStats(t *testing.T) {
 	if r.Total != 3 {
 		t.Errorf("Total = %d，期望 3", r.Total)
 	}
-	if r.Coarse[goliday.DayTypeWorkday] != 2 || r.Coarse[goliday.DayTypeHoliday] != 1 {
-		t.Errorf("Coarse = %v，期望 workday=2、holiday=1", r.Coarse)
+	if r.Coarse[goliday.DayTypeWork] != 2 || r.Coarse[goliday.DayTypeRest] != 1 {
+		t.Errorf("Coarse = %v，期望 work=2、holiday=1", r.Coarse)
+	}
+	// 02-17 节日放假日、02-28 补班日、03-03 普通工作日：三键各计 1，
+	// 五键之和 == Total（MECE）。
+	if len(r.Fine) != 5 {
+		t.Fatalf("Fine = %v，期望 5 键（MECE）", r.Fine)
 	}
 	wantFine := map[goliday.DayType]int{
-		goliday.DayTypeOrdinary:   1,
-		goliday.DayTypeCompensate: 1,
-		goliday.DayTypeWeekend:    1,
 		goliday.DayTypeFestival:   1,
-		goliday.DayTypeAdjusted:   1,
+		goliday.DayTypeCompensate: 1,
+		goliday.DayTypeWork:       1,
+		goliday.DayTypeRest:       0,
+		goliday.DayTypeAdjusted:   0,
 	}
-	if len(r.Fine) != len(wantFine) {
-		t.Fatalf("Fine = %v，期望 %v", r.Fine, wantFine)
-	}
-	for k, v := range wantFine {
-		if r.Fine[k] != v {
-			t.Errorf("Fine[%s] = %d，期望 %d", k, r.Fine[k], v)
+	sum := 0
+	for k, v := range r.Fine {
+		if wantFine[k] != v {
+			t.Errorf("Fine[%d（%s）] = %d，期望 %d", k, k, v, wantFine[k])
 		}
+		sum += v
+	}
+	if sum != r.Total {
+		t.Errorf("Fine 五键之和 = %d，期望 == Total = %d", sum, r.Total)
 	}
 
 	rc, err := c.Stats(dates, false)
@@ -263,8 +280,8 @@ func TestCalendarStats(t *testing.T) {
 	if rc.Total != 3 {
 		t.Errorf("粗粒度模式 Total = %d，期望 3", rc.Total)
 	}
-	if rc.Coarse[goliday.DayTypeWorkday] != 2 || rc.Coarse[goliday.DayTypeHoliday] != 1 {
-		t.Errorf("粗粒度模式 Coarse = %v，期望 workday=2、holiday=1", rc.Coarse)
+	if rc.Coarse[goliday.DayTypeWork] != 2 || rc.Coarse[goliday.DayTypeRest] != 1 {
+		t.Errorf("粗粒度模式 Coarse = %v，期望 work=2、holiday=1", rc.Coarse)
 	}
 	if len(rc.Fine) != 0 {
 		t.Errorf("粗粒度模式 Fine 应无计数，got %v", rc.Fine)
@@ -329,12 +346,7 @@ func TestStatsMatchesBruteForceList(t *testing.T) {
 			}
 			want.Coarse[dt.Coarse()]++
 			if detailed {
-				for i := range 5 {
-					bit := goliday.DayType(1) << i
-					if dt&bit != 0 {
-						want.Fine[bit]++
-					}
-				}
+				want.Fine[fineKeyOf(dt)]++
 			}
 		}
 		wantSameStats(t, fmt.Sprintf("list detailed=%v", detailed), got, want)
@@ -381,7 +393,7 @@ func TestCalendarIsWorkdayIsHoliday(t *testing.T) {
 }
 
 // TestCalendarConfiguredYearExhaustive 对已配置年份（2025、2026）全年逐日
-// 校验：结果恒属于 6 种合法细粒度组合、粗细一致。
+// 校验：结果恒属于 5 种合法细粒度值、粗细一致。
 func TestCalendarConfiguredYearExhaustive(t *testing.T) {
 	c := newTestCalendar(t)
 
@@ -396,8 +408,8 @@ func TestCalendarConfiguredYearExhaustive(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: Query 意外报错: %v", d.Format(layout), err)
 			}
-			if !legalCombos[got] {
-				t.Fatalf("%s: Query = %d（%s），不在合法组合全集内", d.Format(layout), got, got)
+			if !legalFineValues[got] {
+				t.Fatalf("%s: Query = %d（%s），不在合法值全集内", d.Format(layout), got, got)
 			}
 			gotC, err := c.QueryCoarse(d)
 			if err != nil || gotC != got.Coarse() {
@@ -479,8 +491,8 @@ func FuzzQueryConsistency(f *testing.F) {
 		if err != nil {
 			t.Fatalf("Query(%s) 意外报错: %v", ts.Format(layout), err)
 		}
-		if !legalCombos[got] {
-			t.Fatalf("Query(%s) = %d（%s），不在合法组合全集内", ts.Format(layout), got, got)
+		if !legalFineValues[got] {
+			t.Fatalf("Query(%s) = %d（%s），不在合法值全集内", ts.Format(layout), got, got)
 		}
 		if coarse, err := c.QueryCoarse(ts); err != nil || coarse != got.Coarse() {
 			t.Fatalf("QueryCoarse(%s) 与 Query().Coarse() 不一致（%v）", ts.Format(layout), err)

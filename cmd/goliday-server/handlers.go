@@ -231,20 +231,20 @@ type daysResponse struct {
 }
 
 // fillStats 将统计结果填充为响应的 stats 字段：粗粒度恒为 workday/holiday
-// 两键；细粒度为固定 5 键交叉计数（即使为 0 也输出）。
+// 两键；细粒度为固定 5 键 MECE 计数（即使为 0 也输出，之和恒等于 total_days）。
 func fillStats(resp *daysResponse, st goliday.StatsResult, detailed bool) {
 	if detailed {
 		resp.Stats = map[string]int{
-			"ordinary":   st.Fine[goliday.DayTypeOrdinary],
-			"compensate": st.Fine[goliday.DayTypeCompensate],
-			"weekend":    st.Fine[goliday.DayTypeWeekend],
+			"ordinary":   st.Fine[goliday.DayTypeWork],
+			"weekend":    st.Fine[goliday.DayTypeRest],
 			"festival":   st.Fine[goliday.DayTypeFestival],
 			"adjusted":   st.Fine[goliday.DayTypeAdjusted],
+			"compensate": st.Fine[goliday.DayTypeCompensate],
 		}
 	} else {
 		resp.Stats = map[string]int{
-			"workday": st.Coarse[goliday.DayTypeWorkday],
-			"holiday": st.Coarse[goliday.DayTypeHoliday],
+			"workday": st.Coarse[goliday.DayTypeWork],
+			"holiday": st.Coarse[goliday.DayTypeRest],
 		}
 	}
 }

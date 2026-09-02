@@ -18,43 +18,59 @@
 - **WHEN** 运行 `go list -deps .`（根包）与 `go list -m all`
 - **THEN** 根包导入中无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 `github.com/BurntSushi/toml`、`google.golang.org/grpc`、`google.golang.org/protobuf`，其余第三方模块均为 gRPC 的传递依赖
 
-### Requirement: DayType 位掩码枚举
+### Requirement: DayType 位掩码枚举（终态双层编码）
 
-系统 SHALL 定义 `type DayType uint8` 与可组合位标志常量，细粒度值可通过位运算映射为粗粒度段值（uint8 足够容纳 5 个细粒度位及组合）。
+系统 SHALL 定义 `type DayType uint8`，采用「终态双层」编码：粗粒度为两个**单 bit 互斥基本位**（当日最终是否上班），细粒度调整位依附粗粒度位组合成具体日期类型；全部组合值的按位或均为 **all-of（合取）**语义，全类型不存在 any-of（并集物化值）语义。
 
 枚举取值（`daytype.go`）：
 
-| 常量 | 值 | 含义 |
+| 常量 | 值 | 层 | 含义 |
+|---|---|---|---|
+| `DayTypeWork` | 1 << 0 = 1 | 粗粒度基本位 | 上班 |
+| `DayTypeRest` | 1 << 1 = 2 | 粗粒度基本位 | 放假（未调整时必然为周末） |
+| `DayTypeFestival` | 1 << 2 = 4 | 调整位 | 过节：法定节日当天（放假），当日新增法定假期 |
+| `DayTypeAdjusted` | 1 << 3 = 8 | 调整位 | 调休：原工作日被调整为休息（非节日当天），不新增假期 |
+| `DayTypeCompensate` | 1 << 4 = 16 | 调整位 | 补班：原周末被调整为上班 |
+
+细粒度合法组合全集（5 种，MECE，由配置与周休判定产生，数值之和即总天数）：
+
+| 值 | 组合 | 语义 |
 |---|---|---|
-| `DayTypeOrdinary` | 1 << 0 | 普通工作日（细） |
-| `DayTypeCompensate` | 1 << 1 | 补班（细，归工作日段） |
-| `DayTypeWeekend` | 1 << 2 | 周末（细，归节假日段） |
-| `DayTypeFestival` | 1 << 3 | 节日（细，归节假日段） |
-| `DayTypeAdjusted` | 1 << 4 | 调休（细，归节假日段） |
-| `DayTypeWorkday` | (1<<0)\|(1<<1) = 3 | 粗粒度：工作日段 |
-| `DayTypeHoliday` | (1<<2)\|(1<<3)\|(1<<4) = 28 | 粗粒度：节假日段 |
+| 1 | `Work` | 普通工作日 |
+| 2 | `Rest` | 普通周休（未调整的自然周末） |
+| 6 | `Rest\|Festival` | 节日放假日（无论节日落在工作日还是周末，终态同为「放假\|过节」） |
+| 10 | `Rest\|Adjusted` | 调休放假日（原工作日；来源含拼假挪移与节日逢周末的补休，日类型不区分） |
+| 17 | `Work\|Compensate` | 补班日（原周末） |
 
-粗粒度化规则（`Coarse()`，优先级消歧）：
-1. 含 `Compensate` 位 → `Workday`（补班必为工作日，即使该日是周末）；
-2. 否则含 `Weekend|Festival|Adjusted` 任一位 → `Holiday`；
-3. 否则 → `Workday`。
+粗粒度归属 SHALL 为单次按位与：`t & DayTypeRest != 0` → 放假、`t & DayTypeWork != 0` → 上班（合法值恰含一个基本位，无歧义、无需优先级消歧）；`Coarse()` SHALL 返回 `t & (DayTypeWork|DayTypeRest)`，合法值上结果 ∈ {1, 2} 且幂等。
 
-细粒度合法组合全集（由配置与周休推断产生）：
-`Ordinary(1)`、`Compensate|Weekend(6)`、`Weekend(4)`、`Festival|Weekend(12)`、`Adjusted(16)`、`Festival|Adjusted(24)`。
+非法值（可编码，但校验与判定不得产生）：`0` 与含未定义位（≥32）的值；`3`（上班∧放假矛盾）；裸调整位 `4`/`8`/`16`（调整位必须依附基本位）；`5`/`9`（过节/调休与上班矛盾——两者必为放假）；`18`（补班与放假矛盾）；`12`/`14`/`20`/`22` 等含两个及以上调整位的组合（同日至多一个调整位）。调整动作与自然日的对应（`off` 必为工作日、`work` 必为周末、工作日节日必须在 `off`）由配置校验保证。
 
-`DayType` SHALL 提供 `IsWorkday()`、`IsHoliday()`、`Coarse()`、`String()`；序列化 SHALL 直接输出 int 数值。`String()`：单/组合标志按位序以 `|` 连接小写名（如 `"festival|adjusted"`、`"compensate|weekend"`）；粗粒度值返回 `"workday"`/`"holiday"`。
+**语义约定**（SHALL 写入用户文档）：
+- 「节日」均指产生法定假期的全体公民节日，不放假的纪念日不纳入本系统；节日当天必为放假日（配置校验强制）。
+- 「调休」为窄义：原工作日因安排变休息且**非节日当天**；「过节」当日新增假期，「调休」零新增，「补班」为负增量。净增假日 = 过节日数 − 补班数（审计参考，不做硬校验）。
+- 「节日逢周末在他日补休」「挪移与补班成对」为公告层配对关系，单日类型不编码、不做硬校验。
+- 自然日（调整前是工作日还是周末）不进入类型值，可由日期 `Weekday` 与配置推导。
 
-#### Scenario: 工作日段映射
-- **WHEN** 细粒度值分别为 `DayTypeOrdinary`、`DayTypeCompensate|DayTypeWeekend`
-- **THEN** `Coarse()` 均等于 `DayTypeWorkday`，`IsWorkday()` 为 true
+**决策依据**：旧编码在同一类型中混用两种按位或语义——粗值 3/28 为「互斥并集（any-of）」物化值、细组合值 6/12/24 为「属性合取（all-of）」——导致 `6 & 28 ≠ 0` 双命中、`Coarse()` 需优先级规则消歧，且「按可达值取并」与「按名义位取并」不一致（`1|6=7 ≠ Workday=3`）。本修订将粗粒度改为单 bit 基本枚举、组合值全部退化为 all-of，位运算语义单一，粗/细归属均可用单次按位与表达；曾评估「自然位」方案（组合 {1,2,5,6,9,18}，区分节日逢周末/工作日），因翻转日（补班/调休/过节）的位与判类必然误判且无静态掩码可补救而否决。
 
-#### Scenario: 节假日段映射
-- **WHEN** 细粒度值分别为 `DayTypeWeekend`、`DayTypeFestival|DayTypeWeekend`、`DayTypeAdjusted`、`DayTypeFestival|DayTypeAdjusted`
-- **THEN** `Coarse()` 均等于 `DayTypeHoliday`
+`DayType` SHALL 提供 `IsWorkday()`（`t & DayTypeWork != 0`）、`IsHoliday()`（`t & DayTypeRest != 0`）、`Coarse()`、`String()`；序列化 SHALL 直接输出 int 数值。`String()`：按位从低到高连接位小写名（`work`/`rest`/`festival`/`adjusted`/`compensate`），如 `Rest|Festival(6)` → `"rest|festival"`、`Work|Compensate(17)` → `"work|compensate"`；粗粒度值 1/2 无需特判，天然输出 `"work"`/`"rest"`；存在未知位时追加 `unknown`，空值（0）返回 `"unknown"`。
+
+#### Scenario: 上班段映射
+- **WHEN** 细粒度值分别为 `DayTypeWork`、`DayTypeWork|DayTypeCompensate`
+- **THEN** `Coarse()` 均等于 `DayTypeWork`，`IsWorkday()` 为 true、`IsHoliday()` 为 false
+
+#### Scenario: 放假段映射
+- **WHEN** 细粒度值分别为 `DayTypeRest`、`DayTypeRest|DayTypeFestival`、`DayTypeRest|DayTypeAdjusted`
+- **THEN** `Coarse()` 均等于 `DayTypeRest`，`IsHoliday()` 为 true
+
+#### Scenario: 位与判类无歧义
+- **WHEN** 对全部合法值 {1, 2, 6, 10, 17} 分别执行 `t & DayTypeRest` 与 `t & DayTypeWork`
+- **THEN** 恰一非零（旧编码 `Compensate|Weekend & Holiday = 4` 双命中问题消除）
 
 #### Scenario: 字符串表示
-- **WHEN** 对 `DayTypeFestival|DayTypeAdjusted` 与 `DayTypeCompensate|DayTypeWeekend` 调用 `String()`
-- **THEN** 分别返回 `"festival|adjusted"`、`"compensate|weekend"`；对粗粒度 `DayTypeWorkday` 返回 `"workday"`
+- **WHEN** 对 `DayTypeRest|DayTypeFestival` 与 `DayTypeWork|DayTypeCompensate` 调用 `String()`
+- **THEN** 分别返回 `"rest|festival"`、`"work|compensate"`；对 `DayTypeRest` 返回 `"rest"`
 
 ### Requirement: 稀疏配置文件格式（TOML）
 
@@ -96,17 +112,18 @@ work = [ "2026-01-24", "2026-02-28" ]
 - `work` 中日期必须为周六/周日；
 - `off`、`work` 各自无重复且两集合互斥；
 - `work` 不得包含任何 `festival.date`（节日当天不得补班）；
+- `festival.date` 为周一~周五（工作日）时必须出现在 `off` 中——节日当天必为放假日，工作日节日须经 `off` 落地（否则该日在类型上无合法状态可归）；
 - 所有日期合法（含闰年）且落在 `year` 年内；
 - 违规时返回明确错误（指明文件与原因），服务启动失败。
 
 单日期判断算法（优先级从高到低）：
-1. `date ∈ work` → `Compensate|Weekend`（work 必为周末）；
-2. `date ∈ off` → `Adjusted`（off 必为工作日）；
-3. `date == 某 festival.date` → 在周休结果上附加 `Festival` 位；
-4. 周休回退：周六/周日 → `Weekend`，否则 `Ordinary`；
+1. `date == 某 festival.date` → `Rest|Festival(6)`——节日当天必放假（落周末为自然休息、落工作日由 `off` 落地，统称「节日放假日」，不另标调休位）；
+2. `date ∈ work` → `Work|Compensate(17)`（work 必为周末，校验保证）；
+3. `date ∈ off` → `Rest|Adjusted(10)`（off 必为工作日）；
+4. 周休回退：周六/周日 → `Rest(2)`，否则 `Work(1)`；
 5. 该年无配置文件 → 见「年份加载强校验」：返回 `ErrYearNotLoaded`，不回退。
 
-等价表达：`t = 周末 ? Weekend : Ordinary`；`if off 命中 { t = Adjusted }`；`if work 命中 { t = Compensate|Weekend }`；`if 节日当天 { t |= Festival }`。
+等价表达：`t = 节日当天 ? Rest|Festival : work 命中 ? Work|Compensate : off 命中 ? Rest|Adjusted : (周末 ? Rest : Work)`。
 
 #### Scenario: 启动加载
 - **WHEN** 服务以 `-config-dir /etc/goliday` 启动且目录含 `2025.toml`、`2026.toml`、`README.md` 及子目录
@@ -114,23 +131,27 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 #### Scenario: 工作日调休（配置优先）
 - **WHEN** `2026.toml` 的 `off` 含 `2026-02-20`（周五）
-- **THEN** 2026-02-20 判定为 `Holiday`（细：`Adjusted=16`），而非默认的 `Workday`
+- **THEN** 2026-02-20 判定为 `Rest`（细：`Rest|Adjusted = 10`），而非默认的 `Work`
 
 #### Scenario: 节日当天
 - **WHEN** `2026-02-17`（周二，春节当天）在 `off` 中且为 `festival.date`
-- **THEN** 细粒度为 `Festival|Adjusted = 24`，粗粒度为 `Holiday`
+- **THEN** 细粒度为 `Rest|Festival = 6`，粗粒度为 `Rest`（节日当天必为放假日，不另标调休位）
 
 #### Scenario: 周末补班
 - **WHEN** `2026.toml` 的 `work` 含 `2026-02-28`（周六）
-- **THEN** 细粒度为 `Compensate|Weekend = 6`，粗粒度为 `Workday`
+- **THEN** 细粒度为 `Work|Compensate = 17`，粗粒度为 `Work`
 
 #### Scenario: 节日恰逢周末
 - **WHEN** 某 `festival.date` 为周日、且不在 `off`/`work` 中
-- **THEN** 细粒度为 `Festival|Weekend = 12`，粗粒度为 `Holiday`
+- **THEN** 细粒度为 `Rest|Festival = 6`（与工作日节日同为「节日放假日」），粗粒度为 `Rest`
+
+#### Scenario: 工作日节日未写入 off
+- **WHEN** 某 `festival.date` 为周二、但不在 `off` 中
+- **THEN** 加载返回错误，服务启动失败（节日当天必为放假日，工作日节日须经 `off` 落地）
 
 #### Scenario: 未覆盖日期回退
 - **WHEN** 查询 2026-03-03（周二，未被任何条目覆盖）
-- **THEN** 判定为 `Workday`（细：`Ordinary=1`）
+- **THEN** 判定为 `Work`（细：`Work = 1`）
 
 #### Scenario: 稀疏原则违规
 - **WHEN** `off` 含周末日期（如 `2026-01-03` 周六），或 `work` 含工作日，或两集合有交集
@@ -145,7 +166,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 服务层 SHALL 暴露 HTTP 单日查询：
 
 `GET /api/v1/days?date=2026-02-20`（`detailed=true|false`，默认 false）
-- 响应：`{"date":"2026-02-20","type":28,"type_label":"holiday"}`；`detailed=true` 时 `{"date":"2026-02-20","type":16,"type_label":"adjusted"}`。
+- 响应：`{"date":"2026-02-20","type":2,"type_label":"rest"}`；`detailed=true` 时 `{"date":"2026-02-20","type":10,"type_label":"rest|adjusted"}`。
 
 #### Scenario: 非法日期
 - **WHEN** `GET /api/v1/days?date=2026-02-30`
@@ -167,14 +188,14 @@ work = [ "2026-01-24", "2026-02-28" ]
   "start": "2026-02-01",
   "end": "2026-02-28",
   "total_days": 27,
-  "days": [ { "date": "2026-02-01", "type": 28, "type_label": "holiday" } ],
+  "days": [ { "date": "2026-02-01", "type": 2, "type_label": "rest" } ],
   "stats": { "holiday": 8, "workday": 19 }
 }
 ```
 
 列表/混合响应：`mode` 为 `"list"`，结构同上（不含区间字段）。
 
-细粒度模式下 `days[].type` 为细粒度掩码，`stats` 为 `{"ordinary":n,"compensate":n,"weekend":n,"festival":n,"adjusted":n}`；组合日（如 `festival|adjusted`、`compensate|weekend`）SHALL 对其含有的每个标志各计 1 天（存在交叉计数，各键之和可大于 `total_days`）。
+细粒度模式下 `days[].type` 为细粒度值（`days[].type` 恒为细粒度，`detailed` 仅切换 `stats` 口径），`stats` 为 `{"ordinary":n,"weekend":n,"festival":n,"adjusted":n,"compensate":n}`——五键 MECE（各计一类日），**之和恒等于 `total_days`**（不存在交叉计数）。
 
 跨度限制分化：`/api/v1/days`（含 gRPC `QueryDays`）区间跨度上限 **366 天**（防响应膨胀）；`/api/v1/stats`（含 `QueryStats`）**不限跨度**（前缀和实现，见「细粒度组合计数前缀和统计」）。全部覆盖年份须已加载（见「年份加载强校验」）。`days` 响应中的 `stats` 与同输入的 stats 接口完全一致（复用前缀和路径）。
 
@@ -190,9 +211,9 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **WHEN** `start=2026-02-01&end=2026-02-03&dates=2026-03-08`
 - **THEN** `days` 为 02-01、02-02、03-08 共 3 条，`mode="list"`
 
-#### Scenario: 细粒度统计交叉计数
-- **WHEN** 02-17 为 `festival|adjusted`、02-28 为 `compensate|weekend`
-- **THEN** 该两日分别在 `festival`+`adjusted`、`compensate`+`weekend` 键中各计 1
+#### Scenario: 细粒度统计 MECE 计数
+- **WHEN** 02-17 为 `rest|festival`、02-28 为 `work|compensate`
+- **THEN** 该两日分别在 `festival`、`compensate` 键各计 1，五键之和 == `total_days`
 
 #### Scenario: 参数校验
 - **WHEN** `end < start`、或（days 接口）区间跨度 > 366 天、或 `date`/`start+end`/`dates` 均缺省、或日期格式非法
@@ -339,8 +360,8 @@ README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg
 系统 SHALL 提供 `proto/goliday/v1/goliday.proto`（syntax proto3，package `goliday.v1`，`option go_package = "github.com/JayceChant/goliday/proto/goliday/v1;golidayv1"`），供调用方直接引用；生成的 Go 代码 SHALL 入库于 `proto/goliday/v1/{goliday.pb.go,goliday_grpc.pb.go}`（调用方无需本地 protoc）。
 
 proto 内容约定：
-- `DayType` 掩码以 `uint32` 表达并附注释（proto3 enum 无法表达位组合），注释标明细粒度位值（1/2/4/8/16）、粗粒度段值（3/28）与 6 种合法组合（1/4/6/12/16/24），与根包 `DayType` 完全一致；
-- 消息：`Day{date,type,type_label}`、`Stats{workday,holiday,ordinary,compensate,weekend,festival,adjusted}`（粗粒度字段恒填充，细粒度字段仅 `detailed=true` 时填充，组合日交叉计数语义与 HTTP 一致）、`GetDayRequest{date,detailed}`、`GetDayResponse{date,type,type_label,total_days,stats}`、`QueryDaysRequest{start,end,dates[],detailed}`、`QueryDaysResponse{mode,start,end,total_days,days[],stats}`、`QueryStatsRequest{start,end,dates[],detailed}`（字段与 QueryDaysRequest 同构，独立消息以符合 buf lint 默认规则）、`QueryStatsResponse{mode,start,end,total_days,stats}`；
+- `DayType` 掩码以 `uint32` 表达并附注释（proto3 enum 无法表达位组合），注释标明双层位值（粗粒度基本位：1=上班、2=放假；调整位：4=过节、8=调休、16=补班）与 5 种合法组合（1/2/6/10/17），并说明粗粒度即基本位投影、组合值 `|` 为 all-of 语义，与根包 `DayType` 完全一致；
+- 消息：`Day{date,type,type_label}`、`Stats{workday,holiday,ordinary,compensate,weekend,festival,adjusted}`（粗粒度字段恒填充，细粒度字段仅 `detailed=true` 时填充，五键 MECE 之和恒等于 `total_days`，与 HTTP 一致）、`GetDayRequest{date,detailed}`、`GetDayResponse{date,type,type_label,total_days,stats}`、`QueryDaysRequest{start,end,dates[],detailed}`、`QueryDaysResponse{mode,start,end,total_days,days[],stats}`、`QueryStatsRequest{start,end,dates[],detailed}`（字段与 QueryDaysRequest 同构，独立消息以符合 buf lint 默认规则）、`QueryStatsResponse{mode,start,end,total_days,stats}`；
 - 服务 `GolidayService`：`GetDay`（单日）、`QueryDays`（区间/离散/混合并集，含明细）、`QueryStats`（入参与 QueryDays 同构，不含 days 明细）——语义与 HTTP `/api/v1/days`、`/api/v1/stats` 一一对应；
 - 日期一律 `YYYY-MM-DD` 字符串；`mode` 取 `range`/`list`；
 - proto 头注释写明再生成方式（buf：在仓库根执行 `buf generate`，需 buf 与 protoc-gen-go、protoc-gen-go-grpc 在 PATH；buf 工作区为标准布局——模块根 `proto/`，`buf lint` 默认 STANDARD 规则零豁免）。
@@ -391,12 +412,12 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 | Fuzz 目标 | 所属 | 不变量 |
 |---|---|---|
 | `FuzzParseDate` | 根包 `package goliday`（白盒） | 任意字符串：解析成功 ⇔ `time.Parse("2006-01-02", s)` 接受且 `Format` 回环一致；成功值再解析幂等；失败必须返回非 nil error |
-| `FuzzQueryConsistency` | 根包 `package goliday_test`（黑盒） | 任意构造的 `time.Time`：已加载年份 `Query` 结果 ∈ 合法细粒度组合全集 {1,4,6,12,16,24} 且 `QueryCoarse == Query().Coarse()`、`IsWorkday/IsHoliday` 与之互斥一致、同一日不同时刻（+5h/+23h）与 UTC/+08:00 表示结果不变；未加载年份断言返回 `ErrYearNotLoaded` |
-| `FuzzLoadYearTOML` | 根包 `package goliday_test`（黑盒） | 任意年份 + TOML 文本：`LoadYear` 成功 ⟹ `Validate()` 幂等通过、off 全为周一~五、work 全为周六/日、两集合互斥无重复、全部日期在 `year` 年内；经 `LoadDir` 构造的 `Calendar` 对 off 日含 `Adjusted` 位、work 日为 `Compensate\|Weekend` |
-| `FuzzDaysHandler` | `cmd/goliday-server` `package main`（白盒） | 任意查询串打到 `/api/v1/days` 与 `/api/v1/stats`：不 panic、状态码仅 200/400、响应恒为合法 JSON；200 且含 `days` 时升序唯一、`total_days == len(days)`；粗粒度 stats 之和 == `total_days`，细粒度（交叉计数）之和 ≥ `total_days`；单日模式 `total_days == 1`；stats 路径不因跨度报错（未加载年份报 `year_not_loaded` 除外） |
+| `FuzzQueryConsistency` | 根包 `package goliday_test`（黑盒） | 任意构造的 `time.Time`：已加载年份 `Query` 结果 ∈ 合法细粒度值全集 {1,2,6,10,17} 且 `QueryCoarse == Query().Coarse()`、`IsWorkday/IsHoliday` 与之互斥一致、同一日不同时刻（+5h/+23h）与 UTC/+08:00 表示结果不变；未加载年份断言返回 `ErrYearNotLoaded` |
+| `FuzzLoadYearTOML` | 根包 `package goliday_test`（黑盒） | 任意年份 + TOML 文本：`LoadYear` 成功 ⟹ `Validate()` 幂等通过、off 全为周一~五、work 全为周六/日、两集合互斥无重复、工作日节日均在 off、全部日期在 `year` 年内；经 `LoadDir` 构造的 `Calendar` 对 off 日含 `Rest` 位（节日当天为 `Rest\|Festival`，其余为 `Rest\|Adjusted`）、work 日为 `Work\|Compensate` |
+| `FuzzDaysHandler` | `cmd/goliday-server` `package main`（白盒） | 任意查询串打到 `/api/v1/days` 与 `/api/v1/stats`：不 panic、状态码仅 200/400、响应恒为合法 JSON；200 且含 `days` 时升序唯一、`total_days == len(days)`；粗粒度 stats 之和 == `total_days`，细粒度五键之和 == `total_days`（MECE）；单日模式 `total_days == 1`；stats 路径不因跨度报错（未加载年份报 `year_not_loaded` 除外） |
 | `FuzzGenDraft` | `cmd/goliday-tool` `package main`（白盒） | 任意年份 + 公告文本：解析条目区间有效且在年内；草稿 off 全为周一~五、work 全为周六/日、互斥无重复、全在年内；festival 日期非 TODO 则为合法 `YYYY-MM-DD`；`selfCheck` 失败仅允许 TODO 占位、"festival 日期重复"、"节日当天不得补班"或"节日当天为工作日但不在 off"；自检通过且文件名年份合法时 `render` 产物可被 `LoadYear` 加载 |
 
-补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`Coarse` 结果 ∈ {Workday, Holiday} 且幂等、`IsWorkday`/`IsHoliday` 恰一为真、`String` 分段均为合法名）覆盖，不再另设 fuzz 目标。
+补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`String` 分段均为合法位名或 `unknown`、不 panic）覆盖；对 5 个合法值 {1,2,6,10,17} 另行断言：`Coarse` 结果 ∈ {`DayTypeWork`, `DayTypeRest`} 且幂等、`IsWorkday`/`IsHoliday` 恰一为真、`t & DayTypeWork` 与 `t & DayTypeRest` 恰一非零。不再另设 fuzz 目标。
 
 约束：fuzz 目标不得新增第三方依赖（仅 `testing`/`time`/标准库）；失败语料按 Go 惯例落盘 `testdata/fuzz/<Name>/` 后 SHALL 转写为常规回归用例（普通 Test 或种子）再删除语料文件，保持仓库无 fuzz 语料残留。
 
@@ -448,15 +469,15 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 `Calendar` SHALL 在构造时（`NewCalendar`）为每个已加载年份构建前缀和数组，加载完成后只读、可被多个 goroutine 并发访问：
 
-- 每年数组 `prefix`，长度 = 该年天数 + 1，元素为 6 种合法细粒度组合（`1/4/6/12/16/24`）各自的累计天数（**按组合计数**，非标志位交叉计数）；
+- 每年数组 `prefix`，长度 = 该年天数 + 1，元素为 5 种合法细粒度值（`1/2/6/10/17`）各自的累计天数（**按值计数**，五值 MECE）；
 - `prefix[0]` 为全零；`prefix[i] = prefix[i-1] + 第 i 天（元旦起 1-based）类型的组合计数`，即 `prefix[i]` 表示 `[元旦, 元旦+i天)`（左闭右开）的累计；
 - 构建成本 O(年天数)，仅在构造时发生一次。
 
 **决策依据**：统计 O(覆盖年数) 差分即可完成，故 `/stats` 解除范围限制；days 明细接口保留 366 天上限防响应膨胀。
 
-统计导出规则（由组合计数 `C(v)` 线性组合，语义与逐日统计完全等价）：
-- 细粒度标志位交叉计数：`ordinary=C(1)`、`compensate=C(6)`、`weekend=C(4)+C(6)+C(12)`、`festival=C(12)+C(24)`、`adjusted=C(16)+C(24)`；
-- 粗粒度：`workday=C(1)+C(6)`、`holiday=C(4)+C(12)+C(16)+C(24)`；
+统计导出规则（由按值计数 `C(v)` 直接映射，语义与逐日统计完全等价）：
+- 细粒度（五键 MECE，之和恒等于 `Total`）：`ordinary=C(1)`、`weekend=C(2)`、`festival=C(6)`、`adjusted=C(10)`、`compensate=C(17)`；
+- 粗粒度（单次位与归类）：`workday=C(1)+C(17)`、`holiday=C(2)+C(6)+C(10)`；
 - `Total` = 覆盖天数（区间天数或列表长度）。
 
 #### Scenario: 年内差分

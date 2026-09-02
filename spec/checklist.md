@@ -126,4 +126,13 @@
 - [x] README 双语删除「质量与持续集成 / Quality & CI」章节（标题下徽章保留），文档索引中 ARCHITECTURE.md 条目补充「质量门禁与 CI」描述
 - [x] docs/ARCHITECTURE.md 新增第 7 节「质量门禁与 CI」：收录原 README 表格（工作流链接改为 `../` 相对路径），许可证条目按徽章语义移除
 - [x] spec.md 同步修订：「在线质量门禁与 CI」与「开源许可证」Requirement 中 README 章节表述改为徽章 + 指向 ARCHITECTURE.md；tasks.md 追加批次条目
-- [x] README 双语语义一致、无本地绝对路径；验证命令全绿（纯文档变更，无 Go 代码改动）；执行提交（docs: README 移除质量与 CI 章节并迁移至架构文档）
+- [x] README 双语语义一致、无本地绝对路径；验证命令全绿（纯文档变更，无代码改动）；执行提交（docs: README 移除质量与 CI 章节并迁移至架构文档）
+
+## DayType 终态双层编码重构
+
+- [x] spec.md「DayType 位掩码枚举（终态双层编码）」Requirement（位表、五值全集、非法值清单、语义约定、决策依据）经用户确认后实现；判定算法、校验规则（工作日节日必须在 off）、统计口径（五键 MECE）、proto 注释约定、fuzz 不变量与穷举测试约定同步修订
+- [x] 全部合法值 {1,2,6,10,17} 上 `t & Work` 与 `t & Rest` 恰一非零（位与判类无歧义）；`Coarse() = t & 3` 幂等；`String()` 输出 work/rest/rest|festival/rest|adjusted/work|compensate
+- [x] 新增校验规则落地并有 invalid 样例回归（`testdata/invalid/festival_workday_no_off.toml`），2025/2026 真实配置仍通过校验
+- [x] 细粒度统计五键之和 == `total_days`（HTTP/gRPC/根包三层一致，fuzz 不变量同步收紧）；前缀和与逐日暴力统计全年/跨年/离散完全一致
+- [x] proto 注释与生成代码同步（`buf generate` 幂等、`buf lint` 通过）；README 双语、docs/API.md、CONFIG_FORMAT.md、ARCHITECTURE.md、holiday_config_example.toml、configs/testdata 头注释无旧编码残留
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues、`go fix ./...` 幂等）；执行提交（refactor: DayType 重构为终态双层位编码并统一语义）

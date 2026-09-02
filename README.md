@@ -15,7 +15,7 @@ A holiday lookup service built on Go 1.27: it records the holiday and workday-sw
 
 ## Core Design
 
-- **Bitmask day types**: `DayType` (uint8) uses composable bit flags to express 5 fine-grained types (plain workday / swapped workday / weekend / festival / adjusted rest) plus 2 coarse-grained values (workday / holiday); fine→coarse mapping is pure bit arithmetic with priority rules (swapped workdays always count as workdays).
+- **Two-tier final-state bitmask**: `DayType` (uint8) uses 2 mutually exclusive **base bits** (1=work, 2=rest) for coarse granularity, plus 3 mutually exclusive **adjustment bits** (4=festival, 8=adjusted rest, 16=compensating workday) combining into 5 fine-grained values (1/2/6/10/17); `|` is all-of (conjunction) semantics across all values, and coarse membership is a single bit-and (`t & 2` rest, `t & 1` work) with no priority disambiguation.
 - **Sparse config**: one TOML file per year, containing only "adjusted" dates (`off` marks weekdays turned into rest days, `work` marks weekends turned into workdays); weekends and plain weekdays are derived from the weekday, never written down — a yearly file is only 20–30 lines and human-auditable.
 - **Config-first with strict year validation**: for years with a config, the config wins; uncovered dates fall back to Saturday/Sunday checks. Queries touching a year whose config is not loaded return a `year_not_loaded` error instead of silently falling back, so "not configured" can never be misread as "actually a weekend".
 - **Prefix-sum statistics**: per-year prefix sums over fine-grained flag counts are built at load time, making statistics an O(years-covered) difference — the `/stats` endpoint has no span limit.
@@ -31,11 +31,11 @@ go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 
 # Single-day query (coarse granularity by default)
 curl "http://localhost:8080/api/v1/days?date=2026-02-20"
-# {"date":"2026-02-20","type":28,"type_label":"holiday","total_days":1,"stats":{"holiday":1,"workday":0}}
+# {"date":"2026-02-20","type":2,"type_label":"rest","total_days":1,"stats":{"holiday":1,"workday":0}}
 
-# Fine granularity: adjusted rest on festival day → festival|adjusted = 24
+# Fine granularity: festival day → rest|festival = 6
 curl "http://localhost:8080/api/v1/days?date=2026-02-17&detailed=true"
-# {"date":"2026-02-17","type":24,"type_label":"festival|adjusted",...}
+# {"date":"2026-02-17","type":6,"type_label":"rest|festival",...}
 
 # Range statistics (half-open interval)
 curl "http://localhost:8080/api/v1/stats?start=2026-02-14&end=2026-02-17"
@@ -46,7 +46,7 @@ conn, _ := grpc.NewClient("localhost:50051",
     grpc.WithTransportCredentials(insecure.NewCredentials()))
 client := golidayv1.NewGolidayServiceClient(conn)
 resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detailed: true})
-// resp.Type == 24, resp.TypeLabel == "festival|adjusted"
+// resp.Type == 6, resp.TypeLabel == "rest|festival"
 ```
 
 > Examples are based on `configs/2026.toml` (a hypothetical sample, not official). For production use, generate the config from official announcements following the [annual config update process](#annual-config-update).
@@ -81,17 +81,21 @@ docker pull ghcr.io/jaycechant/goliday:latest
 | HTTP | `GET /healthz` | Health check, returns loaded years |
 | gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`, one-to-one with HTTP; standard gRPC health checking also registered |
 
-Day-type bitmask (`type_label` is exactly `DayType.String()`; combinations are joined by `|` from low to high bits):
+Day-type bitmask (`type_label` is exactly `DayType.String()`; combinations are joined by `|` from low to high bits; `|` is all-of semantics across all values, coarse granularity is the base-bit projection):
 
-| Value | Meaning | | Value | Meaning |
-|---|---|---|---|---|
-| 1 | Plain workday | | 3 | **Coarse: workday** (1\|2) |
-| 2 | Swapped workday | | 28 | **Coarse: holiday** (4\|8\|16) |
-| 4 | Weekend | | 6 | Swapped workday on weekend |
-| 8 | Festival | | 12 | Festival on weekend |
-| 16 | Adjusted rest | | 24 | Adjusted rest on festival day |
+| Value | Combination | Meaning | | Value | Combination | Meaning |
+|---|---|---|---|---|---|---|
+| 1 | `Work` | Plain workday | | 6 | `Rest\|Festival` | Festival rest day |
+| 2 | `Rest` | Plain weekend | | 10 | `Rest\|Adjusted` | Adjusted rest day (ex-weekday) |
+| 4 | — | Adjustment bit: festival | | 17 | `Work\|Compensate` | Compensating workday (ex-weekend) |
+| 8 | — | Adjustment bit: adjusted rest | | | | |
+| 16 | — | Adjustment bit: compensating work | | | | |
 
-Fine-grained statistics (`detailed=true`) cross-count single flags: a combined day counts 1 day toward each of its flags, so the sum of keys may exceed `total_days`; for total rest/workday days use the coarse `stats.holiday`/`stats.workday`.
+Coarse granularity is the base bit itself: with `detailed=false`, `type` is 1 (work) or 2 (rest); membership is just `t & 1` / `t & 2`.
+
+Fine-grained statistics (`detailed=true`) use five MECE keys — plain workday (`ordinary`), plain weekend (`weekend`), festival rest day (`festival`), adjusted rest day (`adjusted`), compensating workday (`compensate`) — each counting exactly one class of day, so **the keys always sum to `total_days`**; for total rest/workday days use the coarse `stats.holiday`/`stats.workday`.
+
+Semantics: "festivals" here are public holidays that grant time off (non-rest commemorative days are out of scope); "adjusted rest" is narrow (an ex-weekday turned into rest by arrangement, not the festival day itself — no new holiday), while a festival day always adds one new holiday; whether a festival falls on a weekday or weekend, the fine-grained type is the same `rest|festival`.
 
 Full contract (parameters, response structures, error codes, gRPC examples, proto regeneration) in [docs/API.md](docs/API.md) (Chinese).
 

@@ -5,7 +5,7 @@
 //   - 单日查询 detailed 切换粗/细粒度；多日明细 days 恒为细粒度数值；
 //   - 区间为左闭右开 [start, end)，跨度上限 366 天；
 //   - 离散列表自动去重并升序，与区间同时提供时取并集（mode=list）；
-//   - 细粒度统计对组合日按标志位交叉计数（各键之和可大于 total_days）。
+//   - 细粒度统计五键 MECE（各计一类日，之和恒等于 total_days）。
 //
 // 再生成（需 buf 与两个本地插件在 PATH，在仓库根执行 `buf generate`）：
 //   插件与生成参数见 buf.gen.yaml；模块与 lint/breaking 配置见 buf.yaml。
@@ -34,28 +34,35 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// DayType 为位掩码（proto3 enum 无法表达位组合，以 uint32 表达，附取值注释）。
+// DayType 为位掩码（proto3 enum 无法表达位组合，以 uint32 表达，附取值注释），
+// 采用「终态双层」编码，全部组合值按位或均为 all-of（合取）语义。
 //
-// 细粒度位：
+// 粗粒度基本位（互斥，恰一个，表达当日最终是否上班）：
 //
-//	1  ORDINARY   普通工作日
-//	2  COMPENSATE 补班（归工作日段）
-//	4  WEEKEND    周末（归节假日段）
-//	8  FESTIVAL   节日（归节假日段）
-//	16 ADJUSTED   调休（归节假日段）
+//	1  WORK  上班（单值即普通工作日）
+//	2  REST  放假（单值即普通周休；未调整时必然为周末）
 //
-// 粗粒度段值：
+// 调整位（互斥，至多一个，依附基本位）：
 //
-//	3  WORKDAY  = ORDINARY|COMPENSATE 工作日
-//	28 HOLIDAY  = WEEKEND|FESTIVAL|ADJUSTED 节假日
+//	4  FESTIVAL   过节：法定节日当天（放假），当日新增法定假期
+//	8  ADJUSTED   调休：原工作日被调整为休息（非节日当天），不新增假期
+//	16 COMPENSATE 补班：原周末被调整为上班
 //
-// 细粒度合法组合全集：1 / 4 / 6 / 12 / 16 / 24（如 6=补班逢周末、24=节日当天调休）。
+// 细粒度合法值全集（5 值 MECE）：
+//
+//	1  Work              普通工作日
+//	2  Rest              普通周休
+//	6  Rest|Festival     节日放假日（节日无论落在工作日还是周末）
+//	10 Rest|Adjusted     调休放假日（原工作日）
+//	17 Work|Compensate   补班日（原周末）
+//
+// 粗粒度即基本位投影（t & 3），detailed=false 时 type 为 1/2。
 // 与核心包 goliday.DayType 完全一致。
 type Day struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`                            // YYYY-MM-DD
 	Type          uint32                 `protobuf:"varint,2,opt,name=type,proto3" json:"type,omitempty"`                           // DayType 掩码数值
-	TypeLabel     string                 `protobuf:"bytes,3,opt,name=type_label,json=typeLabel,proto3" json:"type_label,omitempty"` // 可读标签，如 "workday"、"festival|adjusted"
+	TypeLabel     string                 `protobuf:"bytes,3,opt,name=type_label,json=typeLabel,proto3" json:"type_label,omitempty"` // 可读标签，如 "rest"、"rest|festival"、"work|compensate"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -112,7 +119,8 @@ func (x *Day) GetTypeLabel() string {
 }
 
 // 统计结果。workday/holiday 恒填充（粗粒度）；
-// ordinary/compensate/weekend/festival/adjusted 仅 detailed=true 时填充（细粒度交叉计数）。
+// ordinary/weekend/festival/adjusted/compensate 仅 detailed=true 时填充
+// （细粒度五键 MECE，之和恒等于 total_days）。
 type Stats struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Workday       int32                  `protobuf:"varint,1,opt,name=workday,proto3" json:"workday,omitempty"`
@@ -261,7 +269,7 @@ func (x *GetDayRequest) GetDetailed() bool {
 type GetDayResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
-	Type          uint32                 `protobuf:"varint,2,opt,name=type,proto3" json:"type,omitempty"` // detailed=false 为粗粒度值（3/28），true 为细粒度掩码
+	Type          uint32                 `protobuf:"varint,2,opt,name=type,proto3" json:"type,omitempty"` // detailed=false 为粗粒度值（1/2），true 为细粒度值
 	TypeLabel     string                 `protobuf:"bytes,3,opt,name=type_label,json=typeLabel,proto3" json:"type_label,omitempty"`
 	TotalDays     int32                  `protobuf:"varint,4,opt,name=total_days,json=totalDays,proto3" json:"total_days,omitempty"` // 恒为 1
 	Stats         *Stats                 `protobuf:"bytes,5,opt,name=stats,proto3" json:"stats,omitempty"`

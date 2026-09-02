@@ -72,11 +72,11 @@ func TestGRPCGetDayCoarse(t *testing.T) {
 	if resp.GetDate() != "2026-02-20" {
 		t.Errorf("date = %q, want 2026-02-20", resp.GetDate())
 	}
-	if resp.GetType() != 28 {
-		t.Errorf("type = %d, want 28", resp.GetType())
+	if resp.GetType() != 2 {
+		t.Errorf("type = %d, want 2", resp.GetType())
 	}
-	if resp.GetTypeLabel() != "holiday" {
-		t.Errorf("type_label = %q, want holiday", resp.GetTypeLabel())
+	if resp.GetTypeLabel() != "rest" {
+		t.Errorf("type_label = %q, want rest", resp.GetTypeLabel())
 	}
 	if resp.GetTotalDays() != 1 {
 		t.Errorf("total_days = %d, want 1", resp.GetTotalDays())
@@ -94,9 +94,9 @@ func TestGRPCGetDayDetailed(t *testing.T) {
 		wantType  uint32
 		wantLabel string
 	}{
-		{"2026-02-20", 16, "adjusted"},
-		{"2026-02-17", 24, "festival|adjusted"},
-		{"2026-02-28", 6, "compensate|weekend"},
+		{"2026-02-20", 10, "rest|adjusted"},
+		{"2026-02-17", 6, "rest|festival"},
+		{"2026-02-28", 17, "work|compensate"},
 	}
 	for _, c := range cases {
 		resp, err := client.GetDay(context.Background(), &pb.GetDayRequest{Date: c.date, Detailed: true})
@@ -132,11 +132,11 @@ func TestGRPCQueryDaysRange(t *testing.T) {
 	if resp.GetTotalDays() != 3 {
 		t.Errorf("total_days = %d, want 3", resp.GetTotalDays())
 	}
-	if d := resp.GetDays()[0]; d.GetDate() != "2026-02-14" || d.GetType() != 6 {
-		t.Errorf("days[0] = %s/%d, want 2026-02-14/6（02-14 补班）", d.GetDate(), d.GetType())
+	if d := resp.GetDays()[0]; d.GetDate() != "2026-02-14" || d.GetType() != 17 {
+		t.Errorf("days[0] = %s/%d, want 2026-02-14/17（02-14 补班）", d.GetDate(), d.GetType())
 	}
-	if d := resp.GetDays()[2]; d.GetDate() != "2026-02-16" || d.GetType() != 16 {
-		t.Errorf("days[2] = %s/%d, want 2026-02-16/16（02-16 调休）", d.GetDate(), d.GetType())
+	if d := resp.GetDays()[2]; d.GetDate() != "2026-02-16" || d.GetType() != 10 {
+		t.Errorf("days[2] = %s/%d, want 2026-02-16/10（02-16 调休）", d.GetDate(), d.GetType())
 	}
 	st := resp.GetStats()
 	if st.GetWorkday() != 1 {
@@ -165,9 +165,9 @@ func TestGRPCQueryDaysListDedupSorted(t *testing.T) {
 		date string
 		typ  uint32
 	}{
-		{"2026-02-16", 16},
-		{"2026-02-17", 24},
-		{"2026-02-28", 6},
+		{"2026-02-16", 10},
+		{"2026-02-17", 6},
+		{"2026-02-28", 17},
 	}
 	days := resp.GetDays()
 	if len(days) != len(want) {
@@ -236,8 +236,8 @@ func TestGRPCQueryStatsMatchesDays(t *testing.T) {
 	// QueryStatsResponse 消息本身不含 days 字段（proto 契约静态保证，无法携带明细）。
 }
 
-// 7. detailed 统计交叉计数：组合日对每个标志位各计 1。
-func TestGRPCFineStatsCrossCount(t *testing.T) {
+// 7. detailed 统计五键 MECE：各计一类日，之和等于总天数。
+func TestGRPCFineStatsMECE(t *testing.T) {
 	client, _ := newBufconnServer(t)
 	resp, err := client.QueryDays(context.Background(), &pb.QueryDaysRequest{
 		Dates: []string{"2026-02-17", "2026-02-28"}, Detailed: true})
@@ -245,18 +245,22 @@ func TestGRPCFineStatsCrossCount(t *testing.T) {
 		t.Fatalf("QueryDays 失败: %v", err)
 	}
 	st := resp.GetStats()
-	if st.GetFestival() != 1 || st.GetAdjusted() != 1 || st.GetCompensate() != 1 || st.GetWeekend() != 1 {
-		t.Errorf("细粒度计数 = festival:%d adjusted:%d compensate:%d weekend:%d, want 各 1",
-			st.GetFestival(), st.GetAdjusted(), st.GetCompensate(), st.GetWeekend())
+	if st.GetFestival() != 1 || st.GetCompensate() != 1 {
+		t.Errorf("细粒度计数 = festival:%d compensate:%d, want 各 1",
+			st.GetFestival(), st.GetCompensate())
 	}
-	if st.GetOrdinary() != 0 {
-		t.Errorf("stats.ordinary = %d, want 0", st.GetOrdinary())
+	if st.GetOrdinary() != 0 || st.GetWeekend() != 0 || st.GetAdjusted() != 0 {
+		t.Errorf("细粒度计数 = ordinary:%d weekend:%d adjusted:%d, want 全 0",
+			st.GetOrdinary(), st.GetWeekend(), st.GetAdjusted())
+	}
+	if sum := st.GetOrdinary() + st.GetWeekend() + st.GetFestival() + st.GetAdjusted() + st.GetCompensate(); sum != 2 {
+		t.Errorf("细粒度五键之和 = %d, want 2（== total_days，MECE）", sum)
 	}
 	if st.GetWorkday() != 1 {
 		t.Errorf("stats.workday = %d, want 1（02-28 补班归上班日）", st.GetWorkday())
 	}
 	if st.GetHoliday() != 1 {
-		t.Errorf("stats.holiday = %d, want 1（02-17 调休归休息日）", st.GetHoliday())
+		t.Errorf("stats.holiday = %d, want 1（02-17 节日放假日）", st.GetHoliday())
 	}
 }
 

@@ -20,24 +20,22 @@ func normalizeDate(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// 细粒度合法组合在 comboCounts 中的固定下标（组合值见 comboValues）。
+// 细粒度合法值在 comboCounts 中的固定下标（值见 comboValues）。
 const (
-	comboOrdinary = iota // 1  Ordinary
-	comboWeekend         // 4  Weekend
-	comboCompWeek        // 6  Compensate|Weekend
-	comboFestWeek        // 12 Festival|Weekend
-	comboAdjusted        // 16 Adjusted
-	comboFestAdj         // 24 Festival|Adjusted
+	comboOrdinary   = iota // 1  Work
+	comboWeekend           // 2  Rest
+	comboFestival          // 6  Rest|Festival
+	comboAdjusted          // 10 Rest|Adjusted
+	comboCompensate        // 17 Work|Compensate
 )
 
-// comboValues 与 comboCounts 下标一一对应的合法细粒度组合值，升序。
+// comboValues 与 comboCounts 下标一一对应的合法细粒度值，升序。
 var comboValues = [...]DayType{
-	DayTypeOrdinary,
-	DayTypeWeekend,
-	DayTypeCompensate | DayTypeWeekend,
-	DayTypeFestival | DayTypeWeekend,
-	DayTypeAdjusted,
-	DayTypeFestival | DayTypeAdjusted,
+	DayTypeWork,
+	DayTypeRest,
+	DayTypeRest | DayTypeFestival,
+	DayTypeRest | DayTypeAdjusted,
+	DayTypeWork | DayTypeCompensate,
 }
 
 // comboIndex 返回细粒度组合值在 comboCounts 中的下标；非合法组合返回 -1。
@@ -50,8 +48,8 @@ func comboIndex(t DayType) int {
 	return -1
 }
 
-// comboCounts 6 种合法细粒度组合各自的累计天数（按组合计数，
-// 非标志位交叉计数）。粗粒度与标志位交叉计数均可由其线性组合导出。
+// comboCounts 5 种合法细粒度值各自的累计天数（按值计数，五值 MECE）。
+// 粗粒度计数可由其线性组合导出。
 type comboCounts [len(comboValues)]int
 
 // add 累加另一组计数。
@@ -70,24 +68,23 @@ func diffPrefix(b, a comboCounts) comboCounts {
 	return out
 }
 
-// result 将组合累计计数导出为统计结果：细粒度为标志位交叉计数
-// （组合日对其含有的每个标志各计 1），粗粒度按细→粗映射归并
-// （补班优先归上班日）。detailed=false 时 Fine 为 nil。
+// result 将按值累计计数导出为统计结果：细粒度五键 MECE（之和恒等于
+// total），粗粒度按基本位投影归并。detailed=false 时 Fine 为 nil。
 func (c comboCounts) result(total int, detailed bool) StatsResult {
 	r := StatsResult{
 		Total: total,
 		Coarse: map[DayType]int{
-			DayTypeWorkday: c[comboOrdinary] + c[comboCompWeek],
-			DayTypeHoliday: c[comboWeekend] + c[comboFestWeek] + c[comboAdjusted] + c[comboFestAdj],
+			DayTypeWork: c[comboOrdinary] + c[comboCompensate],
+			DayTypeRest: c[comboWeekend] + c[comboFestival] + c[comboAdjusted],
 		},
 	}
 	if detailed {
 		r.Fine = map[DayType]int{
-			DayTypeOrdinary:   c[comboOrdinary],
-			DayTypeCompensate: c[comboCompWeek],
-			DayTypeWeekend:    c[comboWeekend] + c[comboCompWeek] + c[comboFestWeek],
-			DayTypeFestival:   c[comboFestWeek] + c[comboFestAdj],
-			DayTypeAdjusted:   c[comboAdjusted] + c[comboFestAdj],
+			DayTypeWork:       c[comboOrdinary],
+			DayTypeRest:       c[comboWeekend],
+			DayTypeFestival:   c[comboFestival],
+			DayTypeAdjusted:   c[comboAdjusted],
+			DayTypeCompensate: c[comboCompensate],
 		}
 	}
 	return r
@@ -112,24 +109,23 @@ type yearIndex struct {
 
 // dayType 返回该年某日（已规范化）的细粒度类型。
 //
-// 判断顺序：周休回退（周六/周日 → Weekend，否则 Ordinary）；
-// off 命中 → Adjusted、work 命中 → Compensate|Weekend；节日当天追加
-// Festival 位。
+// 判断优先级：节日当天 → Rest|Festival（必为放假日）；work 命中 →
+// Work|Compensate（补班）；off 命中 → Rest|Adjusted（调休）；周休回退
+// （周六/周日 → Rest，否则 Work）。
 func (idx *yearIndex) dayType(d time.Time) DayType {
-	t := DayTypeOrdinary
-	if wd := d.Weekday(); wd == time.Saturday || wd == time.Sunday {
-		t = DayTypeWeekend
-	}
-	if _, ok := idx.off[d]; ok {
-		t = DayTypeAdjusted
+	if _, ok := idx.festival[d]; ok {
+		return DayTypeRest | DayTypeFestival
 	}
 	if _, ok := idx.work[d]; ok {
-		t = DayTypeCompensate | DayTypeWeekend
+		return DayTypeWork | DayTypeCompensate
 	}
-	if _, ok := idx.festival[d]; ok {
-		t |= DayTypeFestival
+	if _, ok := idx.off[d]; ok {
+		return DayTypeRest | DayTypeAdjusted
 	}
-	return t
+	if wd := d.Weekday(); wd == time.Saturday || wd == time.Sunday {
+		return DayTypeRest
+	}
+	return DayTypeWork
 }
 
 // dayIndex 返回该年某日（已规范化）距元旦的天数下标（0-based）。
@@ -250,9 +246,9 @@ func coveredYears(s, e time.Time) []int {
 
 // Query 返回 date 的细粒度日期类型。任意时刻均先按其所在日规范化再查询。
 //
-// 判断顺序：周休回退（周六/周日 → Weekend，否则 Ordinary）；该年有配置时
-// off 命中 → Adjusted、work 命中 → Compensate|Weekend；节日当天追加
-// Festival 位。该年未加载配置时返回包装 ErrYearNotLoaded 的错误，
+// 判断优先级：节日当天 → Rest|Festival（必为放假日）；work 命中 →
+// Work|Compensate；off 命中 → Rest|Adjusted；周休回退（周末 → Rest，
+// 否则 Work）。该年未加载配置时返回包装 ErrYearNotLoaded 的错误，
 // 不再回退周休判断。
 func (c *Calendar) Query(date time.Time) (DayType, error) {
 	d := normalizeDate(date)
@@ -320,9 +316,9 @@ func (c *Calendar) QueryRange(start, end time.Time) ([]Dated, error) {
 // StatsResult 统计结果：
 //
 //	Total  覆盖天数（区间天数或 len(dates)，不做去重）；
-//	Coarse 粗粒度计数，键为 DayTypeWorkday / DayTypeHoliday；
-//	Fine   细粒度单标志位交叉计数，组合日（如 Festival|Adjusted）对其含有的
-//	       每个标志位各计 1，各键之和可大于 Total；detailed=false 时为 nil。
+//	Coarse 粗粒度计数，键为 DayTypeWork / DayTypeRest；
+//	Fine   细粒度五键 MECE 计数（普通工作日/普通周休/节日放假日/
+//	       调休放假日/补班日），各键之和恒等于 Total；detailed=false 时为 nil。
 type StatsResult struct {
 	Total  int
 	Coarse map[DayType]int

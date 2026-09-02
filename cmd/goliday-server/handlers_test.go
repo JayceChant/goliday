@@ -88,8 +88,8 @@ func TestSingleDayCoarse(t *testing.T) {
 		t.Fatalf("状态码 = %d, want 200", code)
 	}
 	wantStr(t, "date", body["date"], "2026-02-20")
-	wantNum(t, "type", body["type"], 28)
-	wantStr(t, "type_label", body["type_label"], "holiday")
+	wantNum(t, "type", body["type"], 2)
+	wantStr(t, "type_label", body["type_label"], "rest")
 }
 
 // 2. 单日细粒度。
@@ -100,10 +100,10 @@ func TestSingleDayDetailed(t *testing.T) {
 		wantType  float64
 		wantLabel string
 	}{
-		{"2026-02-20", 16, "adjusted"},
-		{"2026-02-17", 24, "festival|adjusted"},
-		{"2026-02-28", 6, "compensate|weekend"},
-		{"2026-04-05", 12, "weekend|festival"},
+		{"2026-02-20", 10, "rest|adjusted"},
+		{"2026-02-17", 6, "rest|festival"},
+		{"2026-02-28", 17, "work|compensate"},
+		{"2026-04-05", 6, "rest|festival"},
 	}
 	for _, c := range cases {
 		code, body := doRequest(t, h, http.MethodGet, "/api/v1/days?date="+c.date+"&detailed=true")
@@ -130,10 +130,10 @@ func TestRangeQuery(t *testing.T) {
 
 	d0 := dayAt(t, body, 0)
 	wantStr(t, "days[0].date", d0["date"], "2026-02-14")
-	wantNum(t, "days[0].type", d0["type"], 6) // 02-14 补班：Compensate|Weekend
+	wantNum(t, "days[0].type", d0["type"], 17) // 02-14 补班：Work|Compensate
 	d2 := dayAt(t, body, 2)
 	wantStr(t, "days[2].date", d2["date"], "2026-02-16")
-	wantNum(t, "days[2].type", d2["type"], 16) // 02-16 调休：Adjusted
+	wantNum(t, "days[2].type", d2["type"], 10) // 02-16 调休：Rest|Adjusted
 
 	// detailed 默认 false：粗粒度统计。
 	st := statsOf(t, body)
@@ -180,8 +180,8 @@ func TestMixedRangeAndDates(t *testing.T) {
 	}
 }
 
-// 6. 细粒度统计交叉计数：组合日对各标志位各计 1。
-func TestFineStatsCrossCount(t *testing.T) {
+// 6. 细粒度统计五键 MECE：各计一类日，之和等于总天数。
+func TestFineStatsMECE(t *testing.T) {
 	h := newTestHandler(t)
 	code, body := doRequest(t, h, http.MethodGet,
 		"/api/v1/days?dates=2026-02-17,2026-02-28&detailed=true")
@@ -190,9 +190,9 @@ func TestFineStatsCrossCount(t *testing.T) {
 	}
 	st := statsOf(t, body)
 	wantNum(t, "stats.festival", st["festival"], 1)
-	wantNum(t, "stats.adjusted", st["adjusted"], 1)
 	wantNum(t, "stats.compensate", st["compensate"], 1)
-	wantNum(t, "stats.weekend", st["weekend"], 1)
+	wantNum(t, "stats.adjusted", st["adjusted"], 0)
+	wantNum(t, "stats.weekend", st["weekend"], 0)
 	wantNum(t, "stats.ordinary", st["ordinary"], 0)
 }
 

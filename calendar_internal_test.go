@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// TestComboIndexInvalid 非法组合（合法位集合之外的任意值）返回 -1，
+// TestComboIndexInvalid 非法值（合法值集合之外的任意值）返回 -1，
 // 前缀和构建时该日不落入任何计数桶。
 func TestComboIndexInvalid(t *testing.T) {
 	for _, v := range comboValues {
@@ -17,11 +17,14 @@ func TestComboIndexInvalid(t *testing.T) {
 	}
 	for _, v := range []DayType{
 		0,
-		DayTypeOrdinary | DayTypeAdjusted,   // 17：工作日与调休冲突
-		DayTypeCompensate,                   // 2：补班缺周末位
-		DayTypeCompensate | DayTypeFestival, // 10：非法组合
-		DayTypeWeekend | DayTypeAdjusted,    // 20：非法组合
-		DayTypeCompensate | DayTypeWeekend | DayTypeAdjusted, // 22：非法组合
+		3,        // 上班∧放假矛盾
+		4, 8, 16, // 裸调整位，未依附基本位
+		5,          // Work|Festival：过节必放假
+		9,          // Work|Adjusted：调休必放假
+		18,         // Rest|Compensate：补班必上班
+		12, 14, 20, // 同日两个及以上调整位
+		DayTypeCompensate | DayTypeFestival,           // 20：非法组合
+		DayTypeWork | DayTypeRest | DayTypeCompensate, // 19：非法组合
 	} {
 		if got := comboIndex(v); got != -1 {
 			t.Errorf("comboIndex(%d) = %d，期望 -1", v, got)

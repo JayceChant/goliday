@@ -150,16 +150,16 @@ func (s *grpcServer) QueryStats(_ context.Context, req *pb.QueryStatsRequest) (*
 }
 
 // statsProto 将统计结果转为 Stats 消息：workday/holiday 恒填充（粗粒度），
-// 五个细粒度键仅 detailed=true 时填充（组合日交叉计数，各键之和可大于总数）。
+// 五个细粒度键仅 detailed=true 时填充（五键 MECE，之和恒等于总天数）。
 func statsProto(st goliday.StatsResult, detailed bool) *pb.Stats {
 	p := &pb.Stats{
-		Workday: int32(st.Coarse[goliday.DayTypeWorkday]),
-		Holiday: int32(st.Coarse[goliday.DayTypeHoliday]),
+		Workday: int32(st.Coarse[goliday.DayTypeWork]),
+		Holiday: int32(st.Coarse[goliday.DayTypeRest]),
 	}
 	if detailed {
-		p.Ordinary = int32(st.Fine[goliday.DayTypeOrdinary])
+		p.Ordinary = int32(st.Fine[goliday.DayTypeWork])
 		p.Compensate = int32(st.Fine[goliday.DayTypeCompensate])
-		p.Weekend = int32(st.Fine[goliday.DayTypeWeekend])
+		p.Weekend = int32(st.Fine[goliday.DayTypeRest])
 		p.Festival = int32(st.Fine[goliday.DayTypeFestival])
 		p.Adjusted = int32(st.Fine[goliday.DayTypeAdjusted])
 	}

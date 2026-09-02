@@ -26,8 +26,8 @@ var fuzzHandler = sync.OnceValue(func() http.Handler {
 // FuzzDaysHandler 不变量：任意参数组合不 panic；状态码仅 200/400（含
 // year_not_loaded 与 days 跨度超限场景）；响应恒为合法 JSON；200 时
 // 单日模式 total_days == 1，多日模式 days 升序唯一且 total_days ==
-// len(days)；stats 接口不因跨度报错；粗粒度 stats 之和 == total_days，
-// 细粒度（组合日交叉计数）之和 >= total_days。
+// len(days)；stats 接口不因跨度报错；粗/细粒度 stats 之和均 == total_days
+// （细粒度五键 MECE）。
 func FuzzDaysHandler(f *testing.F) {
 	f.Add("2026-02-20", "", "", "", "")
 	f.Add("2026-02-17", "2026-02-01", "2026-02-28", "2026-03-08", "true")
@@ -111,9 +111,9 @@ func FuzzDaysHandler(f *testing.F) {
 				sum += int(n)
 			}
 			if _, fine := st["ordinary"]; fine {
-				// 细粒度交叉计数：组合日对每个标志位各计 1，之和 >= 总天数。
-				if sum < int(total) {
-					t.Fatalf("%s 细粒度 stats 之和 %d < total_days %v（stats: %v）", path, sum, total, st)
+				// 细粒度五键 MECE：各计一类日，之和恒等于总天数。
+				if sum != int(total) {
+					t.Fatalf("%s 细粒度 stats 之和 %d != total_days %v（stats: %v）", path, sum, total, st)
 				}
 			} else {
 				// 粗粒度：workday + holiday == 总天数。

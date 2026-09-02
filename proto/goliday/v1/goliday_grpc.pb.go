@@ -5,7 +5,7 @@
 //   - 单日查询 detailed 切换粗/细粒度；多日明细 days 恒为细粒度数值；
 //   - 区间为左闭右开 [start, end)，跨度上限 366 天；
 //   - 离散列表自动去重并升序，与区间同时提供时取并集（mode=list）；
-//   - 细粒度统计对组合日按标志位交叉计数（各键之和可大于 total_days）。
+//   - 细粒度统计五键 MECE（各计一类日，之和恒等于 total_days）。
 //
 // 再生成（需 buf 与两个本地插件在 PATH，在仓库根执行 `buf generate`）：
 //   插件与生成参数见 buf.gen.yaml；模块与 lint/breaking 配置见 buf.yaml。
