@@ -85,9 +85,9 @@ Day-type bitmask (`type_label` is exactly `DayType.String()`; combinations are j
 
 | Value | Combination | Meaning | | Value | Combination | Meaning |
 |---|---|---|---|---|---|---|
-| 1 | `Work` | Plain workday | | 6 | `Rest\|Festival` | Festival rest day |
-| 2 | `Rest` | Plain weekend | | 10 | `Rest\|Adjusted` | Adjusted rest day (ex-weekday) |
-| 4 | — | Adjustment bit: festival | | 17 | `Work\|Compensate` | Compensating workday (ex-weekend) |
+| 1 | `Work` | Plain workday | | 6 | `FestivalRest` | Festival rest day |
+| 2 | `Rest` | Plain weekend | | 10 | `AdjustedRestDay` | Adjusted rest day (ex-weekday) |
+| 4 | — | Adjustment bit: festival | | 17 | `AdjustedWorkDay` | Compensating workday (ex-weekend) |
 | 8 | — | Adjustment bit: adjusted rest | | | | |
 | 16 | — | Adjustment bit: compensating work | | | | |
 

@@ -463,10 +463,10 @@ work = [ "2026-01-31" ]
 			if err != nil {
 				t.Fatalf("off 日期 %s 查询报错: %v", d.Format(layout), err)
 			}
-			// 节日当天为 Rest|Festival，其余为 Rest|Adjusted。
-			want := goliday.DayTypeRest | goliday.DayTypeAdjusted
+			// 节日当天为 FestivalRest，其余为 AdjustedRestDay。
+			want := goliday.DayTypeAdjustedRestDay
 			if isFestivalDate(cfg, d) {
-				want = goliday.DayTypeRest | goliday.DayTypeFestival
+				want = goliday.DayTypeFestivalRest
 			}
 			if got != want {
 				t.Fatalf("off 日期 %s 判型 = %d（%s），期望 %d（%s）",
@@ -478,7 +478,7 @@ work = [ "2026-01-31" ]
 			if err != nil {
 				t.Fatalf("work 日期 %s 查询报错: %v", d.Format(layout), err)
 			}
-			if want := goliday.DayTypeWork | goliday.DayTypeCompensate; got != want {
+			if want := goliday.DayTypeAdjustedWorkDay; got != want {
 				t.Fatalf("work 日期 %s 判型 = %d（%s），期望 %d（%s）",
 					d.Format(layout), got, got, want, want)
 			}

@@ -24,18 +24,18 @@ func normalizeDate(t time.Time) time.Time {
 const (
 	comboOrdinary   = iota // 1  Work
 	comboWeekend           // 2  Rest
-	comboFestival          // 6  Rest|Festival
-	comboAdjusted          // 10 Rest|Adjusted
-	comboCompensate        // 17 Work|Compensate
+	comboFestival          // 6  FestivalRest
+	comboAdjusted          // 10 AdjustedRestDay
+	comboCompensate        // 17 AdjustedWorkDay
 )
 
 // comboValues 与 comboCounts 下标一一对应的合法细粒度值，升序。
 var comboValues = [...]DayType{
 	DayTypeWork,
 	DayTypeRest,
-	DayTypeRest | DayTypeFestival,
-	DayTypeRest | DayTypeAdjusted,
-	DayTypeWork | DayTypeCompensate,
+	DayTypeFestivalRest,
+	DayTypeAdjustedRestDay,
+	DayTypeAdjustedWorkDay,
 }
 
 // comboIndex 返回细粒度组合值在 comboCounts 中的下标；非合法组合返回 -1。
@@ -80,11 +80,11 @@ func (c comboCounts) result(total int, detailed bool) StatsResult {
 	}
 	if detailed {
 		r.Fine = map[DayType]int{
-			DayTypeWork:       c[comboOrdinary],
-			DayTypeRest:       c[comboWeekend],
-			DayTypeFestival:   c[comboFestival],
-			DayTypeAdjusted:   c[comboAdjusted],
-			DayTypeCompensate: c[comboCompensate],
+			DayTypeWork:         c[comboOrdinary],
+			DayTypeRest:         c[comboWeekend],
+			DayTypeFestival:     c[comboFestival],
+			DayTypeAdjustedRest: c[comboAdjusted],
+			DayTypeAdjustedWork: c[comboCompensate],
 		}
 	}
 	return r
@@ -109,18 +109,18 @@ type yearIndex struct {
 
 // dayType 返回该年某日（已规范化）的细粒度类型。
 //
-// 判断优先级：节日当天 → Rest|Festival（必为放假日）；work 命中 →
-// Work|Compensate（补班）；off 命中 → Rest|Adjusted（调休）；周休回退
+// 判断优先级：节日当天 → FestivalRest（必为放假日）；work 命中 →
+// AdjustedWorkDay（补班）；off 命中 → AdjustedRestDay（调休）；周休回退
 // （周六/周日 → Rest，否则 Work）。
 func (idx *yearIndex) dayType(d time.Time) DayType {
 	if _, ok := idx.festival[d]; ok {
-		return DayTypeRest | DayTypeFestival
+		return DayTypeFestivalRest
 	}
 	if _, ok := idx.work[d]; ok {
-		return DayTypeWork | DayTypeCompensate
+		return DayTypeAdjustedWorkDay
 	}
 	if _, ok := idx.off[d]; ok {
-		return DayTypeRest | DayTypeAdjusted
+		return DayTypeAdjustedRestDay
 	}
 	if wd := d.Weekday(); wd == time.Saturday || wd == time.Sunday {
 		return DayTypeRest
@@ -246,8 +246,8 @@ func coveredYears(s, e time.Time) []int {
 
 // Query 返回 date 的细粒度日期类型。任意时刻均先按其所在日规范化再查询。
 //
-// 判断优先级：节日当天 → Rest|Festival（必为放假日）；work 命中 →
-// Work|Compensate；off 命中 → Rest|Adjusted；周休回退（周末 → Rest，
+// 判断优先级：节日当天 → FestivalRest（必为放假日）；work 命中 →
+// AdjustedWorkDay；off 命中 → AdjustedRestDay；周休回退（周末 → Rest，
 // 否则 Work）。该年未加载配置时返回包装 ErrYearNotLoaded 的错误，
 // 不再回退周休判断。
 func (c *Calendar) Query(date time.Time) (DayType, error) {
@@ -268,22 +268,23 @@ func (c *Calendar) QueryCoarse(date time.Time) (DayType, error) {
 	return t.Coarse(), nil
 }
 
-// IsWorkday 报告 date 是否为上班日。
-func (c *Calendar) IsWorkday(date time.Time) (bool, error) {
+// IsWork 报告 date 是否为上班日（与基本位 Work 对齐）。
+func (c *Calendar) IsWork(date time.Time) (bool, error) {
 	t, err := c.Query(date)
 	if err != nil {
 		return false, err
 	}
-	return t.IsWorkday(), nil
+	return t.IsWork(), nil
 }
 
-// IsHoliday 报告 date 是否为休息日。
-func (c *Calendar) IsHoliday(date time.Time) (bool, error) {
+// IsRest 报告 date 是否为放假日（与基本位 Rest 对齐；含普通周休、
+// 节日放假日与调休放假日，不含补班）。
+func (c *Calendar) IsRest(date time.Time) (bool, error) {
 	t, err := c.Query(date)
 	if err != nil {
 		return false, err
 	}
-	return t.IsHoliday(), nil
+	return t.IsRest(), nil
 }
 
 // Dated 区间/列表查询结果中的单日条目：Date 为规范化到 UTC 午夜的日期，

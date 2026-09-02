@@ -23,8 +23,8 @@ func TestComboIndexInvalid(t *testing.T) {
 		9,          // Work|Adjusted：调休必放假
 		18,         // Rest|Compensate：补班必上班
 		12, 14, 20, // 同日两个及以上调整位
-		DayTypeCompensate | DayTypeFestival,           // 20：非法组合
-		DayTypeWork | DayTypeRest | DayTypeCompensate, // 19：非法组合
+		DayTypeAdjustedWork | DayTypeFestival,           // 20：非法组合
+		DayTypeWork | DayTypeRest | DayTypeAdjustedWork, // 19：非法组合
 	} {
 		if got := comboIndex(v); got != -1 {
 			t.Errorf("comboIndex(%d) = %d，期望 -1", v, got)

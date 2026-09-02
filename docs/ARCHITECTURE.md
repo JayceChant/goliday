@@ -179,7 +179,7 @@ JSON 序列化返回
 
 补充两类强化用例：
 
-- **穷举不变量**：`DayType` 为 uint8 小域，`TestDayTypeExhaustiveInvariants` 遍历全部 256 个取值验证 `String` 分段合法且不 panic，对 5 个合法值 {1,2,6,10,17} 另验证 `Coarse` ∈ {Work, Rest} 且幂等、`IsWorkday/IsHoliday` 恰一为真、位与判类恰一非零；`TestCalendarConfiguredYearExhaustive` 对已配置年份全年逐日验证判型 ∈ 5 种合法值。
+- **穷举不变量**：`DayType` 为 uint8 小域，`TestDayTypeExhaustiveInvariants` 遍历全部 256 个取值验证 `String` 分段合法且不 panic、`IsValid` 恰对 {1,2,6,10,17} 为 true，对 5 个合法值另验证 `Coarse` ∈ {Work, Rest} 且幂等、`IsWork/IsRest` 恰一为真（非法值全 false）、位与判类恰一非零；`TestCalendarConfiguredYearExhaustive` 对已配置年份全年逐日验证判型 ∈ 5 种合法值。
 - **fuzz 测试**（Go 原生 `testing.F`，种子内联，`go test` 常规运行即执行种子回归）：
 
 | 目标 | 位置 | 不变量 |

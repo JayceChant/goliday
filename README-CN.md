@@ -85,9 +85,9 @@ docker pull ghcr.io/jaycechant/goliday:latest
 
 | 值 | 组合 | 含义 | | 值 | 组合 | 含义 |
 |---|---|---|---|---|---|---|
-| 1 | `Work` | 普通工作日 | | 6 | `Rest\|Festival` | 节日放假日 |
-| 2 | `Rest` | 普通周休 | | 10 | `Rest\|Adjusted` | 调休放假日（原工作日） |
-| 4 | — | 调整位：过节 | | 17 | `Work\|Compensate` | 补班日（原周末） |
+| 1 | `Work` | 普通工作日 | | 6 | `FestivalRest` | 节日放假日 |
+| 2 | `Rest` | 普通周休 | | 10 | `AdjustedRestDay` | 调休放假日（原工作日） |
+| 4 | — | 调整位：过节 | | 17 | `AdjustedWorkDay` | 补班日（原周末） |
 | 8 | — | 调整位：调休 | | | | |
 | 16 | — | 调整位：补班 | | | | |
 

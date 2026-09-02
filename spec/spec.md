@@ -29,20 +29,22 @@
 | `DayTypeWork` | 1 << 0 = 1 | 粗粒度基本位 | 上班 |
 | `DayTypeRest` | 1 << 1 = 2 | 粗粒度基本位 | 放假（未调整时必然为周末） |
 | `DayTypeFestival` | 1 << 2 = 4 | 调整位 | 过节：法定节日当天（放假），当日新增法定假期 |
-| `DayTypeAdjusted` | 1 << 3 = 8 | 调整位 | 调休：原工作日被调整为休息（非节日当天），不新增假期 |
-| `DayTypeCompensate` | 1 << 4 = 16 | 调整位 | 补班：原周末被调整为上班 |
+| `DayTypeAdjustedRest` | 1 << 3 = 8 | 调整位 | 调休：原工作日被调整为休息（非节日当天），不新增假期 |
+| `DayTypeAdjustedWork` | 1 << 4 = 16 | 调整位 | 补班：原周末被调整为上班 |
 
-细粒度合法组合全集（5 种，MECE，由配置与周休判定产生，数值之和即总天数）：
+调整位常量名采用动宾结构（Adjusted**Rest** 调休 / Adjusted**Work** 补班），与基本位 Rest/Work 词根对齐，消除「调的是休还是班」的宾语歧义；`type_label` 分段名维持 `adjusted`/`compensate` 不变（补班沿用英语惯用词根 compensate）。
 
-| 值 | 组合 | 语义 |
+细粒度合法组合全集（5 种，MECE，由配置与周休判定产生，数值之和即总天数）；组合值 SHALL 提供同名义常量：
+
+| 值 | 常量 | 语义 |
 |---|---|---|
-| 1 | `Work` | 普通工作日 |
-| 2 | `Rest` | 普通周休（未调整的自然周末） |
-| 6 | `Rest\|Festival` | 节日放假日（无论节日落在工作日还是周末，终态同为「放假\|过节」） |
-| 10 | `Rest\|Adjusted` | 调休放假日（原工作日；来源含拼假挪移与节日逢周末的补休，日类型不区分） |
-| 17 | `Work\|Compensate` | 补班日（原周末） |
+| 1 | `DayTypeWork` | 普通工作日 |
+| 2 | `DayTypeRest` | 普通周休（未调整的自然周末） |
+| 6 | `DayTypeFestivalRest`（`Rest\|Festival`） | 节日放假日（无论节日落在工作日还是周末，终态同为「放假\|过节」） |
+| 10 | `DayTypeAdjustedRestDay`（`Rest\|AdjustedRest`） | 调休放假日（原工作日；来源含拼假挪移与节日逢周末的补休，日类型不区分） |
+| 17 | `DayTypeAdjustedWorkDay`（`Work\|AdjustedWork`） | 补班日（原周末） |
 
-粗粒度归属 SHALL 为单次按位与：`t & DayTypeRest != 0` → 放假、`t & DayTypeWork != 0` → 上班（合法值恰含一个基本位，无歧义、无需优先级消歧）；`Coarse()` SHALL 返回 `t & (DayTypeWork|DayTypeRest)`，合法值上结果 ∈ {1, 2} 且幂等。
+粗粒度归属 SHALL 为合法值上的单次按位与：`t & DayTypeRest != 0` → 放假、`t & DayTypeWork != 0` → 上班（合法值恰含一个基本位，无歧义、无需优先级消歧）；`Coarse()` SHALL 返回 `t & (DayTypeWork|DayTypeRest)`，合法值上结果 ∈ {1, 2} 且幂等。
 
 非法值（可编码，但校验与判定不得产生）：`0` 与含未定义位（≥32）的值；`3`（上班∧放假矛盾）；裸调整位 `4`/`8`/`16`（调整位必须依附基本位）；`5`/`9`（过节/调休与上班矛盾——两者必为放假）；`18`（补班与放假矛盾）；`12`/`14`/`20`/`22` 等含两个及以上调整位的组合（同日至多一个调整位）。调整动作与自然日的对应（`off` 必为工作日、`work` 必为周末、工作日节日必须在 `off`）由配置校验保证。
 
@@ -54,22 +56,30 @@
 
 **决策依据**：旧编码在同一类型中混用两种按位或语义——粗值 3/28 为「互斥并集（any-of）」物化值、细组合值 6/12/24 为「属性合取（all-of）」——导致 `6 & 28 ≠ 0` 双命中、`Coarse()` 需优先级规则消歧，且「按可达值取并」与「按名义位取并」不一致（`1|6=7 ≠ Workday=3`）。本修订将粗粒度改为单 bit 基本枚举、组合值全部退化为 all-of，位运算语义单一，粗/细归属均可用单次按位与表达；曾评估「自然位」方案（组合 {1,2,5,6,9,18}，区分节日逢周末/工作日），因翻转日（补班/调休/过节）的位与判类必然误判且无静态掩码可补救而否决。
 
-`DayType` SHALL 提供 `IsWorkday()`（`t & DayTypeWork != 0`）、`IsHoliday()`（`t & DayTypeRest != 0`）、`Coarse()`、`String()`；序列化 SHALL 直接输出 int 数值。`String()`：按位从低到高连接位小写名（`work`/`rest`/`festival`/`adjusted`/`compensate`），如 `Rest|Festival(6)` → `"rest|festival"`、`Work|Compensate(17)` → `"work|compensate"`；粗粒度值 1/2 无需特判，天然输出 `"work"`/`"rest"`；存在未知位时追加 `unknown`，空值（0）返回 `"unknown"`。
+`DayType` SHALL 提供：`IsWork()`（合法值且基本位投影为 Work；方法名与基本位 Work 对齐——英语 holiday 与 weekend 为并列概念，普通周末不称 holiday）、`IsRest()`（合法值且投影为 Rest；含普通周休/节日放假日/调休放假日，不含补班）、`IsFestivalRest()`、`IsAdjustedRestDay()`、`IsAdjustedWorkDay()`（三个组合值的精确判等）、`IsValid()`（∈ 合法值全集 {1,2,6,10,17}）、`Coarse()`、`String()`；序列化 SHALL 直接输出 int 数值。任何非法值上 `IsWork`/`IsRest` SHALL 均返回 false（如 3 同含两基本位、5/9 调整位与终态矛盾）。`String()`：按位从低到高连接位小写名（`work`/`rest`/`festival`/`adjusted`/`compensate`），如 `FestivalRest(6)` → `"rest|festival"`、`AdjustedWorkDay(17)` → `"work|compensate"`；粗粒度值 1/2 无需特判，天然输出 `"work"`/`"rest"`；存在未知位时追加 `unknown`，空值（0）返回 `"unknown"`。
 
 #### Scenario: 上班段映射
-- **WHEN** 细粒度值分别为 `DayTypeWork`、`DayTypeWork|DayTypeCompensate`
-- **THEN** `Coarse()` 均等于 `DayTypeWork`，`IsWorkday()` 为 true、`IsHoliday()` 为 false
+- **WHEN** 细粒度值分别为 `DayTypeWork`、`DayTypeAdjustedWorkDay`
+- **THEN** `Coarse()` 均等于 `DayTypeWork`，`IsWork()` 为 true、`IsRest()` 为 false
 
 #### Scenario: 放假段映射
-- **WHEN** 细粒度值分别为 `DayTypeRest`、`DayTypeRest|DayTypeFestival`、`DayTypeRest|DayTypeAdjusted`
-- **THEN** `Coarse()` 均等于 `DayTypeRest`，`IsHoliday()` 为 true
+- **WHEN** 细粒度值分别为 `DayTypeRest`、`DayTypeFestivalRest`、`DayTypeAdjustedRestDay`
+- **THEN** `Coarse()` 均等于 `DayTypeRest`，`IsRest()` 为 true
+
+#### Scenario: 非法值全拒
+- **WHEN** 对非法值 0、3、4、5、9、18 分别调用 `IsWork`/`IsRest`/`IsValid`
+- **THEN** 三者均返回 false（仅投影判等拦不住 3，但 5 这类「基本位正确而调整位矛盾」的值也须为 false，故 IsWork/IsRest 内部先做合法性校验）
+
+#### Scenario: 组合判断
+- **WHEN** 对五个合法值分别调用 `IsFestivalRest`/`IsAdjustedRestDay`/`IsAdjustedWorkDay`
+- **THEN** 各方法仅对其对应组合值返回 true（实现为组合常量精确判等）
 
 #### Scenario: 位与判类无歧义
 - **WHEN** 对全部合法值 {1, 2, 6, 10, 17} 分别执行 `t & DayTypeRest` 与 `t & DayTypeWork`
 - **THEN** 恰一非零（旧编码 `Compensate|Weekend & Holiday = 4` 双命中问题消除）
 
 #### Scenario: 字符串表示
-- **WHEN** 对 `DayTypeRest|DayTypeFestival` 与 `DayTypeWork|DayTypeCompensate` 调用 `String()`
+- **WHEN** 对 `DayTypeFestivalRest` 与 `DayTypeAdjustedWorkDay` 调用 `String()`
 - **THEN** 分别返回 `"rest|festival"`、`"work|compensate"`；对 `DayTypeRest` 返回 `"rest"`
 
 ### Requirement: 稀疏配置文件格式（TOML）
@@ -159,7 +169,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 ### Requirement: 单日期查询
 
-核心包 SHALL 提供 `Query(date time.Time) (DayType, error)`（细粒度）与 `QueryCoarse(date time.Time) (DayType, error)`；`IsWorkday`/`IsHoliday` 同步返回 `error`。`date` 年份未加载时返回包装 `ErrYearNotLoaded` 的错误（`errors.Is` 可判别，message 含年份），不回退周休判断（见「年份加载强校验」）。
+核心包 SHALL 提供 `Query(date time.Time) (DayType, error)`（细粒度）与 `QueryCoarse(date time.Time) (DayType, error)`；`IsWork`/`IsRest` 同步返回 `error`。`date` 年份未加载时返回包装 `ErrYearNotLoaded` 的错误（`errors.Is` 可判别，message 含年份），不回退周休判断（见「年份加载强校验」）。
 
 **决策依据**：消除「未配置」与「真实周末」的静默混淆，故由早期的"无配置年回退周休"改为强校验报错。
 
@@ -412,12 +422,12 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 | Fuzz 目标 | 所属 | 不变量 |
 |---|---|---|
 | `FuzzParseDate` | 根包 `package goliday`（白盒） | 任意字符串：解析成功 ⇔ `time.Parse("2006-01-02", s)` 接受且 `Format` 回环一致；成功值再解析幂等；失败必须返回非 nil error |
-| `FuzzQueryConsistency` | 根包 `package goliday_test`（黑盒） | 任意构造的 `time.Time`：已加载年份 `Query` 结果 ∈ 合法细粒度值全集 {1,2,6,10,17} 且 `QueryCoarse == Query().Coarse()`、`IsWorkday/IsHoliday` 与之互斥一致、同一日不同时刻（+5h/+23h）与 UTC/+08:00 表示结果不变；未加载年份断言返回 `ErrYearNotLoaded` |
+| `FuzzQueryConsistency` | 根包 `package goliday_test`（黑盒） | 任意构造的 `time.Time`：已加载年份 `Query` 结果 ∈ 合法细粒度值全集 {1,2,6,10,17} 且 `QueryCoarse == Query().Coarse()`、`IsWork/IsRest` 与之互斥一致、同一日不同时刻（+5h/+23h）与 UTC/+08:00 表示结果不变；未加载年份断言返回 `ErrYearNotLoaded` |
 | `FuzzLoadYearTOML` | 根包 `package goliday_test`（黑盒） | 任意年份 + TOML 文本：`LoadYear` 成功 ⟹ `Validate()` 幂等通过、off 全为周一~五、work 全为周六/日、两集合互斥无重复、工作日节日均在 off、全部日期在 `year` 年内；经 `LoadDir` 构造的 `Calendar` 对 off 日含 `Rest` 位（节日当天为 `Rest\|Festival`，其余为 `Rest\|Adjusted`）、work 日为 `Work\|Compensate` |
 | `FuzzDaysHandler` | `cmd/goliday-server` `package main`（白盒） | 任意查询串打到 `/api/v1/days` 与 `/api/v1/stats`：不 panic、状态码仅 200/400、响应恒为合法 JSON；200 且含 `days` 时升序唯一、`total_days == len(days)`；粗粒度 stats 之和 == `total_days`，细粒度五键之和 == `total_days`（MECE）；单日模式 `total_days == 1`；stats 路径不因跨度报错（未加载年份报 `year_not_loaded` 除外） |
 | `FuzzGenDraft` | `cmd/goliday-tool` `package main`（白盒） | 任意年份 + 公告文本：解析条目区间有效且在年内；草稿 off 全为周一~五、work 全为周六/日、互斥无重复、全在年内；festival 日期非 TODO 则为合法 `YYYY-MM-DD`；`selfCheck` 失败仅允许 TODO 占位、"festival 日期重复"、"节日当天不得补班"或"节日当天为工作日但不在 off"；自检通过且文件名年份合法时 `render` 产物可被 `LoadYear` 加载 |
 
-补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`String` 分段均为合法位名或 `unknown`、不 panic）覆盖；对 5 个合法值 {1,2,6,10,17} 另行断言：`Coarse` 结果 ∈ {`DayTypeWork`, `DayTypeRest`} 且幂等、`IsWorkday`/`IsHoliday` 恰一为真、`t & DayTypeWork` 与 `t & DayTypeRest` 恰一非零。不再另设 fuzz 目标。
+补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`String` 分段均为合法位名或 `unknown`、不 panic、`IsValid` 恰对 {1,2,6,10,17} 为 true）覆盖；对 5 个合法值 {1,2,6,10,17} 另行断言：`Coarse` 结果 ∈ {`DayTypeWork`, `DayTypeRest`} 且幂等、`IsWork`/`IsRest` 恰一为真、`t & DayTypeWork` 与 `t & DayTypeRest` 恰一非零。不再另设 fuzz 目标。
 
 约束：fuzz 目标不得新增第三方依赖（仅 `testing`/`time`/标准库）；失败语料按 Go 惯例落盘 `testdata/fuzz/<Name>/` 后 SHALL 转写为常规回归用例（普通 Test 或种子）再删除语料文件，保持仓库无 fuzz 语料残留。
 
@@ -513,8 +523,12 @@ package goliday // 根包
 var ErrYearNotLoaded = errors.New("年份配置未加载")
 
 type DayType uint8
-func (t DayType) IsWorkday() bool
-func (t DayType) IsHoliday() bool
+func (t DayType) IsWork() bool
+func (t DayType) IsRest() bool
+func (t DayType) IsFestivalRest() bool
+func (t DayType) IsAdjustedRestDay() bool
+func (t DayType) IsAdjustedWorkDay() bool
+func (t DayType) IsValid() bool
 func (t DayType) Coarse() DayType
 func (t DayType) String() string
 
@@ -530,6 +544,8 @@ func NewCalendar(s *Store) *Calendar
 func (c *Calendar) HasYear(year int) bool
 func (c *Calendar) Query(date time.Time) (DayType, error)        // 细粒度；未加载年 → ErrYearNotLoaded
 func (c *Calendar) QueryCoarse(date time.Time) (DayType, error)  // 粗粒度；未加载年 → ErrYearNotLoaded
+func (c *Calendar) IsWork(date time.Time) (bool, error)          // 未加载年 → ErrYearNotLoaded
+func (c *Calendar) IsRest(date time.Time) (bool, error)          // 未加载年 → ErrYearNotLoaded
 func (c *Calendar) QueryRange(start, end time.Time) ([]Dated, error) // 左闭右开逐日；未加载年 → ErrYearNotLoaded
 func (c *Calendar) StatsRange(start, end time.Time, detailed bool) (StatsResult, error) // 前缀和差分，不限跨度
 func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error)        // 排序去重集合分段差分

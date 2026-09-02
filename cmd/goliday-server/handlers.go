@@ -238,8 +238,8 @@ func fillStats(resp *daysResponse, st goliday.StatsResult, detailed bool) {
 			"ordinary":   st.Fine[goliday.DayTypeWork],
 			"weekend":    st.Fine[goliday.DayTypeRest],
 			"festival":   st.Fine[goliday.DayTypeFestival],
-			"adjusted":   st.Fine[goliday.DayTypeAdjusted],
-			"compensate": st.Fine[goliday.DayTypeCompensate],
+			"adjusted":   st.Fine[goliday.DayTypeAdjustedRest],
+			"compensate": st.Fine[goliday.DayTypeAdjustedWork],
 		}
 	} else {
 		resp.Stats = map[string]int{

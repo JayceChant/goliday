@@ -42,19 +42,19 @@ const (
 //	1  WORK  上班（单值即普通工作日）
 //	2  REST  放假（单值即普通周休；未调整时必然为周末）
 //
-// 调整位（互斥，至多一个，依附基本位）：
+// 调整位（互斥，至多一个，依附基本位；常量名为动宾结构，标明调休/补班）：
 //
-//	4  FESTIVAL   过节：法定节日当天（放假），当日新增法定假期
-//	8  ADJUSTED   调休：原工作日被调整为休息（非节日当天），不新增假期
-//	16 COMPENSATE 补班：原周末被调整为上班
+//	4  FESTIVAL      过节：法定节日当天（放假），当日新增法定假期
+//	8  ADJUSTED_REST 调休：原工作日被调整为休息（非节日当天），不新增假期
+//	16 ADJUSTED_WORK 补班：原周末被调整为上班
 //
 // 细粒度合法值全集（5 值 MECE）：
 //
 //	1  Work              普通工作日
 //	2  Rest              普通周休
-//	6  Rest|Festival     节日放假日（节日无论落在工作日还是周末）
-//	10 Rest|Adjusted     调休放假日（原工作日）
-//	17 Work|Compensate   补班日（原周末）
+//	6  FestivalRest      节日放假日（节日无论落在工作日还是周末）
+//	10 AdjustedRestDay   调休放假日（原工作日）
+//	17 AdjustedWorkDay   补班日（原周末）
 //
 // 粗粒度即基本位投影（t & 3），detailed=false 时 type 为 1/2。
 // 与核心包 goliday.DayType 完全一致。

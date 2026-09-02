@@ -13,9 +13,9 @@ import "strings"
 //
 // 调整位（互斥，至多一个，依附于基本位）：
 //
-//	DayTypeFestival   1<<2 过节：法定节日当天（放假），当日新增法定假期
-//	DayTypeAdjusted   1<<3 调休：原工作日被调整为休息（非节日当天），不新增假期
-//	DayTypeCompensate 1<<4 补班：原周末被调整为上班
+//	DayTypeFestival     1<<2 过节：法定节日当天（放假），当日新增法定假期
+//	DayTypeAdjustedRest 1<<3 调休：原工作日被调整为休息（非节日当天），不新增假期
+//	DayTypeAdjustedWork 1<<4 补班：原周末被调整为上班
 //
 // 全部组合值的按位或均为 all-of（合取）语义，不存在 any-of（并集物化值）
 // 语义；粗粒度即基本位投影（t & (Work|Rest)）。合法细粒度值全集为
@@ -29,13 +29,25 @@ const (
 	DayTypeRest DayType = 1 << 1
 	// DayTypeFestival 过节：法定节日当天（放假），当日新增法定假期。
 	DayTypeFestival DayType = 1 << 2
-	// DayTypeAdjusted 调休：原工作日被调整为休息（非节日当天），不新增假期。
-	DayTypeAdjusted DayType = 1 << 3
-	// DayTypeCompensate 补班：原周末被调整为上班。
-	DayTypeCompensate DayType = 1 << 4
+	// DayTypeAdjustedRest 调休：原工作日被调整为休息（非节日当天），不新增假期。
+	DayTypeAdjustedRest DayType = 1 << 3
+	// DayTypeAdjustedWork 补班：原周末被调整为上班。
+	DayTypeAdjustedWork DayType = 1 << 4
 )
 
-// dayTypeNames 位名称，按位从低到高排列。
+// 合法细粒度组合值（终态五值，MECE），由基本位与调整位组合而成。
+const (
+	// DayTypeFestivalRest 节日放假日：节日当天（无论落在工作日还是周末）。
+	DayTypeFestivalRest = DayTypeRest | DayTypeFestival
+	// DayTypeAdjustedRestDay 调休放假日：原工作日被调整为休息（非节日当天）。
+	DayTypeAdjustedRestDay = DayTypeRest | DayTypeAdjustedRest
+	// DayTypeAdjustedWorkDay 补班上班日：原周末被调整为上班。
+	DayTypeAdjustedWorkDay = DayTypeWork | DayTypeAdjustedWork
+)
+
+// dayTypeNames 位名称（type_label 的分段名），按位从低到高排列；
+// 调整位取其动宾语义的简写（adjusted rest → "adjusted"、
+// adjusted work → "compensate"，沿用补班惯用词根），与常量名不必逐字一致。
 var dayTypeNames = [...]string{
 	"work",       // 1<<0
 	"rest",       // 1<<1
@@ -44,19 +56,52 @@ var dayTypeNames = [...]string{
 	"compensate", // 1<<4
 }
 
+// validFineValues 细粒度合法值全集（五值 MECE）。
+var validFineValues = [...]DayType{
+	DayTypeWork,
+	DayTypeRest,
+	DayTypeFestivalRest,
+	DayTypeAdjustedRestDay,
+	DayTypeAdjustedWorkDay,
+}
+
 // Coarse 返回该日期类型的粗粒度投影（基本位掩码），
-// 即 t & (DayTypeWork|DayTypeRest)；合法值上结果 ∈ {1, 2} 且幂等。
-// 归属判定无需优先级消歧：t & DayTypeRest != 0 → 放假，
-// t & DayTypeWork != 0 → 上班，合法值恰一非零。
+// 即 t & (DayTypeWork|DayTypeRest)；合法值上结果 ∈ {1, 2} 且幂等，
+// 非法值（如 3，同含两个基本位）返回原值本身。
 func (t DayType) Coarse() DayType {
 	return t & (DayTypeWork | DayTypeRest)
 }
 
-// IsWorkday 报告该日是否为上班日（t 含 DayTypeWork 位）。
-func (t DayType) IsWorkday() bool { return t&DayTypeWork != 0 }
+// IsWork 报告该日是否为上班日：合法值且基本位投影等于 DayTypeWork。
+// 任何非法值（3 同含两基本位、5/9 过节调休配上班位等）均返回 false。
+func (t DayType) IsWork() bool {
+	return t.IsValid() && t&(DayTypeWork|DayTypeRest) == DayTypeWork
+}
 
-// IsHoliday 报告该日是否为放假日（t 含 DayTypeRest 位）。
-func (t DayType) IsHoliday() bool { return t&DayTypeRest != 0 }
+// IsRest 报告该日是否为放假日：合法值且基本位投影等于 DayTypeRest。
+// 任何非法值均返回 false。
+func (t DayType) IsRest() bool {
+	return t.IsValid() && t&(DayTypeWork|DayTypeRest) == DayTypeRest
+}
+
+// IsFestivalRest 报告该日是否为节日放假日（合法值 DayTypeFestivalRest）。
+func (t DayType) IsFestivalRest() bool { return t == DayTypeFestivalRest }
+
+// IsAdjustedRestDay 报告该日是否为调休放假日（合法值 DayTypeAdjustedRestDay）。
+func (t DayType) IsAdjustedRestDay() bool { return t == DayTypeAdjustedRestDay }
+
+// IsAdjustedWorkDay 报告该日是否为补班上班日（合法值 DayTypeAdjustedWorkDay）。
+func (t DayType) IsAdjustedWorkDay() bool { return t == DayTypeAdjustedWorkDay }
+
+// IsValid 报告 t 是否为合法细粒度值（{1, 2, 6, 10, 17} 之一）。
+func (t DayType) IsValid() bool {
+	for _, v := range validFineValues {
+		if t == v {
+			return true
+		}
+	}
+	return false
+}
 
 // String 返回 DayType 的字符串表示：按位从低到高以 "|" 连接小写位名，
 // 如 "work"、"rest"、"rest|festival"、"rest|adjusted"、"work|compensate"

@@ -136,3 +136,11 @@
 - [x] 细粒度统计五键之和 == `total_days`（HTTP/gRPC/根包三层一致，fuzz 不变量同步收紧）；前缀和与逐日暴力统计全年/跨年/离散完全一致
 - [x] proto 注释与生成代码同步（`buf generate` 幂等、`buf lint` 通过）；README 双语、docs/API.md、CONFIG_FORMAT.md、ARCHITECTURE.md、holiday_config_example.toml、configs/testdata 头注释无旧编码残留
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues、`go fix ./...` 幂等）；执行提交（refactor: DayType 重构为终态双层位编码并统一语义）
+
+## DayType 命名与判定方法 API 增强
+
+- [x] 调整位常量更名 `DayTypeAdjustedRest`/`DayTypeAdjustedWork`（动宾结构，用户选定方案），`type_label` 分段名 adjusted/compensate 不变；组合常量 `DayTypeFestivalRest`/`DayTypeAdjustedRestDay`/`DayTypeAdjustedWorkDay` 与「= 基本位|调整位」等值断言
+- [x] `IsWorkday/IsHoliday` → `IsWork/IsRest`（DayType 与 Calendar 两层同步）；非法值（0/3/5/9/18）上 `IsWork/IsRest/IsValid` 全 false 的回归用例（实现为 `IsValid() && t&3 == 位`，修复 3 双 true 与 5 误报 true 两类缺陷）；`IsFestivalRest/IsAdjustedRestDay/IsAdjustedWorkDay` 组合值精确判等用例；`IsValid` 穷举 256 值恰五值 true
+- [x] spec.md 常量表（动宾命名与组合常量列）、方法清单与新增「非法值全拒」「组合判断」Scenario、附录 API 形态、fuzz 不变量同步；proto 注释（ADJUSTED_REST/ADJUSTED_WORK 与组合值名）再生成且 `buf lint` 通过
+- [x] docs（API/CONFIG_FORMAT/ARCHITECTURE）、README 双语表格、configs/testdata 与 holiday_config_example 头注释的组合记法统一为常量名；无旧常量名残留（grep 验证）
+- [x] 验证命令全绿（build/vet/test 3 包 ok、`gofmt -l .` 为空、`golangci-lint run` 0 issues、`go fix` 幂等、FuzzParseDate/FuzzQueryConsistency 各 2s 冒烟通过）；执行提交（refactor: DayType 调整位命名动宾化并补齐判定方法）

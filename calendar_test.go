@@ -46,15 +46,15 @@ func TestCalendarQuery(t *testing.T) {
 		want   goliday.DayType
 		coarse goliday.DayType
 	}{
-		{"2026-02-20 周五调休off", "2026-02-20", goliday.DayTypeRest | goliday.DayTypeAdjusted, goliday.DayTypeRest},
-		{"2026-02-17 春节当天且off", "2026-02-17", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
-		{"2026-02-28 周六补班work", "2026-02-28", goliday.DayTypeWork | goliday.DayTypeCompensate, goliday.DayTypeWork},
-		{"2026-04-05 周日清明当天不在off/work", "2026-04-05", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
+		{"2026-02-20 周五调休off", "2026-02-20", goliday.DayTypeAdjustedRestDay, goliday.DayTypeRest},
+		{"2026-02-17 春节当天且off", "2026-02-17", goliday.DayTypeFestivalRest, goliday.DayTypeRest},
+		{"2026-02-28 周六补班work", "2026-02-28", goliday.DayTypeAdjustedWorkDay, goliday.DayTypeWork},
+		{"2026-04-05 周日清明当天不在off/work", "2026-04-05", goliday.DayTypeFestivalRest, goliday.DayTypeRest},
 		{"2026-03-03 周二未覆盖", "2026-03-03", goliday.DayTypeWork, goliday.DayTypeWork},
 		{"2026-02-21 周六春节假期内自然周末", "2026-02-21", goliday.DayTypeRest, goliday.DayTypeRest},
-		{"2025-01-26 周日补班", "2025-01-26", goliday.DayTypeWork | goliday.DayTypeCompensate, goliday.DayTypeWork},
-		{"2025-01-29 正月初一", "2025-01-29", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
-		{"2025-10-06 中秋当天周一", "2025-10-06", goliday.DayTypeRest | goliday.DayTypeFestival, goliday.DayTypeRest},
+		{"2025-01-26 周日补班", "2025-01-26", goliday.DayTypeAdjustedWorkDay, goliday.DayTypeWork},
+		{"2025-01-29 正月初一", "2025-01-29", goliday.DayTypeFestivalRest, goliday.DayTypeRest},
+		{"2025-10-06 中秋当天周一", "2025-10-06", goliday.DayTypeFestivalRest, goliday.DayTypeRest},
 		{"2025-04-05 周六假期内自然周末", "2025-04-05", goliday.DayTypeRest, goliday.DayTypeRest},
 	}
 	for _, tt := range tests {
@@ -66,7 +66,7 @@ func TestCalendarQuery(t *testing.T) {
 func TestCalendarQueryNormalization(t *testing.T) {
 	c := newTestCalendar(t)
 
-	want := goliday.DayTypeRest | goliday.DayTypeFestival
+	want := goliday.DayTypeFestivalRest
 	variants := []time.Time{
 		date(t, "2026-02-17"),
 		date(t, "2026-02-17").Add(15*time.Hour + 30*time.Minute),
@@ -84,8 +84,8 @@ func TestCalendarQueryNormalization(t *testing.T) {
 	}
 }
 
-// TestCalendarYearNotLoaded 未加载年份：Query/QueryCoarse/IsWorkday/
-// IsHoliday/QueryRange/StatsRange/Stats 均返回包装 ErrYearNotLoaded 的
+// TestCalendarYearNotLoaded 未加载年份：Query/QueryCoarse/IsWork/
+// IsRest/QueryRange/StatsRange/Stats 均返回包装 ErrYearNotLoaded 的
 // 错误（不再静默回退周休判断），错误消息包含年份。
 func TestCalendarYearNotLoaded(t *testing.T) {
 	c := newTestCalendar(t)
@@ -94,8 +94,8 @@ func TestCalendarYearNotLoaded(t *testing.T) {
 	for name, fn := range map[string]func() error{
 		"Query":       func() error { _, err := c.Query(d); return err },
 		"QueryCoarse": func() error { _, err := c.QueryCoarse(d); return err },
-		"IsWorkday":   func() error { _, err := c.IsWorkday(d); return err },
-		"IsHoliday":   func() error { _, err := c.IsHoliday(d); return err },
+		"IsWork":      func() error { _, err := c.IsWork(d); return err },
+		"IsRest":      func() error { _, err := c.IsRest(d); return err },
 	} {
 		err := fn()
 		if !errors.Is(err, goliday.ErrYearNotLoaded) {
@@ -153,9 +153,9 @@ func TestCalendarQueryRange(t *testing.T) {
 		t.Fatalf("QueryRange 意外报错: %v", err)
 	}
 	want := []goliday.Dated{
-		{date(t, "2026-02-14"), goliday.DayTypeWork | goliday.DayTypeCompensate},
+		{date(t, "2026-02-14"), goliday.DayTypeAdjustedWorkDay},
 		{date(t, "2026-02-15"), goliday.DayTypeRest},
-		{date(t, "2026-02-16"), goliday.DayTypeRest | goliday.DayTypeAdjusted},
+		{date(t, "2026-02-16"), goliday.DayTypeAdjustedRestDay},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("QueryRange 返回 %d 个元素，期望 %d（左闭右开不含 end）：%v", len(got), len(want), got)
@@ -180,12 +180,12 @@ func TestCalendarQueryRange(t *testing.T) {
 // ——Work 单值计 ordinary 键、Rest 单值计 weekend 键、三个组合值计其调整位键。
 func fineKeyOf(dt goliday.DayType) goliday.DayType {
 	switch dt {
-	case goliday.DayTypeRest | goliday.DayTypeFestival:
+	case goliday.DayTypeFestivalRest:
 		return goliday.DayTypeFestival
-	case goliday.DayTypeRest | goliday.DayTypeAdjusted:
-		return goliday.DayTypeAdjusted
-	case goliday.DayTypeWork | goliday.DayTypeCompensate:
-		return goliday.DayTypeCompensate
+	case goliday.DayTypeAdjustedRestDay:
+		return goliday.DayTypeAdjustedRest
+	case goliday.DayTypeAdjustedWorkDay:
+		return goliday.DayTypeAdjustedWork
 	}
 	return dt // Work(1)→ordinary 键、Rest(2)→weekend 键
 }
@@ -225,7 +225,7 @@ func wantSameStats(t *testing.T, name string, got, want goliday.StatsResult) {
 	if len(want.Fine) > 0 {
 		fineKeys := []goliday.DayType{
 			goliday.DayTypeWork, goliday.DayTypeRest, goliday.DayTypeFestival,
-			goliday.DayTypeAdjusted, goliday.DayTypeCompensate,
+			goliday.DayTypeAdjustedRest, goliday.DayTypeAdjustedWork,
 		}
 		for _, k := range fineKeys {
 			if got.Fine[k] != want.Fine[k] {
@@ -256,11 +256,11 @@ func TestCalendarStats(t *testing.T) {
 		t.Fatalf("Fine = %v，期望 5 键（MECE）", r.Fine)
 	}
 	wantFine := map[goliday.DayType]int{
-		goliday.DayTypeFestival:   1,
-		goliday.DayTypeCompensate: 1,
-		goliday.DayTypeWork:       1,
-		goliday.DayTypeRest:       0,
-		goliday.DayTypeAdjusted:   0,
+		goliday.DayTypeFestival:     1,
+		goliday.DayTypeAdjustedWork: 1,
+		goliday.DayTypeWork:         1,
+		goliday.DayTypeRest:         0,
+		goliday.DayTypeAdjustedRest: 0,
 	}
 	sum := 0
 	for k, v := range r.Fine {
@@ -367,14 +367,14 @@ func TestStatsRangeEmpty(t *testing.T) {
 	}
 }
 
-// TestCalendarIsWorkdayIsHoliday 便捷方法与粗粒度判断一致性断言。
-func TestCalendarIsWorkdayIsHoliday(t *testing.T) {
+// TestCalendarIsWorkIsRest 便捷方法与粗粒度判断一致性断言。
+func TestCalendarIsWorkIsRest(t *testing.T) {
 	c := newTestCalendar(t)
 
 	tests := []struct {
-		date    string
-		workday bool
-		holiday bool
+		date string
+		work bool
+		rest bool
 	}{
 		{"2026-02-20", false, true},
 		{"2026-02-21", false, true},
@@ -383,11 +383,11 @@ func TestCalendarIsWorkdayIsHoliday(t *testing.T) {
 	}
 	for _, tt := range tests {
 		d := date(t, tt.date)
-		if got, err := c.IsWorkday(d); err != nil || got != tt.workday {
-			t.Errorf("IsWorkday(%s) = %v, %v，期望 %v", tt.date, got, err, tt.workday)
+		if got, err := c.IsWork(d); err != nil || got != tt.work {
+			t.Errorf("IsWork(%s) = %v, %v，期望 %v", tt.date, got, err, tt.work)
 		}
-		if got, err := c.IsHoliday(d); err != nil || got != tt.holiday {
-			t.Errorf("IsHoliday(%s) = %v, %v，期望 %v", tt.date, got, err, tt.holiday)
+		if got, err := c.IsRest(d); err != nil || got != tt.rest {
+			t.Errorf("IsRest(%s) = %v, %v，期望 %v", tt.date, got, err, tt.rest)
 		}
 	}
 }
@@ -415,10 +415,10 @@ func TestCalendarConfiguredYearExhaustive(t *testing.T) {
 			if err != nil || gotC != got.Coarse() {
 				t.Fatalf("%s: QueryCoarse 与 Query().Coarse() 不一致（%v）", d.Format(layout), err)
 			}
-			w, werr := c.IsWorkday(d)
-			h, herr := c.IsHoliday(d)
+			w, werr := c.IsWork(d)
+			h, herr := c.IsRest(d)
 			if werr != nil || herr != nil || w == h {
-				t.Fatalf("%s: IsWorkday/IsHoliday 必须恰一为真（%v/%v）", d.Format(layout), werr, herr)
+				t.Fatalf("%s: IsWork/IsRest 必须恰一为真（%v/%v）", d.Format(layout), werr, herr)
 			}
 		}
 	}
@@ -477,8 +477,8 @@ func FuzzQueryConsistency(f *testing.F) {
 			for _, fn := range []func() error{
 				func() error { _, err := c.Query(ts); return err },
 				func() error { _, err := c.QueryCoarse(ts); return err },
-				func() error { _, err := c.IsWorkday(ts); return err },
-				func() error { _, err := c.IsHoliday(ts); return err },
+				func() error { _, err := c.IsWork(ts); return err },
+				func() error { _, err := c.IsRest(ts); return err },
 			} {
 				if err := fn(); !errors.Is(err, goliday.ErrYearNotLoaded) {
 					t.Fatalf("未加载年 %s 应返回 ErrYearNotLoaded，got %v", ts.Format(layout), err)
@@ -497,8 +497,8 @@ func FuzzQueryConsistency(f *testing.F) {
 		if coarse, err := c.QueryCoarse(ts); err != nil || coarse != got.Coarse() {
 			t.Fatalf("QueryCoarse(%s) 与 Query().Coarse() 不一致（%v）", ts.Format(layout), err)
 		}
-		if w, werr := c.IsWorkday(ts); werr != nil || w == got.IsHoliday() {
-			t.Fatalf("IsWorkday/IsHoliday(%s) 必须恰一为真", ts.Format(layout))
+		if w, werr := c.IsWork(ts); werr != nil || w == got.IsRest() {
+			t.Fatalf("IsWork/IsRest(%s) 必须恰一为真", ts.Format(layout))
 		}
 
 		// 同一日不同时刻/时区表示不变（基于当日午夜构造，确保不跨日）。
