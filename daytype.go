@@ -18,7 +18,7 @@ import "strings"
 //	DayTypeAdjustedWork 1<<4 补班：原周末被调整为上班
 //
 // 全部组合值的按位或均为 all-of（合取）语义，不存在 any-of（并集物化值）
-// 语义；粗粒度即基本位投影（t & (Work|Rest)）。合法细粒度值全集为
+// 语义；粗粒度即基本位投影（t & dayTypeCoarseMask）。合法细粒度值全集为
 // {1, 2, 6, 10, 17}，五值 MECE。
 type DayType uint8
 
@@ -45,6 +45,11 @@ const (
 	DayTypeAdjustedWorkDay = DayTypeWork | DayTypeAdjustedWork
 )
 
+// dayTypeCoarseMask 粗粒度掩码：两个基本位之并（Work|Rest = 3），
+// 仅供内部投影/判类使用（Coarse/IsWork/IsRest），本身不是合法的
+// DayType 取值（单值 3 为非法值）。
+const dayTypeCoarseMask = DayTypeWork | DayTypeRest
+
 // dayTypeNames 位名称（type_label 的分段名），按位从低到高排列；
 // 调整位取其动宾语义的简写（adjusted rest → "adjusted"、
 // adjusted work → "compensate"，沿用补班惯用词根），与常量名不必逐字一致。
@@ -66,22 +71,22 @@ var validFineValues = [...]DayType{
 }
 
 // Coarse 返回该日期类型的粗粒度投影（基本位掩码），
-// 即 t & (DayTypeWork|DayTypeRest)；合法值上结果 ∈ {1, 2} 且幂等，
+// 即 t & dayTypeCoarseMask；合法值上结果 ∈ {1, 2} 且幂等，
 // 非法值（如 3，同含两个基本位）返回原值本身。
 func (t DayType) Coarse() DayType {
-	return t & (DayTypeWork | DayTypeRest)
+	return t & dayTypeCoarseMask
 }
 
 // IsWork 报告该日是否为上班日：合法值且基本位投影等于 DayTypeWork。
 // 任何非法值（3 同含两基本位、5/9 过节调休配上班位等）均返回 false。
 func (t DayType) IsWork() bool {
-	return t.IsValid() && t&(DayTypeWork|DayTypeRest) == DayTypeWork
+	return t.IsValid() && t&dayTypeCoarseMask == DayTypeWork
 }
 
 // IsRest 报告该日是否为放假日：合法值且基本位投影等于 DayTypeRest。
 // 任何非法值均返回 false。
 func (t DayType) IsRest() bool {
-	return t.IsValid() && t&(DayTypeWork|DayTypeRest) == DayTypeRest
+	return t.IsValid() && t&dayTypeCoarseMask == DayTypeRest
 }
 
 // IsFestivalRest 报告该日是否为节日放假日（合法值 DayTypeFestivalRest）。

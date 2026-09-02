@@ -279,7 +279,7 @@ curl "http://localhost:8080/healthz"
 | 1 | `Work`（粗粒度值本身） | — | `work` | — |
 | 2 | `Rest`（粗粒度值本身） | — | `rest` | — |
 
-细→粗投影：`Coarse() = t & (Work|Rest)`，即单次按位与；判类仅需 `t & 1 != 0`（上班）/ `t & 2 != 0`（放假），无优先级消歧（旧编码 `6 & 28` 双命中问题已消除）。
+细→粗投影：`Coarse() = t & dayTypeCoarseMask`（内部常量 `dayTypeCoarseMask = Work|Rest = 3`，仅供掩码用、本身非法、不导出以免被当作类型值使用），即单次按位与；判类仅需 `t & 1 != 0`（上班）/ `t & 2 != 0`（放假），无优先级消歧（旧编码 `6 & 28` 双命中问题已消除）。
 
 非法值（可编码但不出现）：`0` 与 ≥32（未定义位）；`3`（上班∧放假）；裸调整位 `4/8/16`；`5/9/18`（调整位与终态矛盾——过节/调休必放假、补班必上班）；`12/14/20/22` 等（同日至多一个调整位）。Go 客户端可用 `IsValid()` 校验、`IsWork()/IsRest()`（非法值恒 false）判类，以及 `IsFestivalRest()/IsAdjustedRestDay()/IsAdjustedWorkDay()` 判断具体组合类。
 

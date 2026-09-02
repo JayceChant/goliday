@@ -144,3 +144,8 @@
 - [x] spec.md 常量表（动宾命名与组合常量列）、方法清单与新增「非法值全拒」「组合判断」Scenario、附录 API 形态、fuzz 不变量同步；proto 注释（ADJUSTED_REST/ADJUSTED_WORK 与组合值名）再生成且 `buf lint` 通过
 - [x] docs（API/CONFIG_FORMAT/ARCHITECTURE）、README 双语表格、configs/testdata 与 holiday_config_example 头注释的组合记法统一为常量名；无旧常量名残留（grep 验证）
 - [x] 验证命令全绿（build/vet/test 3 包 ok、`gofmt -l .` 为空、`golangci-lint run` 0 issues、`go fix` 幂等、FuzzParseDate/FuzzQueryConsistency 各 2s 冒烟通过）；执行提交（refactor: DayType 调整位命名动宾化并补齐判定方法）
+
+## 粗粒度掩码常量化
+
+- [x] 未导出常量 `dayTypeCoarseMask = DayTypeWork|DayTypeRest = 3` 落地：注释与 spec 明示「仅供掩码、本身非法、不导出以免被当作类型值使用」；`Coarse`/`IsWork`/`IsRest` 三处投影与 `calendar_internal_test` 的 19 构造改用该常量（黑盒测试以 `Work|Rest` 位运算表达同值并断言其非合法取值）；测试断言其数值为 3 且 `IsValid()` 为 false
+- [x] spec.md 常量表新增掩码行、投影条款改用命名常量；docs/API.md 与 CONFIG_FORMAT.md 投影表述同步；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）；执行提交（refactor: 粗粒度掩码常量化并收敛为未导出）

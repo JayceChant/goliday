@@ -51,6 +51,14 @@ func TestFineGrainedValues(t *testing.T) {
 	if want := goliday.DayTypeWork | goliday.DayTypeAdjustedWork; goliday.DayTypeAdjustedWorkDay != want {
 		t.Errorf("DayTypeAdjustedWorkDay = %d, want %d", goliday.DayTypeAdjustedWorkDay, want)
 	}
+	// 粗粒度掩码为内部实现（两基本位之并 = 3），黑盒以位运算表达同值，
+	// 并断言 3 本身不是合法取值。
+	if goliday.DayTypeWork|goliday.DayTypeRest != 3 {
+		t.Errorf("Work|Rest = %d, want 3", goliday.DayTypeWork|goliday.DayTypeRest)
+	}
+	if (goliday.DayTypeWork | goliday.DayTypeRest).IsValid() {
+		t.Error("Work|Rest（3）不是合法 DayType 取值，IsValid() 应为 false")
+	}
 }
 
 // TestCoarse Coarse() 的粗粒度投影断言（基本位掩码）。

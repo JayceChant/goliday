@@ -31,6 +31,7 @@
 | `DayTypeFestival` | 1 << 2 = 4 | 调整位 | 过节：法定节日当天（放假），当日新增法定假期 |
 | `DayTypeAdjustedRest` | 1 << 3 = 8 | 调整位 | 调休：原工作日被调整为休息（非节日当天），不新增假期 |
 | `DayTypeAdjustedWork` | 1 << 4 = 16 | 调整位 | 补班：原周末被调整为上班 |
+| `dayTypeCoarseMask` | `Work\|Rest` = 3 | 粗粒度掩码（未导出） | 两个基本位之并，仅供内部投影/判类（`Coarse`/`IsWork`/`IsRest`）使用，**不是合法的 DayType 取值**（单值 3 非法）；不导出以免被当作类型值使用 |
 
 调整位常量名采用动宾结构（Adjusted**Rest** 调休 / Adjusted**Work** 补班），与基本位 Rest/Work 词根对齐，消除「调的是休还是班」的宾语歧义；`type_label` 分段名维持 `adjusted`/`compensate` 不变（补班沿用英语惯用词根 compensate）。
 
@@ -44,7 +45,7 @@
 | 10 | `DayTypeAdjustedRestDay`（`Rest\|AdjustedRest`） | 调休放假日（原工作日；来源含拼假挪移与节日逢周末的补休，日类型不区分） |
 | 17 | `DayTypeAdjustedWorkDay`（`Work\|AdjustedWork`） | 补班日（原周末） |
 
-粗粒度归属 SHALL 为合法值上的单次按位与：`t & DayTypeRest != 0` → 放假、`t & DayTypeWork != 0` → 上班（合法值恰含一个基本位，无歧义、无需优先级消歧）；`Coarse()` SHALL 返回 `t & (DayTypeWork|DayTypeRest)`，合法值上结果 ∈ {1, 2} 且幂等。
+粗粒度归属 SHALL 为合法值上的单次按位与：`t & DayTypeRest != 0` → 放假、`t & DayTypeWork != 0` → 上班（合法值恰含一个基本位，无歧义、无需优先级消歧）；`Coarse()` SHALL 返回 `t & dayTypeCoarseMask`（内部常量，`= DayTypeWork|DayTypeRest = 3`），合法值上结果 ∈ {1, 2} 且幂等。
 
 非法值（可编码，但校验与判定不得产生）：`0` 与含未定义位（≥32）的值；`3`（上班∧放假矛盾）；裸调整位 `4`/`8`/`16`（调整位必须依附基本位）；`5`/`9`（过节/调休与上班矛盾——两者必为放假）；`18`（补班与放假矛盾）；`12`/`14`/`20`/`22` 等含两个及以上调整位的组合（同日至多一个调整位）。调整动作与自然日的对应（`off` 必为工作日、`work` 必为周末、工作日节日必须在 `off`）由配置校验保证。
 
