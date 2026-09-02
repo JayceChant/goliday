@@ -50,6 +50,12 @@ const (
 // DayType 取值（单值 3 为非法值）。
 const dayTypeCoarseMask = DayTypeWork | DayTypeRest
 
+// dayTypeAdjustMask 调整位掩码：三个调整位之并
+// （Festival|AdjustedRest|AdjustedWork = 28），仅供内部判类使用
+// （IsFestivalRest/IsAdjustedRestDay/IsAdjustedWorkDay），本身不是
+// 合法的 DayType 取值（多调整位并存为非法值）。
+const dayTypeAdjustMask = DayTypeFestival | DayTypeAdjustedRest | DayTypeAdjustedWork
+
 // dayTypeNames 位名称（type_label 的分段名），按位从低到高排列；
 // 调整位取其动宾语义的简写（adjusted rest → "adjusted"、
 // adjusted work → "compensate"，沿用补班惯用词根），与常量名不必逐字一致。
@@ -77,6 +83,14 @@ func (t DayType) Coarse() DayType {
 	return t & dayTypeCoarseMask
 }
 
+// Adjustment 返回该日期类型的调整位投影（调整掩码），
+// 即 t & dayTypeAdjustMask，与 Coarse 相对应；合法值上
+// 结果 ∈ {0, 4, 8, 16}（无调整位时为 0）且幂等，
+// 非法值（如 12，多调整位并存）返回原值本身。
+func (t DayType) Adjustment() DayType {
+	return t & dayTypeAdjustMask
+}
+
 // IsWork 报告该日是否为上班日：合法值且基本位投影等于 DayTypeWork。
 // 任何非法值（3 同含两基本位、5/9 过节调休配上班位等）均返回 false。
 func (t DayType) IsWork() bool {
@@ -89,14 +103,23 @@ func (t DayType) IsRest() bool {
 	return t.IsValid() && t&dayTypeCoarseMask == DayTypeRest
 }
 
-// IsFestivalRest 报告该日是否为节日放假日（合法值 DayTypeFestivalRest）。
-func (t DayType) IsFestivalRest() bool { return t == DayTypeFestivalRest }
+// IsFestivalRest 报告该日是否为节日放假日：合法值且调整位投影等于
+// DayTypeFestival（与 IsWork/IsRest 同构，先校验再投影判等）。
+func (t DayType) IsFestivalRest() bool {
+	return t.IsValid() && t&dayTypeAdjustMask == DayTypeFestival
+}
 
-// IsAdjustedRestDay 报告该日是否为调休放假日（合法值 DayTypeAdjustedRestDay）。
-func (t DayType) IsAdjustedRestDay() bool { return t == DayTypeAdjustedRestDay }
+// IsAdjustedRestDay 报告该日是否为调休放假日：合法值且调整位投影等于
+// DayTypeAdjustedRest；任何非法值均返回 false。
+func (t DayType) IsAdjustedRestDay() bool {
+	return t.IsValid() && t&dayTypeAdjustMask == DayTypeAdjustedRest
+}
 
-// IsAdjustedWorkDay 报告该日是否为补班上班日（合法值 DayTypeAdjustedWorkDay）。
-func (t DayType) IsAdjustedWorkDay() bool { return t == DayTypeAdjustedWorkDay }
+// IsAdjustedWorkDay 报告该日是否为补班上班日：合法值且调整位投影等于
+// DayTypeAdjustedWork；任何非法值均返回 false。
+func (t DayType) IsAdjustedWorkDay() bool {
+	return t.IsValid() && t&dayTypeAdjustMask == DayTypeAdjustedWork
+}
 
 // IsValid 报告 t 是否为合法细粒度值（{1, 2, 6, 10, 17} 之一）。
 func (t DayType) IsValid() bool {

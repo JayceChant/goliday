@@ -82,6 +82,27 @@ func TestCoarse(t *testing.T) {
 	}
 }
 
+// TestAdjustment Adjustment() 的调整位投影断言（与 TestCoarse 对应）。
+func TestAdjustment(t *testing.T) {
+	tests := []struct {
+		name string
+		dt   goliday.DayType
+		want goliday.DayType
+	}{
+		{"Work", goliday.DayTypeWork, 0},
+		{"Rest", goliday.DayTypeRest, 0},
+		{"FestivalRest", goliday.DayTypeFestivalRest, goliday.DayTypeFestival},
+		{"AdjustedRestDay", goliday.DayTypeAdjustedRestDay, goliday.DayTypeAdjustedRest},
+		{"AdjustedWorkDay", goliday.DayTypeAdjustedWorkDay, goliday.DayTypeAdjustedWork},
+		{"非法值 12", 12, 12}, // 多调整位并存，投影保留原值
+	}
+	for _, tt := range tests {
+		if got := tt.dt.Adjustment(); got != tt.want {
+			t.Errorf("%s.Adjustment() = %d, want %d", tt.name, got, tt.want)
+		}
+	}
+}
+
 // TestIsWorkIsRest IsWork/IsRest 与粗粒度投影一致性断言；
 // 非法值（如 3）两者均 false。
 func TestIsWorkIsRest(t *testing.T) {
@@ -113,7 +134,9 @@ func TestIsWorkIsRest(t *testing.T) {
 	}
 }
 
-// TestComboPredicates 组合判断方法：各方法仅对其组合值返回 true。
+// TestComboPredicates 组合判断方法：各方法仅对其对应调整位的合法组合值
+// 返回 true（合法值前提下调整位投影判等）；非法值（裸调整位 4、
+// 矛盾值 5、多调整位 12 等）三者恒 false。
 func TestComboPredicates(t *testing.T) {
 	for _, tt := range validFineValues {
 		cases := []struct {
@@ -134,6 +157,22 @@ func TestComboPredicates(t *testing.T) {
 				t.Errorf("%s(%d).%s() = %v, want %v", tt.name, tt.dt, c.name, c.got, want)
 			}
 		}
+	}
+	// 非法值回归：裸调整位（投影恰等该位但无基本位）、基本位矛盾（5）、
+	// 多调整位并存（12/20）均不得判 true。
+	for _, v := range []goliday.DayType{4, 5, 9, 12, 18, 20} {
+		if v.IsFestivalRest() || v.IsAdjustedRestDay() || v.IsAdjustedWorkDay() {
+			t.Errorf("非法值 %d 的组合判断必须全 false", v)
+		}
+	}
+	// 调整位掩码为内部实现（三调整位之并 = 28），黑盒以位运算表达同值，
+	// 并断言 28 本身不是合法取值。
+	adjust := goliday.DayTypeFestival | goliday.DayTypeAdjustedRest | goliday.DayTypeAdjustedWork
+	if adjust != 28 {
+		t.Errorf("Festival|AdjustedRest|AdjustedWork = %d, want 28", adjust)
+	}
+	if adjust.IsValid() {
+		t.Error("Festival|AdjustedRest|AdjustedWork（28）不是合法 DayType 取值，IsValid() 应为 false")
 	}
 }
 

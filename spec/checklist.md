@@ -149,3 +149,10 @@
 
 - [x] 未导出常量 `dayTypeCoarseMask = DayTypeWork|DayTypeRest = 3` 落地：注释与 spec 明示「仅供掩码、本身非法、不导出以免被当作类型值使用」；`Coarse`/`IsWork`/`IsRest` 三处投影与 `calendar_internal_test` 的 19 构造改用该常量（黑盒测试以 `Work|Rest` 位运算表达同值并断言其非合法取值）；测试断言其数值为 3 且 `IsValid()` 为 false
 - [x] spec.md 常量表新增掩码行、投影条款改用命名常量；docs/API.md 与 CONFIG_FORMAT.md 投影表述同步；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）；执行提交（refactor: 粗粒度掩码常量化并收敛为未导出）
+
+## 组合判断掩码化
+
+- [x] 未导出常量 `dayTypeAdjustMask = DayTypeFestival|DayTypeAdjustedRest|DayTypeAdjustedWork = 28` 落地；`IsFestivalRest/IsAdjustedRestDay/IsAdjustedWorkDay` 改为「`IsValid()` 前置 + `t&dayTypeAdjustMask` 投影判等对应调整位」，与 `IsWork/IsRest` 五方法同构；全 256 值行为不变（4 裸调整位、5 矛盾值、12/20 多调整位等非法值均 false）
+- [x] 黑盒回归：`TestComboPredicates` 补非法值 4/5/9/12/18/20 组合判断全 false、`Festival|AdjustedRest|AdjustedWork = 28` 数值断言及其 `IsValid()` 为 false
+- [x] spec.md 常量表加 `dayTypeAdjustMask` 行、方法清单（五 Is 方法同构表述）与「非法值全拒」（扩 12 与三个组合方法）「组合判断」Scenario、docs/API.md 判类表述同步；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）
+- [x] `Adjustment()` 调整位投影方法（与 `Coarse()` 对应）落地：黑盒 `TestAdjustment`（五合法值 ∈ {0, Festival, AdjustedRest, AdjustedWork}、非法值 12 原值返回）；spec 投影条款、方法清单、附录签名与「调整位投影」Scenario、常量表用途表述、docs（API/CONFIG_FORMAT）投影表述同步；验证命令全绿；执行提交（refactor: 组合判断改为调整位投影判等并新增 Adjustment 方法）
