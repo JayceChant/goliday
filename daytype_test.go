@@ -61,6 +61,33 @@ func TestFineGrainedValues(t *testing.T) {
 	}
 }
 
+// TestUnknown 零值 DayTypeUnknown：默认值相等、非合法取值、判类恒
+// false、投影均为 0、String 输出 "unknown"。
+func TestUnknown(t *testing.T) {
+	var zero goliday.DayType // 零值即 DayTypeUnknown
+	if zero != goliday.DayTypeUnknown || goliday.DayTypeUnknown != 0 {
+		t.Errorf("DayTypeUnknown = %d, want 0（默认零值）", goliday.DayTypeUnknown)
+	}
+	if goliday.DayTypeUnknown.IsValid() {
+		t.Error("DayTypeUnknown 不是合法取值，IsValid() 应为 false")
+	}
+	if goliday.DayTypeUnknown.IsWork() || goliday.DayTypeUnknown.IsRest() ||
+		goliday.DayTypeUnknown.IsFestivalRest() ||
+		goliday.DayTypeUnknown.IsAdjustedRestDay() ||
+		goliday.DayTypeUnknown.IsAdjustedWorkDay() {
+		t.Error("DayTypeUnknown 的判类方法必须全 false")
+	}
+	if got := goliday.DayTypeUnknown.Coarse(); got != 0 {
+		t.Errorf("DayTypeUnknown.Coarse() = %d, want 0", got)
+	}
+	if got := goliday.DayTypeUnknown.Adjustment(); got != 0 {
+		t.Errorf("DayTypeUnknown.Adjustment() = %d, want 0", got)
+	}
+	if got := goliday.DayTypeUnknown.String(); got != "unknown" {
+		t.Errorf("DayTypeUnknown.String() = %q, want %q", got, "unknown")
+	}
+}
+
 // TestCoarse Coarse() 的粗粒度投影断言（基本位掩码）。
 func TestCoarse(t *testing.T) {
 	tests := []struct {

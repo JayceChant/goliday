@@ -26,6 +26,7 @@
 
 | 常量 | 值 | 层 | 含义 |
 |---|---|---|---|
+| `DayTypeUnknown` | 0 | 零值（默认值） | 未定义类型；**非合法细粒度取值**，判类恒 false，`String()` 输出 `unknown` |
 | `DayTypeWork` | 1 << 0 = 1 | 粗粒度基本位 | 上班 |
 | `DayTypeRest` | 1 << 1 = 2 | 粗粒度基本位 | 放假（未调整时必然为周末） |
 | `DayTypeFestival` | 1 << 2 = 4 | 调整位 | 过节：法定节日当天（放假），当日新增法定假期 |
@@ -48,7 +49,7 @@
 
 粗粒度归属 SHALL 为合法值上的单次按位与：`t & DayTypeRest != 0` → 放假、`t & DayTypeWork != 0` → 上班（合法值恰含一个基本位，无歧义、无需优先级消歧）；`Coarse()` SHALL 返回 `t & dayTypeCoarseMask`（内部常量，`= DayTypeWork|DayTypeRest = 3`），合法值上结果 ∈ {1, 2} 且幂等；`Adjustment()` SHALL 返回调整位投影 `t & dayTypeAdjustMask`（内部常量，`= Festival|AdjustedRest|AdjustedWork = 28`），与 `Coarse()` 相对应，合法值上结果 ∈ {0, 4, 8, 16}（无调整位时为 0）且幂等。
 
-非法值（可编码，但校验与判定不得产生）：`0` 与含未定义位（≥32）的值；`3`（上班∧放假矛盾）；裸调整位 `4`/`8`/`16`（调整位必须依附基本位）；`5`/`9`（过节/调休与上班矛盾——两者必为放假）；`18`（补班与放假矛盾）；`12`/`14`/`20`/`22` 等含两个及以上调整位的组合（同日至多一个调整位）。调整动作与自然日的对应（`off` 必为工作日、`work` 必为周末、工作日节日必须在 `off`）由配置校验保证。
+非法值（可编码，但校验与判定不得产生）：`0`（默认零值 `DayTypeUnknown`，未定义类型）与含未定义位（≥32）的值；`3`（上班∧放假矛盾）；裸调整位 `4`/`8`/`16`（调整位必须依附基本位）；`5`/`9`（过节/调休与上班矛盾——两者必为放假）；`18`（补班与放假矛盾）；`12`/`14`/`20`/`22` 等含两个及以上调整位的组合（同日至多一个调整位）。调整动作与自然日的对应（`off` 必为工作日、`work` 必为周末、工作日节日必须在 `off`）由配置校验保证。
 
 **语义约定**（SHALL 写入用户文档）：
 - 「节日」均指产生法定假期的全体公民节日，不放假的纪念日不纳入本系统；节日当天必为放假日（配置校验强制）。
@@ -58,7 +59,7 @@
 
 **决策依据**：旧编码在同一类型中混用两种按位或语义——粗值 3/28 为「互斥并集（any-of）」物化值、细组合值 6/12/24 为「属性合取（all-of）」——导致 `6 & 28 ≠ 0` 双命中、`Coarse()` 需优先级规则消歧，且「按可达值取并」与「按名义位取并」不一致（`1|6=7 ≠ Workday=3`）。本修订将粗粒度改为单 bit 基本枚举、组合值全部退化为 all-of，位运算语义单一，粗/细归属均可用单次按位与表达；曾评估「自然位」方案（组合 {1,2,5,6,9,18}，区分节日逢周末/工作日），因翻转日（补班/调休/过节）的位与判类必然误判且无静态掩码可补救而否决。
 
-`DayType` SHALL 提供：`IsWork()`（合法值且基本位投影为 Work；方法名与基本位 Work 对齐——英语 holiday 与 weekend 为并列概念，普通周末不称 holiday）、`IsRest()`（合法值且投影为 Rest；含普通周休/节日放假日/调休放假日，不含补班）、`IsFestivalRest()`、`IsAdjustedRestDay()`、`IsAdjustedWorkDay()`（三者与 `IsWork`/`IsRest` 同构：合法值且调整位投影 `t & dayTypeAdjustMask` 等于对应调整位 `Festival`/`AdjustedRest`/`AdjustedWork`，非组合值精确判等）、`IsValid()`（∈ 合法值全集 {1,2,6,10,17}）、`Coarse()`、`Adjustment()`、`String()`；序列化 SHALL 直接输出 int 数值。任何非法值上 `IsWork`/`IsRest`/`IsFestivalRest`/`IsAdjustedRestDay`/`IsAdjustedWorkDay` SHALL 均返回 false（如 3 同含两基本位、5/9 调整位与终态矛盾、12 等多调整位并存）。`String()`：按位从低到高连接位名（`dayTypeNames` 按位常量显式索引，位名与常量名逐字对应：`work`/`rest`/`festival`/`adjusted_rest`/`adjusted_work`），如 `FestivalRest(6)` → `"rest|festival"`、`AdjustedWorkDay(17)` → `"work|adjusted_work"`；粗粒度值 1/2 无需特判，天然输出 `"work"`/`"rest"`；存在未知位时追加 `unknown`，空值（0）返回 `"unknown"`。
+`DayType` SHALL 提供：`IsWork()`（合法值且基本位投影为 Work；方法名与基本位 Work 对齐——英语 holiday 与 weekend 为并列概念，普通周末不称 holiday）、`IsRest()`（合法值且投影为 Rest；含普通周休/节日放假日/调休放假日，不含补班）、`IsFestivalRest()`、`IsAdjustedRestDay()`、`IsAdjustedWorkDay()`（三者与 `IsWork`/`IsRest` 同构：合法值且调整位投影 `t & dayTypeAdjustMask` 等于对应调整位 `Festival`/`AdjustedRest`/`AdjustedWork`，非组合值精确判等）、`IsValid()`（∈ 合法值全集 {1,2,6,10,17}）、`Coarse()`、`Adjustment()`、`String()`；序列化 SHALL 直接输出 int 数值。任何非法值上 `IsWork`/`IsRest`/`IsFestivalRest`/`IsAdjustedRestDay`/`IsAdjustedWorkDay` SHALL 均返回 false（如 3 同含两基本位、5/9 调整位与终态矛盾、12 等多调整位并存）。`String()`：初始化期 SHALL 由 `dayTypeNames` 预计算字符串表（覆盖全部 5 位组合域 0~31，合法五值与零值 Unknown 随之物化其中；分段名单一来源仍为 `dayTypeNames`），域内值直接查表返回、无逐次运行时构建，如 `FestivalRest(6)` → `"rest|festival"`、`AdjustedWorkDay(17)` → `"work|adjusted_work"`；域外值（≥32）运行时逐位构建——按位从低到高连接位名（位名与常量名逐字对应：`work`/`rest`/`festival`/`adjusted_rest`/`adjusted_work`）；粗粒度值 1/2 天然输出 `"work"`/`"rest"`；存在未知位时追加 `unknown`，空值（`DayTypeUnknown`）输出 `"unknown"`。
 
 #### Scenario: 上班段映射
 - **WHEN** 细粒度值分别为 `DayTypeWork`、`DayTypeAdjustedWorkDay`
@@ -86,7 +87,7 @@
 
 #### Scenario: 字符串表示
 - **WHEN** 对 `DayTypeFestivalRest` 与 `DayTypeAdjustedWorkDay` 调用 `String()`
-- **THEN** 分别返回 `"rest|festival"`、`"work|adjusted_work"`；对 `DayTypeRest` 返回 `"rest"`
+- **THEN** 分别返回 `"rest|festival"`、`"work|adjusted_work"`；对 `DayTypeRest` 返回 `"rest"`；对零值 `DayTypeUnknown` 返回 `"unknown"`
 
 ### Requirement: 稀疏配置文件格式（TOML）
 

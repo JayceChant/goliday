@@ -162,3 +162,9 @@
 - [x] 五个判类方法内裸掩码表达式（`t&dayTypeCoarseMask`/`t&dayTypeAdjustMask`）改为 `t.Coarse()`/`t.Adjustment()` 方法调用；`dayTypeNames` 改按位常量显式索引（编译期跟随位序/常量名调整），`String()` 保持手写（用户确认：位操作特殊 + 不输出 DayType 前缀为需求，不引入 stringer）
 - [x] `type_label` 分段名动宾化与常量名逐字对应：`adjusted`→`adjusted_rest`、`compensate`→`adjusted_work`；stats 五键同步（JSON 键、proto Stats 字段 `adjusted`/`compensate` → `adjusted_rest`/`adjusted_work`，`buf lint` 通过、再生成完成，wire 序号不变）；handlers/grpc 映射与 handlers_test/grpc_test 断言（label + 键名 + Get 调用）全量更新；`TestString`/穷举测试合法分段名集合同步
 - [x] spec（分段名条款、String 条款、API 响应样例、stats 键、proto Stats 字段清单、统计导出规则）、docs（API/CONFIG_FORMAT 全部样例与注）、README 双语五键名同步；全仓 grep 无 `compensate`/旧键名残留（历史勾选记录除外）；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）；执行提交（refactor: 判类复用投影方法并统一 label 与 stats 键名）
+
+## 零值常量与 String 查表
+
+- [x] `DayTypeUnknown = 0` 落地：零值/默认值语义（`var zero DayType` 即 Unknown）、非合法取值（`IsValid()` false）、判类五方法恒 false、`Coarse()/Adjustment()` 均 0、`String()` 输出 `unknown`；黑盒 `TestUnknown` 全维度断言
+- [x] `String()` 查表化：初始化期预计算 `dayTypeStrings`（由 `dayTypeNames` 物化 0~31 全 5 位组合域，`joinNames` 为构建原语），域内值直接查表返回（合法值与零值无逐次运行时构建），域外值（≥32）运行时 `joinNames` 逐位构建；穷举测试继续兜底 256 值输出不变
+- [x] spec 常量表加 `DayTypeUnknown` 行、非法值条款（0 标注默认零值）、String 条款（预计算表约定）、「字符串表示」Scenario 扩 Unknown；docs/API.md 与 CONFIG_FORMAT.md 常量表及非法值表述同步；验证命令全绿；执行提交（feat: 新增 DayTypeUnknown 零值并预计算 String 查表）

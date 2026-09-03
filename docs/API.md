@@ -281,7 +281,7 @@ curl "http://localhost:8080/healthz"
 
 细→粗投影：`Coarse() = t & dayTypeCoarseMask`（内部常量 `dayTypeCoarseMask = Work|Rest = 3`，仅供掩码用、本身非法、不导出以免被当作类型值使用），即单次按位与；调整位投影与之对应：`Adjustment() = t & dayTypeAdjustMask`（内部常量 `= Festival|AdjustedRest|AdjustedWork = 28`，不导出），合法值上 ∈ {0, 4, 8, 16}；判类仅需 `t & 1 != 0`（上班）/ `t & 2 != 0`（放假），无优先级消歧（旧编码 `6 & 28` 双命中问题已消除）。
 
-非法值（可编码但不出现）：`0` 与 ≥32（未定义位）；`3`（上班∧放假）；裸调整位 `4/8/16`；`5/9/18`（调整位与终态矛盾——过节/调休必放假、补班必上班）；`12/14/20/22` 等（同日至多一个调整位）。Go 客户端可用 `IsValid()` 校验，以及 `IsWork()/IsRest()` 与 `IsFestivalRest()/IsAdjustedRestDay()/IsAdjustedWorkDay()` 判类——五个方法同构（合法值前提下，分别与粗粒度掩码/调整位掩码按位与后判等对应位），非法值恒 false。
+非法值（可编码但不出现）：`0`（默认零值 `DayTypeUnknown`，未定义）与 ≥32（未定义位）；`3`（上班∧放假）；裸调整位 `4/8/16`；`5/9/18`（调整位与终态矛盾——过节/调休必放假、补班必上班）；`12/14/20/22` 等（同日至多一个调整位）。Go 客户端可用 `IsValid()` 校验，以及 `IsWork()/IsRest()` 与 `IsFestivalRest()/IsAdjustedRestDay()/IsAdjustedWorkDay()` 判类——五个方法同构（合法值前提下，分别与粗粒度掩码/调整位掩码按位与后判等对应位），非法值恒 false。
 
 > `type_label` 由 `DayType.String()` 生成：按位**从低到高**以 `|` 连接位名（位名与常量名逐字对应，去 `DayType` 前缀的小写蛇形），故 `FestivalRest`（2|4 = 6）输出 `rest|festival`，`AdjustedWorkDay`（1|16 = 17）输出 `work|adjusted_work`；粗粒度值 1/2 天然输出 `work`/`rest`，无需特判。
 
