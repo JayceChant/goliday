@@ -100,9 +100,9 @@ func TestSingleDayDetailed(t *testing.T) {
 		wantType  float64
 		wantLabel string
 	}{
-		{"2026-02-20", 10, "rest|adjusted"},
+		{"2026-02-20", 10, "rest|adjusted_rest"},
 		{"2026-02-17", 6, "rest|festival"},
-		{"2026-02-28", 17, "work|compensate"},
+		{"2026-02-28", 17, "work|adjusted_work"},
 		{"2026-04-05", 6, "rest|festival"},
 	}
 	for _, c := range cases {
@@ -190,8 +190,8 @@ func TestFineStatsMECE(t *testing.T) {
 	}
 	st := statsOf(t, body)
 	wantNum(t, "stats.festival", st["festival"], 1)
-	wantNum(t, "stats.compensate", st["compensate"], 1)
-	wantNum(t, "stats.adjusted", st["adjusted"], 0)
+	wantNum(t, "stats.adjusted_work", st["adjusted_work"], 1)
+	wantNum(t, "stats.adjusted_rest", st["adjusted_rest"], 0)
 	wantNum(t, "stats.weekend", st["weekend"], 0)
 	wantNum(t, "stats.ordinary", st["ordinary"], 0)
 }

@@ -19,8 +19,8 @@ var validFineValues = []struct {
 	{"Work", goliday.DayTypeWork, 1, "work"},
 	{"Rest", goliday.DayTypeRest, 2, "rest"},
 	{"FestivalRest", goliday.DayTypeFestivalRest, 6, "rest|festival"},
-	{"AdjustedRestDay", goliday.DayTypeAdjustedRestDay, 10, "rest|adjusted"},
-	{"AdjustedWorkDay", goliday.DayTypeAdjustedWorkDay, 17, "work|compensate"},
+	{"AdjustedRestDay", goliday.DayTypeAdjustedRestDay, 10, "rest|adjusted_rest"},
+	{"AdjustedWorkDay", goliday.DayTypeAdjustedWorkDay, 17, "work|adjusted_work"},
 }
 
 // legalFineValues 细粒度合法值全集（数值集合），供穷举与 Calendar 校验复用。
@@ -232,7 +232,7 @@ func TestLegalValueBitAndDisjoint(t *testing.T) {
 func TestDayTypeExhaustiveInvariants(t *testing.T) {
 	legalNames := map[string]bool{
 		"work": true, "rest": true, "festival": true,
-		"adjusted": true, "compensate": true, "unknown": true,
+		"adjusted_rest": true, "adjusted_work": true, "unknown": true,
 	}
 	for v := 0; v <= 255; v++ {
 		dt := goliday.DayType(v)

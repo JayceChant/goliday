@@ -37,20 +37,21 @@ option go_package = "github.com/JayceChant/goliday/proto/goliday/v1;golidayv1";
 message Day {
   string date = 1;        // YYYY-MM-DD
   uint32 type = 2;        // DayType 掩码数值
-  string type_label = 3;  // 可读标签，如 "rest"、"rest|festival"、"work|compensate"
+  string type_label = 3;  // 可读标签（即 DayType.String()），如 "rest"、"rest|festival"、"work|adjusted_work"
 }
 
 // 统计结果。workday/holiday 恒填充（粗粒度）；
-// ordinary/weekend/festival/adjusted/compensate 仅 detailed=true 时填充
-// （细粒度五键 MECE，之和恒等于 total_days）。
+// ordinary/weekend/festival/adjusted_rest/adjusted_work 仅 detailed=true 时填充
+// （细粒度五键 MECE，之和恒等于 total_days；后两键与调整位常量
+// AdjustedRest/AdjustedWork 逐字对应）。
 message Stats {
   int32 workday = 1;
   int32 holiday = 2;
   int32 ordinary = 3;
-  int32 compensate = 4;
+  int32 adjusted_work = 4;
   int32 weekend = 5;
   int32 festival = 6;
-  int32 adjusted = 7;
+  int32 adjusted_rest = 7;
 }
 
 // 单日查询，对应 HTTP GET /api/v1/days?date=...

@@ -34,7 +34,7 @@
 | `dayTypeCoarseMask` | `Work\|Rest` = 3 | 粗粒度掩码（未导出） | 两个基本位之并，仅供内部投影/判类（`Coarse`/`IsWork`/`IsRest`）使用，**不是合法的 DayType 取值**（单值 3 非法）；不导出以免被当作类型值使用 |
 | `dayTypeAdjustMask` | `Festival\|AdjustedRest\|AdjustedWork` = 28 | 调整位掩码（未导出） | 三个调整位之并，仅供内部投影/判类（`Adjustment`/`IsFestivalRest`/`IsAdjustedRestDay`/`IsAdjustedWorkDay`）使用，**不是合法的 DayType 取值**（多调整位并存非法）；不导出以免被当作类型值使用 |
 
-调整位常量名采用动宾结构（Adjusted**Rest** 调休 / Adjusted**Work** 补班），与基本位 Rest/Work 词根对齐，消除「调的是休还是班」的宾语歧义；`type_label` 分段名维持 `adjusted`/`compensate` 不变（补班沿用英语惯用词根 compensate）。
+调整位常量名采用动宾结构（Adjusted**Rest** 调休 / Adjusted**Work** 补班），与基本位 Rest/Work 词根对齐，消除「调的是休还是班」的宾语歧义；`type_label` 分段名与常量名逐字对应（去 `DayType` 前缀的小写蛇形：`adjusted_rest`/`adjusted_work`），细粒度 stats 键与分段名同词（见统计口径 Requirement）。
 
 细粒度合法组合全集（5 种，MECE，由配置与周休判定产生，数值之和即总天数）；组合值 SHALL 提供同名义常量：
 
@@ -58,7 +58,7 @@
 
 **决策依据**：旧编码在同一类型中混用两种按位或语义——粗值 3/28 为「互斥并集（any-of）」物化值、细组合值 6/12/24 为「属性合取（all-of）」——导致 `6 & 28 ≠ 0` 双命中、`Coarse()` 需优先级规则消歧，且「按可达值取并」与「按名义位取并」不一致（`1|6=7 ≠ Workday=3`）。本修订将粗粒度改为单 bit 基本枚举、组合值全部退化为 all-of，位运算语义单一，粗/细归属均可用单次按位与表达；曾评估「自然位」方案（组合 {1,2,5,6,9,18}，区分节日逢周末/工作日），因翻转日（补班/调休/过节）的位与判类必然误判且无静态掩码可补救而否决。
 
-`DayType` SHALL 提供：`IsWork()`（合法值且基本位投影为 Work；方法名与基本位 Work 对齐——英语 holiday 与 weekend 为并列概念，普通周末不称 holiday）、`IsRest()`（合法值且投影为 Rest；含普通周休/节日放假日/调休放假日，不含补班）、`IsFestivalRest()`、`IsAdjustedRestDay()`、`IsAdjustedWorkDay()`（三者与 `IsWork`/`IsRest` 同构：合法值且调整位投影 `t & dayTypeAdjustMask` 等于对应调整位 `Festival`/`AdjustedRest`/`AdjustedWork`，非组合值精确判等）、`IsValid()`（∈ 合法值全集 {1,2,6,10,17}）、`Coarse()`、`Adjustment()`、`String()`；序列化 SHALL 直接输出 int 数值。任何非法值上 `IsWork`/`IsRest`/`IsFestivalRest`/`IsAdjustedRestDay`/`IsAdjustedWorkDay` SHALL 均返回 false（如 3 同含两基本位、5/9 调整位与终态矛盾、12 等多调整位并存）。`String()`：按位从低到高连接位小写名（`work`/`rest`/`festival`/`adjusted`/`compensate`），如 `FestivalRest(6)` → `"rest|festival"`、`AdjustedWorkDay(17)` → `"work|compensate"`；粗粒度值 1/2 无需特判，天然输出 `"work"`/`"rest"`；存在未知位时追加 `unknown`，空值（0）返回 `"unknown"`。
+`DayType` SHALL 提供：`IsWork()`（合法值且基本位投影为 Work；方法名与基本位 Work 对齐——英语 holiday 与 weekend 为并列概念，普通周末不称 holiday）、`IsRest()`（合法值且投影为 Rest；含普通周休/节日放假日/调休放假日，不含补班）、`IsFestivalRest()`、`IsAdjustedRestDay()`、`IsAdjustedWorkDay()`（三者与 `IsWork`/`IsRest` 同构：合法值且调整位投影 `t & dayTypeAdjustMask` 等于对应调整位 `Festival`/`AdjustedRest`/`AdjustedWork`，非组合值精确判等）、`IsValid()`（∈ 合法值全集 {1,2,6,10,17}）、`Coarse()`、`Adjustment()`、`String()`；序列化 SHALL 直接输出 int 数值。任何非法值上 `IsWork`/`IsRest`/`IsFestivalRest`/`IsAdjustedRestDay`/`IsAdjustedWorkDay` SHALL 均返回 false（如 3 同含两基本位、5/9 调整位与终态矛盾、12 等多调整位并存）。`String()`：按位从低到高连接位名（`dayTypeNames` 按位常量显式索引，位名与常量名逐字对应：`work`/`rest`/`festival`/`adjusted_rest`/`adjusted_work`），如 `FestivalRest(6)` → `"rest|festival"`、`AdjustedWorkDay(17)` → `"work|adjusted_work"`；粗粒度值 1/2 无需特判，天然输出 `"work"`/`"rest"`；存在未知位时追加 `unknown`，空值（0）返回 `"unknown"`。
 
 #### Scenario: 上班段映射
 - **WHEN** 细粒度值分别为 `DayTypeWork`、`DayTypeAdjustedWorkDay`
@@ -86,7 +86,7 @@
 
 #### Scenario: 字符串表示
 - **WHEN** 对 `DayTypeFestivalRest` 与 `DayTypeAdjustedWorkDay` 调用 `String()`
-- **THEN** 分别返回 `"rest|festival"`、`"work|compensate"`；对 `DayTypeRest` 返回 `"rest"`
+- **THEN** 分别返回 `"rest|festival"`、`"work|adjusted_work"`；对 `DayTypeRest` 返回 `"rest"`
 
 ### Requirement: 稀疏配置文件格式（TOML）
 
@@ -182,7 +182,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 服务层 SHALL 暴露 HTTP 单日查询：
 
 `GET /api/v1/days?date=2026-02-20`（`detailed=true|false`，默认 false）
-- 响应：`{"date":"2026-02-20","type":2,"type_label":"rest"}`；`detailed=true` 时 `{"date":"2026-02-20","type":10,"type_label":"rest|adjusted"}`。
+- 响应：`{"date":"2026-02-20","type":2,"type_label":"rest"}`；`detailed=true` 时 `{"date":"2026-02-20","type":10,"type_label":"rest|adjusted_rest"}`。
 
 #### Scenario: 非法日期
 - **WHEN** `GET /api/v1/days?date=2026-02-30`
@@ -211,7 +211,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 列表/混合响应：`mode` 为 `"list"`，结构同上（不含区间字段）。
 
-细粒度模式下 `days[].type` 为细粒度值（`days[].type` 恒为细粒度，`detailed` 仅切换 `stats` 口径），`stats` 为 `{"ordinary":n,"weekend":n,"festival":n,"adjusted":n,"compensate":n}`——五键 MECE（各计一类日），**之和恒等于 `total_days`**（不存在交叉计数）。
+细粒度模式下 `days[].type` 为细粒度值（`days[].type` 恒为细粒度，`detailed` 仅切换 `stats` 口径），`stats` 为 `{"ordinary":n,"weekend":n,"festival":n,"adjusted_rest":n,"adjusted_work":n}`——五键 MECE（各计一类日），**之和恒等于 `total_days`**（不存在交叉计数）。
 
 跨度限制分化：`/api/v1/days`（含 gRPC `QueryDays`）区间跨度上限 **366 天**（防响应膨胀）；`/api/v1/stats`（含 `QueryStats`）**不限跨度**（前缀和实现，见「细粒度组合计数前缀和统计」）。全部覆盖年份须已加载（见「年份加载强校验」）。`days` 响应中的 `stats` 与同输入的 stats 接口完全一致（复用前缀和路径）。
 
@@ -228,8 +228,8 @@ work = [ "2026-01-24", "2026-02-28" ]
 - **THEN** `days` 为 02-01、02-02、03-08 共 3 条，`mode="list"`
 
 #### Scenario: 细粒度统计 MECE 计数
-- **WHEN** 02-17 为 `rest|festival`、02-28 为 `work|compensate`
-- **THEN** 该两日分别在 `festival`、`compensate` 键各计 1，五键之和 == `total_days`
+- **WHEN** 02-17 为 `rest|festival`、02-28 为 `work|adjusted_work`
+- **THEN** 该两日分别在 `festival`、`adjusted_work` 键各计 1，五键之和 == `total_days`
 
 #### Scenario: 参数校验
 - **WHEN** `end < start`、或（days 接口）区间跨度 > 366 天、或 `date`/`start+end`/`dates` 均缺省、或日期格式非法
@@ -377,7 +377,7 @@ README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg
 
 proto 内容约定：
 - `DayType` 掩码以 `uint32` 表达并附注释（proto3 enum 无法表达位组合），注释标明双层位值（粗粒度基本位：1=上班、2=放假；调整位：4=过节、8=调休、16=补班）与 5 种合法组合（1/2/6/10/17），并说明粗粒度即基本位投影、组合值 `|` 为 all-of 语义，与根包 `DayType` 完全一致；
-- 消息：`Day{date,type,type_label}`、`Stats{workday,holiday,ordinary,compensate,weekend,festival,adjusted}`（粗粒度字段恒填充，细粒度字段仅 `detailed=true` 时填充，五键 MECE 之和恒等于 `total_days`，与 HTTP 一致）、`GetDayRequest{date,detailed}`、`GetDayResponse{date,type,type_label,total_days,stats}`、`QueryDaysRequest{start,end,dates[],detailed}`、`QueryDaysResponse{mode,start,end,total_days,days[],stats}`、`QueryStatsRequest{start,end,dates[],detailed}`（字段与 QueryDaysRequest 同构，独立消息以符合 buf lint 默认规则）、`QueryStatsResponse{mode,start,end,total_days,stats}`；
+- 消息：`Day{date,type,type_label}`、`Stats{workday,holiday,ordinary,adjusted_work,weekend,festival,adjusted_rest}`（粗粒度字段恒填充，细粒度字段仅 `detailed=true` 时填充，五键 MECE 之和恒等于 `total_days`，与 HTTP 一致；`adjusted_rest`/`adjusted_work` 与根包调整位常量 AdjustedRest/AdjustedWork 逐字对应）、`GetDayRequest{date,detailed}`、`GetDayResponse{date,type,type_label,total_days,stats}`、`QueryDaysRequest{start,end,dates[],detailed}`、`QueryDaysResponse{mode,start,end,total_days,days[],stats}`、`QueryStatsRequest{start,end,dates[],detailed}`（字段与 QueryDaysRequest 同构，独立消息以符合 buf lint 默认规则）、`QueryStatsResponse{mode,start,end,total_days,stats}`；
 - 服务 `GolidayService`：`GetDay`（单日）、`QueryDays`（区间/离散/混合并集，含明细）、`QueryStats`（入参与 QueryDays 同构，不含 days 明细）——语义与 HTTP `/api/v1/days`、`/api/v1/stats` 一一对应；
 - 日期一律 `YYYY-MM-DD` 字符串；`mode` 取 `range`/`list`；
 - proto 头注释写明再生成方式（buf：在仓库根执行 `buf generate`，需 buf 与 protoc-gen-go、protoc-gen-go-grpc 在 PATH；buf 工作区为标准布局——模块根 `proto/`，`buf lint` 默认 STANDARD 规则零豁免）。
@@ -492,7 +492,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 **决策依据**：统计 O(覆盖年数) 差分即可完成，故 `/stats` 解除范围限制；days 明细接口保留 366 天上限防响应膨胀。
 
 统计导出规则（由按值计数 `C(v)` 直接映射，语义与逐日统计完全等价）：
-- 细粒度（五键 MECE，之和恒等于 `Total`）：`ordinary=C(1)`、`weekend=C(2)`、`festival=C(6)`、`adjusted=C(10)`、`compensate=C(17)`；
+- 细粒度（五键 MECE，之和恒等于 `Total`）：`ordinary=C(1)`、`weekend=C(2)`、`festival=C(6)`、`adjusted_rest=C(10)`、`adjusted_work=C(17)`；
 - 粗粒度（单次位与归类）：`workday=C(1)+C(17)`、`holiday=C(2)+C(6)+C(10)`；
 - `Total` = 覆盖天数（区间天数或列表长度）。
 

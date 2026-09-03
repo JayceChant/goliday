@@ -18,7 +18,7 @@ import "strings"
 //	DayTypeAdjustedWork 1<<4 补班：原周末被调整为上班
 //
 // 全部组合值的按位或均为 all-of（合取）语义，不存在 any-of（并集物化值）
-// 语义；粗粒度即基本位投影（t & dayTypeCoarseMask）。合法细粒度值全集为
+// 语义；粗粒度即基本位投影（t.Coarse()）。合法细粒度值全集为
 // {1, 2, 6, 10, 17}，五值 MECE。
 type DayType uint8
 
@@ -56,15 +56,17 @@ const dayTypeCoarseMask = DayTypeWork | DayTypeRest
 // 合法的 DayType 取值（多调整位并存为非法值）。
 const dayTypeAdjustMask = DayTypeFestival | DayTypeAdjustedRest | DayTypeAdjustedWork
 
-// dayTypeNames 位名称（type_label 的分段名），按位从低到高排列；
-// 调整位取其动宾语义的简写（adjusted rest → "adjusted"、
-// adjusted work → "compensate"，沿用补班惯用词根），与常量名不必逐字一致。
+// dayTypeNames 位名称（type_label 的分段名），按位常量显式索引：
+// 位序或常量名调整时此处随编译检查自动跟随，无下标隐式耦合；
+// 分段名与常量名逐字对应（去 DayType 前缀的小写蛇形）：
+// Work→"work"、Rest→"rest"、Festival→"festival"、
+// AdjustedRest→"adjusted_rest"、AdjustedWork→"adjusted_work"。
 var dayTypeNames = [...]string{
-	"work",       // 1<<0
-	"rest",       // 1<<1
-	"festival",   // 1<<2
-	"adjusted",   // 1<<3
-	"compensate", // 1<<4
+	DayTypeWork:         "work",
+	DayTypeRest:         "rest",
+	DayTypeFestival:     "festival",
+	DayTypeAdjustedRest: "adjusted_rest",
+	DayTypeAdjustedWork: "adjusted_work",
 }
 
 // validFineValues 细粒度合法值全集（五值 MECE）。
@@ -94,31 +96,31 @@ func (t DayType) Adjustment() DayType {
 // IsWork 报告该日是否为上班日：合法值且基本位投影等于 DayTypeWork。
 // 任何非法值（3 同含两基本位、5/9 过节调休配上班位等）均返回 false。
 func (t DayType) IsWork() bool {
-	return t.IsValid() && t&dayTypeCoarseMask == DayTypeWork
+	return t.IsValid() && t.Coarse() == DayTypeWork
 }
 
 // IsRest 报告该日是否为放假日：合法值且基本位投影等于 DayTypeRest。
 // 任何非法值均返回 false。
 func (t DayType) IsRest() bool {
-	return t.IsValid() && t&dayTypeCoarseMask == DayTypeRest
+	return t.IsValid() && t.Coarse() == DayTypeRest
 }
 
 // IsFestivalRest 报告该日是否为节日放假日：合法值且调整位投影等于
 // DayTypeFestival（与 IsWork/IsRest 同构，先校验再投影判等）。
 func (t DayType) IsFestivalRest() bool {
-	return t.IsValid() && t&dayTypeAdjustMask == DayTypeFestival
+	return t.IsValid() && t.Adjustment() == DayTypeFestival
 }
 
 // IsAdjustedRestDay 报告该日是否为调休放假日：合法值且调整位投影等于
 // DayTypeAdjustedRest；任何非法值均返回 false。
 func (t DayType) IsAdjustedRestDay() bool {
-	return t.IsValid() && t&dayTypeAdjustMask == DayTypeAdjustedRest
+	return t.IsValid() && t.Adjustment() == DayTypeAdjustedRest
 }
 
 // IsAdjustedWorkDay 报告该日是否为补班上班日：合法值且调整位投影等于
 // DayTypeAdjustedWork；任何非法值均返回 false。
 func (t DayType) IsAdjustedWorkDay() bool {
-	return t.IsValid() && t&dayTypeAdjustMask == DayTypeAdjustedWork
+	return t.IsValid() && t.Adjustment() == DayTypeAdjustedWork
 }
 
 // IsValid 报告 t 是否为合法细粒度值（{1, 2, 6, 10, 17} 之一）。
@@ -131,19 +133,20 @@ func (t DayType) IsValid() bool {
 	return false
 }
 
-// String 返回 DayType 的字符串表示：按位从低到高以 "|" 连接小写位名，
-// 如 "work"、"rest"、"rest|festival"、"rest|adjusted"、"work|compensate"
+// String 返回 DayType 的字符串表示：按位从低到高以 "|" 连接位名
+// （dayTypeNames，按常量显式索引），如 "work"、"rest"、"rest|festival"、
+// "rest|adjusted_rest"、"work|adjusted_work"
 // （粗粒度值 1/2 天然输出 "work"/"rest"，无需特判）；
 // 存在未知位时追加 "unknown"；空值（0）返回 "unknown"。
 func (t DayType) String() string {
 	var parts []string
 	known := DayType(0)
-	for i, name := range dayTypeNames {
-		bit := DayType(1) << i
-		if t&bit != 0 {
-			parts = append(parts, name)
-			known |= bit
+	for bit, name := range dayTypeNames {
+		if name == "" || t&DayType(bit) == 0 {
+			continue
 		}
+		parts = append(parts, name)
+		known |= DayType(bit)
 	}
 	if t&^known != 0 {
 		parts = append(parts, "unknown")

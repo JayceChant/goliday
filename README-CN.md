@@ -93,7 +93,7 @@ docker pull ghcr.io/jaycechant/goliday:latest
 
 粗粒度即基本位本身：`detailed=false` 时 `type` 为 1（上班）或 2（放假），判类仅需 `t & 1` / `t & 2`。
 
-细粒度统计（`detailed=true`）为五键 MECE 计数：普通工作日（`ordinary`）/普通周休（`weekend`）/节日放假日（`festival`）/调休放假日（`adjusted`）/补班日（`compensate`）各计一类日，**各键之和恒等于 `total_days`**；总休息/上班天数请用粗粒度 `stats.holiday`/`stats.workday`。
+细粒度统计（`detailed=true`）为五键 MECE 计数：普通工作日（`ordinary`）/普通周休（`weekend`）/节日放假日（`festival`）/调休放假日（`adjusted_rest`）/补班日（`adjusted_work`）各计一类日，**各键之和恒等于 `total_days`**；总休息/上班天数请用粗粒度 `stats.holiday`/`stats.workday`。
 
 语义约定：本项目"节日"均指产生法定假期的全体公民节日（不放假的纪念日不纳入）；"调休"为窄义（原工作日因安排变休息且非节日当天，不新增假期），"过节"当日新增假期；节日无论落在工作日还是周末，细粒度同为 `rest|festival`。
 

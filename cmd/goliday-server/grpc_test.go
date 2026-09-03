@@ -94,9 +94,9 @@ func TestGRPCGetDayDetailed(t *testing.T) {
 		wantType  uint32
 		wantLabel string
 	}{
-		{"2026-02-20", 10, "rest|adjusted"},
+		{"2026-02-20", 10, "rest|adjusted_rest"},
 		{"2026-02-17", 6, "rest|festival"},
-		{"2026-02-28", 17, "work|compensate"},
+		{"2026-02-28", 17, "work|adjusted_work"},
 	}
 	for _, c := range cases {
 		resp, err := client.GetDay(context.Background(), &pb.GetDayRequest{Date: c.date, Detailed: true})
@@ -245,15 +245,15 @@ func TestGRPCFineStatsMECE(t *testing.T) {
 		t.Fatalf("QueryDays 失败: %v", err)
 	}
 	st := resp.GetStats()
-	if st.GetFestival() != 1 || st.GetCompensate() != 1 {
-		t.Errorf("细粒度计数 = festival:%d compensate:%d, want 各 1",
-			st.GetFestival(), st.GetCompensate())
+	if st.GetFestival() != 1 || st.GetAdjustedWork() != 1 {
+		t.Errorf("细粒度计数 = festival:%d adjusted_work:%d, want 各 1",
+			st.GetFestival(), st.GetAdjustedWork())
 	}
-	if st.GetOrdinary() != 0 || st.GetWeekend() != 0 || st.GetAdjusted() != 0 {
-		t.Errorf("细粒度计数 = ordinary:%d weekend:%d adjusted:%d, want 全 0",
-			st.GetOrdinary(), st.GetWeekend(), st.GetAdjusted())
+	if st.GetOrdinary() != 0 || st.GetWeekend() != 0 || st.GetAdjustedRest() != 0 {
+		t.Errorf("细粒度计数 = ordinary:%d weekend:%d adjusted_rest:%d, want 全 0",
+			st.GetOrdinary(), st.GetWeekend(), st.GetAdjustedRest())
 	}
-	if sum := st.GetOrdinary() + st.GetWeekend() + st.GetFestival() + st.GetAdjusted() + st.GetCompensate(); sum != 2 {
+	if sum := st.GetOrdinary() + st.GetWeekend() + st.GetFestival() + st.GetAdjustedRest() + st.GetAdjustedWork(); sum != 2 {
 		t.Errorf("细粒度五键之和 = %d, want 2（== total_days，MECE）", sum)
 	}
 	if st.GetWorkday() != 1 {

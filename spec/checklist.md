@@ -156,3 +156,9 @@
 - [x] 黑盒回归：`TestComboPredicates` 补非法值 4/5/9/12/18/20 组合判断全 false、`Festival|AdjustedRest|AdjustedWork = 28` 数值断言及其 `IsValid()` 为 false
 - [x] spec.md 常量表加 `dayTypeAdjustMask` 行、方法清单（五 Is 方法同构表述）与「非法值全拒」（扩 12 与三个组合方法）「组合判断」Scenario、docs/API.md 判类表述同步；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）
 - [x] `Adjustment()` 调整位投影方法（与 `Coarse()` 对应）落地：黑盒 `TestAdjustment`（五合法值 ∈ {0, Festival, AdjustedRest, AdjustedWork}、非法值 12 原值返回）；spec 投影条款、方法清单、附录签名与「调整位投影」Scenario、常量表用途表述、docs（API/CONFIG_FORMAT）投影表述同步；验证命令全绿；执行提交（refactor: 组合判断改为调整位投影判等并新增 Adjustment 方法）
+
+## 判类与命名语义统一
+
+- [x] 五个判类方法内裸掩码表达式（`t&dayTypeCoarseMask`/`t&dayTypeAdjustMask`）改为 `t.Coarse()`/`t.Adjustment()` 方法调用；`dayTypeNames` 改按位常量显式索引（编译期跟随位序/常量名调整），`String()` 保持手写（用户确认：位操作特殊 + 不输出 DayType 前缀为需求，不引入 stringer）
+- [x] `type_label` 分段名动宾化与常量名逐字对应：`adjusted`→`adjusted_rest`、`compensate`→`adjusted_work`；stats 五键同步（JSON 键、proto Stats 字段 `adjusted`/`compensate` → `adjusted_rest`/`adjusted_work`，`buf lint` 通过、再生成完成，wire 序号不变）；handlers/grpc 映射与 handlers_test/grpc_test 断言（label + 键名 + Get 调用）全量更新；`TestString`/穷举测试合法分段名集合同步
+- [x] spec（分段名条款、String 条款、API 响应样例、stats 键、proto Stats 字段清单、统计导出规则）、docs（API/CONFIG_FORMAT 全部样例与注）、README 双语五键名同步；全仓 grep 无 `compensate`/旧键名残留（历史勾选记录除外）；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）；执行提交（refactor: 判类复用投影方法并统一 label 与 stats 键名）

@@ -70,7 +70,7 @@ curl "http://localhost:8080/api/v1/days?date=2026-02-20&detailed=true"
 ```
 
 ```json
-{"date": "2026-02-20", "type": 10, "type_label": "rest|adjusted", "total_days": 1, "stats": {"adjusted": 1, "compensate": 0, "festival": 0, "ordinary": 0, "weekend": 0}}
+{"date": "2026-02-20", "type": 10, "type_label": "rest|adjusted_rest", "total_days": 1, "stats": {"adjusted_rest": 1, "adjusted_work": 0, "festival": 0, "ordinary": 0, "weekend": 0}}
 ```
 
 ### 2.3 区间查询
@@ -88,23 +88,23 @@ curl "http://localhost:8080/api/v1/days?start=2026-02-14&end=2026-02-18"
   "end": "2026-02-18",
   "total_days": 4,
   "days": [
-    {"date": "2026-02-14", "type": 17, "type_label": "work|compensate"},
+    {"date": "2026-02-14", "type": 17, "type_label": "work|adjusted_work"},
     {"date": "2026-02-15", "type": 2,  "type_label": "rest"},
-    {"date": "2026-02-16", "type": 10, "type_label": "rest|adjusted"},
+    {"date": "2026-02-16", "type": 10, "type_label": "rest|adjusted_rest"},
     {"date": "2026-02-17", "type": 6,  "type_label": "rest|festival"}
   ],
   "stats": {"holiday": 3, "workday": 1}
 }
 ```
 
-逐日说明：02-14（周六）补班 → 粗粒度 workday（细粒度 `work|compensate`）；02-15（周日）自然周末 → holiday；02-16（周一）春节调休 → holiday；02-17（周二）春节当天 → holiday（`rest|festival`，节日当天不另标调休位）。注意 `days` 明细的 `type` **恒为细粒度数值**（与 `detailed` 无关），`detailed` 仅切换 `stats` 统计口径。
+逐日说明：02-14（周六）补班 → 粗粒度 workday（细粒度 `work|adjusted_work`）；02-15（周日）自然周末 → holiday；02-16（周一）春节调休 → holiday；02-17（周二）春节当天 → holiday（`rest|festival`，节日当天不另标调休位）。注意 `days` 明细的 `type` **恒为细粒度数值**（与 `detailed` 无关），`detailed` 仅切换 `stats` 统计口径。
 
 细粒度版本（`&detailed=true`）：`days` 明细不变（恒为细粒度数值），仅 `stats` 换为五键 MECE 计数：
 
 ```json
 { "mode": "range", "start": "2026-02-14", "end": "2026-02-18", "total_days": 4,
   "days": [ ...同上... ],
-  "stats": {"ordinary": 0, "weekend": 1, "festival": 1, "adjusted": 1, "compensate": 1} }
+  "stats": {"ordinary": 0, "weekend": 1, "festival": 1, "adjusted_rest": 1, "adjusted_work": 1} }
 ```
 
 ### 2.4 离散列表查询
@@ -120,15 +120,15 @@ curl "http://localhost:8080/api/v1/days?dates=2026-02-16,2026-02-28,2026-02-17"
   "mode": "list",
   "total_days": 3,
   "days": [
-    {"date": "2026-02-16", "type": 10, "type_label": "rest|adjusted"},
+    {"date": "2026-02-16", "type": 10, "type_label": "rest|adjusted_rest"},
     {"date": "2026-02-17", "type": 6,  "type_label": "rest|festival"},
-    {"date": "2026-02-28", "type": 17, "type_label": "work|compensate"}
+    {"date": "2026-02-28", "type": 17, "type_label": "work|adjusted_work"}
   ],
   "stats": {"holiday": 2, "workday": 1}
 }
 ```
 
-2026-02-28 为周六补班（`work`），故粗粒度统计归入 workday（细粒度 `work|compensate`，单日细粒度响应见 2.2）。
+2026-02-28 为周六补班（`work`），故粗粒度统计归入 workday（细粒度 `work|adjusted_work`，单日细粒度响应见 2.2）。
 
 ### 2.5 混合查询（区间 + 离散）
 
@@ -155,16 +155,16 @@ curl "http://localhost:8080/api/v1/days?start=2026-02-01&end=2026-02-03&dates=20
 
 ### 2.6 细粒度统计的五键 MECE 计数
 
-`detailed=true` 时，`stats` 的五个键（`ordinary` / `weekend` / `festival` / `adjusted` / `compensate`）为 **MECE 计数**：每类日各计一类键，**各键之和恒等于 `total_days`**。以 2.3 的区间为例：
+`detailed=true` 时，`stats` 的五个键（`ordinary` / `weekend` / `festival` / `adjusted_rest` / `adjusted_work`）为 **MECE 计数**：每类日各计一类键，**各键之和恒等于 `total_days`**。以 2.3 的区间为例：
 
-- 02-14 补班日 → `compensate` +1；
+- 02-14 补班日 → `adjusted_work` +1；
 - 02-15 普通周休 → `weekend` +1；
-- 02-16 调休放假日 → `adjusted` +1；
+- 02-16 调休放假日 → `adjusted_rest` +1；
 - 02-17 节日放假日 → `festival` +1。
 
-键与日类的对应：`ordinary`=普通工作日（1）、`weekend`=普通周休（2）、`festival`=节日放假日（6）、`adjusted`=调休放假日（10）、`compensate`=补班日（17）。使用建议：
+键与日类的对应：`ordinary`=普通工作日（1）、`weekend`=普通周休（2）、`festival`=节日放假日（6）、`adjusted_rest`=调休放假日（10）、`adjusted_work`=补班日（17）。使用建议：
 
-- 「总休息/上班天数」→ 用粗粒度 `stats.holiday` / `stats.workday`（也可用五键直接分组求和：`weekend+festival+adjusted` = 放假、`ordinary+compensate` = 上班）；
+- 「总休息/上班天数」→ 用粗粒度 `stats.holiday` / `stats.workday`（也可用五键直接分组求和：`weekend+festival+adjusted_rest` = 放假、`ordinary+adjusted_work` = 上班）；
 - 「某类日的天数」（如整个春节假期含节日的天数）→ 用细粒度对应键。
 
 ---
@@ -201,11 +201,11 @@ curl "http://localhost:8080/api/v1/stats?dates=2026-02-17,2026-02-28&detailed=tr
 {
   "mode": "list",
   "total_days": 2,
-  "stats": {"ordinary": 0, "weekend": 0, "festival": 1, "adjusted": 0, "compensate": 1}
+  "stats": {"ordinary": 0, "weekend": 0, "festival": 1, "adjusted_rest": 0, "adjusted_work": 1}
 }
 ```
 
-（02-17 为 `rest|festival`，02-28 为 `work|compensate`，五键各计一类日，之和 == `total_days`。）
+（02-17 为 `rest|festival`，02-28 为 `work|adjusted_work`，五键各计一类日，之和 == `total_days`。）
 
 ---
 
@@ -274,8 +274,8 @@ curl "http://localhost:8080/healthz"
 | 1 | `Work` | Work(1) | — | `work` |
 | 2 | `Rest` | Rest(2) | — | `rest` |
 | 6 | `FestivalRest`（`Rest\|Festival`） | Rest(2) | — | `rest\|festival` |
-| 10 | `AdjustedRestDay`（`Rest\|AdjustedRest`） | Rest(2) | — | `rest\|adjusted` |
-| 17 | `AdjustedWorkDay`（`Work\|AdjustedWork`） | Work(1) | — | `work\|compensate` |
+| 10 | `AdjustedRestDay`（`Rest\|AdjustedRest`） | Rest(2) | — | `rest\|adjusted_rest` |
+| 17 | `AdjustedWorkDay`（`Work\|AdjustedWork`） | Work(1) | — | `work\|adjusted_work` |
 | 1 | `Work`（粗粒度值本身） | — | `work` | — |
 | 2 | `Rest`（粗粒度值本身） | — | `rest` | — |
 
@@ -283,7 +283,7 @@ curl "http://localhost:8080/healthz"
 
 非法值（可编码但不出现）：`0` 与 ≥32（未定义位）；`3`（上班∧放假）；裸调整位 `4/8/16`；`5/9/18`（调整位与终态矛盾——过节/调休必放假、补班必上班）；`12/14/20/22` 等（同日至多一个调整位）。Go 客户端可用 `IsValid()` 校验，以及 `IsWork()/IsRest()` 与 `IsFestivalRest()/IsAdjustedRestDay()/IsAdjustedWorkDay()` 判类——五个方法同构（合法值前提下，分别与粗粒度掩码/调整位掩码按位与后判等对应位），非法值恒 false。
 
-> `type_label` 由 `DayType.String()` 生成：按位**从低到高**以 `|` 连接小写位名，故 `FestivalRest`（2|4 = 6）输出 `rest|festival`，`AdjustedWorkDay`（1|16 = 17）输出 `work|compensate`（label 词根 compensate 为补班英语惯用简写）；粗粒度值 1/2 天然输出 `work`/`rest`，无需特判。
+> `type_label` 由 `DayType.String()` 生成：按位**从低到高**以 `|` 连接位名（位名与常量名逐字对应，去 `DayType` 前缀的小写蛇形），故 `FestivalRest`（2|4 = 6）输出 `rest|festival`，`AdjustedWorkDay`（1|16 = 17）输出 `work|adjusted_work`；粗粒度值 1/2 天然输出 `work`/`rest`，无需特判。
 
 ---
 
@@ -310,7 +310,7 @@ gRPC 与 HTTP 同进程提供（`-grpc-addr`，默认 `:50051`，空字符串禁
 | `QueryDays(QueryDaysRequest)` | `GET /api/v1/days?start=...&end=...&dates=...` | 区间/离散/混合，含 `days` 明细 |
 | `QueryStats(QueryStatsRequest)` | `GET /api/v1/stats` | 入参与 QueryDays 同构，无 `days` 明细 |
 
-`QueryDaysRequest{start, end, repeated dates, detailed}` 中日期均为 `YYYY-MM-DD` 字符串；`Stats` 消息恒填 `workday/holiday`（粗粒度），仅 `detailed=true` 时填 `ordinary/weekend/festival/adjusted/compensate`（细粒度五键 MECE，之和恒等于 `total_days`）。
+`QueryDaysRequest{start, end, repeated dates, detailed}` 中日期均为 `YYYY-MM-DD` 字符串；`Stats` 消息恒填 `workday/holiday`（粗粒度），仅 `detailed=true` 时填 `ordinary/weekend/festival/adjusted_rest/adjusted_work`（细粒度五键 MECE，之和恒等于 `total_days`）。
 
 ### 7.3 错误语义
 

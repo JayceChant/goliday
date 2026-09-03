@@ -235,11 +235,11 @@ type daysResponse struct {
 func fillStats(resp *daysResponse, st goliday.StatsResult, detailed bool) {
 	if detailed {
 		resp.Stats = map[string]int{
-			"ordinary":   st.Fine[goliday.DayTypeWork],
-			"weekend":    st.Fine[goliday.DayTypeRest],
-			"festival":   st.Fine[goliday.DayTypeFestival],
-			"adjusted":   st.Fine[goliday.DayTypeAdjustedRest],
-			"compensate": st.Fine[goliday.DayTypeAdjustedWork],
+			"ordinary":      st.Fine[goliday.DayTypeWork],
+			"weekend":       st.Fine[goliday.DayTypeRest],
+			"festival":      st.Fine[goliday.DayTypeFestival],
+			"adjusted_rest": st.Fine[goliday.DayTypeAdjustedRest],
+			"adjusted_work": st.Fine[goliday.DayTypeAdjustedWork],
 		}
 	} else {
 		resp.Stats = map[string]int{

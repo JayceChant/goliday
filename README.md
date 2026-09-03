@@ -93,7 +93,7 @@ Day-type bitmask (`type_label` is exactly `DayType.String()`; combinations are j
 
 Coarse granularity is the base bit itself: with `detailed=false`, `type` is 1 (work) or 2 (rest); membership is just `t & 1` / `t & 2`.
 
-Fine-grained statistics (`detailed=true`) use five MECE keys — plain workday (`ordinary`), plain weekend (`weekend`), festival rest day (`festival`), adjusted rest day (`adjusted`), compensating workday (`compensate`) — each counting exactly one class of day, so **the keys always sum to `total_days`**; for total rest/workday days use the coarse `stats.holiday`/`stats.workday`.
+Fine-grained statistics (`detailed=true`) use five MECE keys — plain workday (`ordinary`), plain weekend (`weekend`), festival rest day (`festival`), adjusted rest day (`adjusted_rest`), compensating workday (`adjusted_work`) — each counting exactly one class of day, so **the keys always sum to `total_days`**; for total rest/workday days use the coarse `stats.holiday`/`stats.workday`.
 
 Semantics: "festivals" here are public holidays that grant time off (non-rest commemorative days are out of scope); "adjusted rest" is narrow (an ex-weekday turned into rest by arrangement, not the festival day itself — no new holiday), while a festival day always adds one new holiday; whether a festival falls on a weekday or weekend, the fine-grained type is the same `rest|festival`.
 

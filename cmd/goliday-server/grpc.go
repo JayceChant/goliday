@@ -160,8 +160,8 @@ func statsProto(st goliday.StatsResult, detailed bool) *pb.Stats {
 		p.Ordinary = int32(st.Fine[goliday.DayTypeWork])
 		p.Weekend = int32(st.Fine[goliday.DayTypeRest])
 		p.Festival = int32(st.Fine[goliday.DayTypeFestival])
-		p.Adjusted = int32(st.Fine[goliday.DayTypeAdjustedRest])
-		p.Compensate = int32(st.Fine[goliday.DayTypeAdjustedWork])
+		p.AdjustedRest = int32(st.Fine[goliday.DayTypeAdjustedRest])
+		p.AdjustedWork = int32(st.Fine[goliday.DayTypeAdjustedWork])
 	}
 	return p
 }
