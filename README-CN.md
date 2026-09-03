@@ -26,8 +26,12 @@
 环境要求：Go 1.27+。
 
 ```bash
-# 启动（HTTP :8080，gRPC :50051）
-go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
+# 安装二进制（Go 1.27+）
+go install github.com/JayceChant/goliday/cmd/goliday-server@latest
+go install github.com/JayceChant/goliday/cmd/goliday-tool@latest
+
+# 启动（HTTP :8080，gRPC :50051；克隆仓库后也可用 go run 直接运行源码）
+goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 
 # 单日查询（默认粗粒度）
 curl "http://localhost:8080/api/v1/days?date=2026-02-20"
@@ -49,11 +53,47 @@ resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detai
 // resp.Type == 6, resp.TypeLabel == "rest|festival"
 ```
 
-> 示例基于 `configs/2026.toml`（假设示例方案，非官方）。正式使用请按[年度配置更新流程](#年度配置更新)以官方公告生成。
+启动参数：
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `-addr` | `:8080` | HTTP 监听地址 |
+| `-grpc-addr` | `:50051` | gRPC 监听地址，空字符串禁用 gRPC |
+| `-config-dir` | `./configs` | 年份配置目录 |
+| `-v` | — | 打印版本信息后退出 |
+
+> `configs/` 内置 2025（官方真实方案）与 2026（假设示例方案，仅供测试）。正式使用请按[年度配置更新流程](#年度配置更新)以官方公告生成目标年份配置，放入配置目录后重启服务。
+>
+> 服务为明文 HTTP/gRPC，无内置 TLS 与鉴权，请勿直接暴露公网；生产部署请置于反向代理或网关之后。
+
+## 作为 Go 库使用
+
+根包 `goliday` 即核心库（仅依赖 TOML 解析，零 gRPC），可直接嵌入自己的程序：
+
+```go
+import (
+    "time"
+
+    "github.com/JayceChant/goliday"
+)
+
+store, err := goliday.LoadDir("configs") // 目录下每年一个 YYYY.toml
+if err != nil {
+    log.Fatal(err)
+}
+cal := goliday.NewCalendar(store)
+
+day, _ := time.Parse("2006-01-02", "2026-02-17")
+t, _ := cal.Query(day)   // 细粒度：t == goliday.DayTypeFestivalRest，t.String() == "rest|festival"
+ok, _ := cal.IsWork(day) // 是否上班
+stats, _ := cal.StatsRange(day, day.AddDate(0, 0, 7), true) // 区间统计（左闭右开）
+```
+
+完整 API 见标题下 pkg.go.dev 徽章链接。
 
 ## Docker
 
-多阶段构建：以静态二进制编译（`CGO_ENABLED=0`），运行镜像基于 `gcr.io/distroless/static-debian12:nonroot`（无 shell、无包管理器），仅包含 server 二进制。年份配置**不打入镜像**，运行时挂载。
+多阶段构建：以静态二进制编译（`CGO_ENABLED=0`），运行镜像基于 `gcr.io/distroless/static-debian12:nonroot`（无 shell、无包管理器），仅包含 server 二进制。年份配置**不打入镜像**，运行时只读挂载自备的配置目录（目标年份可按[年度配置更新](#年度配置更新)生成）。
 
 ```bash
 # 本地构建
@@ -69,7 +109,8 @@ curl "http://localhost:8080/healthz"
 镜像由 [GitHub Actions](.github/workflows/docker.yml) 在推送 `v*` tag 时自动发布至 GHCR（多架构 `linux/amd64` + `linux/arm64`；默认分支、PR 与手动触发仅做构建验证，不发布）：
 
 ```bash
-docker pull ghcr.io/jaycechant/goliday:latest
+# 拉取已发布版本镜像（建议固定具体版本号）
+docker pull ghcr.io/jaycechant/goliday:v0.1.0
 ```
 
 ## API 概览
@@ -79,7 +120,7 @@ docker pull ghcr.io/jaycechant/goliday:latest
 | HTTP | `GET /api/v1/days` | 单日 / 区间（左闭右开）/ 离散 / 混合并集查询，含逐日明细；区间跨度 ≤366 天 |
 | HTTP | `GET /api/v1/stats` | 与 `/days` 统计口径一致，无明细；不限跨度 |
 | HTTP | `GET /healthz` | 健康检查，返回已加载年份 |
-| gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`，与 HTTP 一一对应，另注册 gRPC 标准健康检查 |
+| gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`，与 HTTP 一一对应，另注册 gRPC 标准健康检查；proto 定义见 [proto/goliday/v1/goliday.proto](proto/goliday/v1/goliday.proto)，其他语言可据此生成客户端 |
 
 日期类型掩码（`type_label` 即 `DayType.String()`：合法值查静态标签表直返，组合值两段以 `|` 连接，非法值统一输出 `invalid`；`|` 在全部取值上均为 all-of 语义，粗粒度即基本位投影）：
 

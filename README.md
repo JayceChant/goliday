@@ -26,8 +26,12 @@ A holiday lookup service built on Go 1.27: it records the holiday and workday-sw
 Requires Go 1.27+.
 
 ```bash
-# Start the server (HTTP :8080, gRPC :50051)
-go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
+# Install the binaries (Go 1.27+)
+go install github.com/JayceChant/goliday/cmd/goliday-server@latest
+go install github.com/JayceChant/goliday/cmd/goliday-tool@latest
+
+# Start the server (HTTP :8080, gRPC :50051); `go run` also works from a cloned repo
+goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 
 # Single-day query (coarse granularity by default)
 curl "http://localhost:8080/api/v1/days?date=2026-02-20"
@@ -49,11 +53,47 @@ resp, _ := client.GetDay(ctx, &golidayv1.GetDayRequest{Date: "2026-02-17", Detai
 // resp.Type == 6, resp.TypeLabel == "rest|festival"
 ```
 
-> Examples are based on `configs/2026.toml` (a hypothetical sample, not official). For production use, generate the config from official announcements following the [annual config update process](#annual-config-update).
+Server flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `-addr` | `:8080` | HTTP listen address |
+| `-grpc-addr` | `:50051` | gRPC listen address; empty string disables gRPC |
+| `-config-dir` | `./configs` | Year-config directory |
+| `-v` | — | Print version and exit |
+
+> `configs/` ships 2025 (the real official plan) and 2026 (a hypothetical sample, for testing only). For production use, generate the target year's config from official announcements following the [annual config update process](#annual-config-update), place it in the config directory and restart the service.
+>
+> The service serves plain HTTP/gRPC with no built-in TLS or authentication — never expose it directly to the public internet; put it behind a reverse proxy or gateway in production.
+
+## Use as a Go Library
+
+The root package `goliday` is the core library (only the TOML parser as dependency, zero gRPC) and can be embedded directly:
+
+```go
+import (
+    "time"
+
+    "github.com/JayceChant/goliday"
+)
+
+store, err := goliday.LoadDir("configs") // one YYYY.toml per year
+if err != nil {
+    log.Fatal(err)
+}
+cal := goliday.NewCalendar(store)
+
+day, _ := time.Parse("2006-01-02", "2026-02-17")
+t, _ := cal.Query(day)   // fine-grained: t == goliday.DayTypeFestivalRest, t.String() == "rest|festival"
+ok, _ := cal.IsWork(day) // is it a workday?
+stats, _ := cal.StatsRange(day, day.AddDate(0, 0, 7), true) // range stats (half-open)
+```
+
+Full API reference via the pkg.go.dev badge at the top.
 
 ## Docker
 
-Multi-stage build: compiled as a static binary (`CGO_ENABLED=0`), the runtime image is `gcr.io/distroless/static-debian12:nonroot` (no shell, no package manager) and contains only the server binary. Year configs are **not** baked into the image — mount them at runtime.
+Multi-stage build: compiled as a static binary (`CGO_ENABLED=0`), the runtime image is `gcr.io/distroless/static-debian12:nonroot` (no shell, no package manager) and contains only the server binary. Year configs are **not** baked into the image — mount your own config directory read-only at runtime (generate the target year via the [annual config update process](#annual-config-update)).
 
 ```bash
 # Build locally
@@ -79,7 +119,7 @@ docker pull ghcr.io/jaycechant/goliday:latest
 | HTTP | `GET /api/v1/days` | Single-day / range (half-open) / discrete / mixed-union queries with per-day details; range span ≤366 days |
 | HTTP | `GET /api/v1/stats` | Same statistics as `/days`, without details; no span limit |
 | HTTP | `GET /healthz` | Health check, returns loaded years |
-| gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`, one-to-one with HTTP; standard gRPC health checking also registered |
+| gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`, one-to-one with HTTP; standard gRPC health checking also registered. Proto definition at [proto/goliday/v1/goliday.proto](proto/goliday/v1/goliday.proto) — non-Go clients can generate their own stubs from it |
 
 Day-type bitmask (`type_label` is exactly `DayType.String()`: legal values look up a static label table, combo labels join two segments with `|`, illegal values yield `invalid`; `|` is all-of semantics across all values, coarse granularity is the base-bit projection):
 

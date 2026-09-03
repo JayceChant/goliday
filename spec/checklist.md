@@ -175,3 +175,9 @@
 - [x] 测试同步：穷举测试改为 256 值全收敛断言（六标签 ∪ invalid，含越界值 33）、删除分段名白名单逻辑；`TestString` 补非法值 3/5/12/33 统一 invalid 回归；`TestUnknown` 的 unknown 断言不变（0 → unknown 语义延续）
 - [x] spec String 条款（静态标签表 + invalid 统一词及其理由）与「字符串表示」Scenario、docs/API.md 与 CONFIG_FORMAT.md 的 label 机制说明同步；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）；执行提交（refactor: String 非法值统一返回 invalid 并改静态标签表）
 - [x] DayType 影响面终检：旧名零残留（历史勾选记录除外）；补修 README 双语 type_label 表述、spec fuzz 不变量条款、docs/ARCHITECTURE.md 穷举描述、calendar_test.go Fine 键注释措辞共 5 处遗漏；验证命令全绿；执行提交（docs: DayType 影响面终检并补修机制描述遗漏）
+
+## v0.1.0 发布
+
+- [x] 附注 tag `v0.1.0` 已推送至 origin（触发 docker.yml 发布多架构镜像至 GHCR）；中英双语 release notes 已交付（用户自行在 GitHub 创建 Release）
+- [x] README 双语同步补充：go install 安装方式（server/tool）、server 启动参数表（-addr/-grpc-addr/-config-dir/-v）、configs 内置 2025 官方方案与 2026 假设示例说明、明文 HTTP/gRPC 安全提示（不暴露公网）、「作为 Go 库使用」最小示例（LoadDir/NewCalendar/Query/IsWork/StatsRange）、gRPC proto 文件位置（非 Go 客户端生成入口）、镜像拉取示例改为 v0.1.0 版本 tag、Docker 章节补充配置自备与年度更新流程链接
+- [x] 双语语义一致、无本地绝对路径；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空；纯文档变更，无 Go 代码改动）；执行提交（docs: README 补齐安装方式、库使用与部署提示等用户信息）
