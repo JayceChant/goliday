@@ -1,8 +1,6 @@
 // Package goliday 提供中国法定节假日与调休工作日的日期类型判定能力。
 package goliday
 
-import "strings"
-
 // DayType 表示某一天的日期类型，采用位掩码（bitmask）编码，
 // 分为「终态双层」：
 //
@@ -60,17 +58,18 @@ const dayTypeCoarseMask = DayTypeWork | DayTypeRest
 // 合法的 DayType 取值（多调整位并存为非法值）。
 const dayTypeAdjustMask = DayTypeFestival | DayTypeAdjustedRest | DayTypeAdjustedWork
 
-// dayTypeNames 位名称（type_label 的分段名），按位常量显式索引：
-// 位序或常量名调整时此处随编译检查自动跟随，无下标隐式耦合；
-// 分段名与常量名逐字对应（去 DayType 前缀的小写蛇形）：
-// Work→"work"、Rest→"rest"、Festival→"festival"、
-// AdjustedRest→"adjusted_rest"、AdjustedWork→"adjusted_work"。
-var dayTypeNames = [...]string{
-	DayTypeWork:         "work",
-	DayTypeRest:         "rest",
-	DayTypeFestival:     "festival",
-	DayTypeAdjustedRest: "adjusted_rest",
-	DayTypeAdjustedWork: "adjusted_work",
+// dayTypeStrings 合法值标签表：五种合法细粒度值 + 零值 Unknown 的
+// 字符串表示，按常量显式索引——位序或常量名调整时随编译检查自动跟随，
+// 无下标隐式耦合；标签与常量名逐字对应（去 DayType 前缀的小写蛇形，
+// 组合值以 "|" 连接两段）。表内未列出的值（非法值）在 String() 中
+// 统一返回 "invalid"。
+var dayTypeStrings = [...]string{
+	DayTypeUnknown:         "unknown",
+	DayTypeWork:            "work",
+	DayTypeRest:            "rest",
+	DayTypeFestivalRest:    "rest|festival",
+	DayTypeAdjustedRestDay: "rest|adjusted_rest",
+	DayTypeAdjustedWorkDay: "work|adjusted_work",
 }
 
 // validFineValues 细粒度合法值全集（五值 MECE）。
@@ -137,48 +136,16 @@ func (t DayType) IsValid() bool {
 	return false
 }
 
-// joinNames 按位从低到高以 "|" 连接 t 含有的位名（dayTypeNames），
-// 存在未知位时追加 "unknown"；不含任何已知位时返回 "unknown"。
-// 仅 String() 的非法值路径使用。
-func (t DayType) joinNames() string {
-	var parts []string
-	known := DayType(0)
-	for bit, name := range dayTypeNames {
-		if name == "" || t&DayType(bit) == 0 {
-			continue
-		}
-		parts = append(parts, name)
-		known |= DayType(bit)
-	}
-	if t&^known != 0 {
-		parts = append(parts, "unknown")
-	}
-	if len(parts) == 0 {
-		return "unknown"
-	}
-	return strings.Join(parts, "|")
-}
-
-// dayTypeStrings 初始化期预计算的字符串表（覆盖全部 5 位组合域 0~31，
-// 合法值 {0, 1, 2, 6, 10, 17} 随之物化其中），由 dayTypeNames 一次性
-// 构建而来——分段名单一来源，重构自动生效；String() 对表内值直接
-// 查表返回，无逐次运行时构建。
-var dayTypeStrings = func() [32]string {
-	var s [32]string
-	for v := range 32 {
-		s[v] = DayType(v).joinNames()
-	}
-	return s
-}()
-
-// String 返回 DayType 的字符串表示：5 位组合域内的值（含合法五值与
-// 零值 Unknown）直接查预计算表 dayTypeStrings，如 "unknown"、"work"、
-// "rest|festival"、"work|adjusted_work"；域外值（含未定义位 ≥32）运行时
-// 按 joinNames 逐位构建——已知位从低到高以 "|" 连接，存在未知位时
-// 追加 "unknown"。
+// String 返回 DayType 的字符串表示：合法值与零值 Unknown 查静态标签表
+// dayTypeStrings（按常量显式索引），如 "unknown"、"work"、"rest|festival"、
+// "work|adjusted_work"；任何非法值统一返回 "invalid"——系统不会产生
+// 非法值，输出逐位拼接的伪标签反而暗示有效状态，统一词更诚实且
+// 便于调用方兜底处理（数值本身可用 %d 查看）。
 func (t DayType) String() string {
-	if t < DayType(len(dayTypeStrings)) {
-		return dayTypeStrings[t]
+	if int(t) < len(dayTypeStrings) {
+		if s := dayTypeStrings[t]; s != "" {
+			return s
+		}
 	}
-	return t.joinNames()
+	return "invalid"
 }

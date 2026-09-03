@@ -3,7 +3,6 @@
 package goliday_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/JayceChant/goliday"
@@ -221,7 +220,8 @@ func TestIsValid(t *testing.T) {
 	}
 }
 
-// TestString String() 的字符串断言（粗粒度值 1/2 天然输出 work/rest）。
+// TestString String() 的字符串断言（粗粒度值 1/2 天然输出 work/rest；
+// 非法值统一输出 "invalid"）。
 func TestString(t *testing.T) {
 	for _, tt := range validFineValues {
 		if got := tt.dt.String(); got != tt.str {
@@ -233,6 +233,13 @@ func TestString(t *testing.T) {
 	}
 	if got := goliday.DayTypeRest.String(); got != "rest" {
 		t.Errorf("DayTypeRest.String() = %q, want %q", got, "rest")
+	}
+	// 非法值回归：双基本位（3）、矛盾位（5）、多调整位（12）、
+	// 越界未定义位（33）统一输出 "invalid"。
+	for _, v := range []goliday.DayType{3, 5, 12, 33} {
+		if got := v.String(); got != "invalid" {
+			t.Errorf("DayType(%d).String() = %q, want %q", v, got, "invalid")
+		}
 	}
 }
 
@@ -253,22 +260,28 @@ func TestLegalValueBitAndDisjoint(t *testing.T) {
 }
 
 // TestDayTypeExhaustiveInvariants 穷举 uint8 全部 256 个取值，验证
-// String 输出的每个分段均为合法位名或 unknown、不 panic；
-// 对 5 个合法值另断言 Coarse 幂等且 ∈ {Work, Rest}、
-// IsWork/IsRest 恰一为真、位与判类恰一非零。
+// String() 输出收敛于已知标签：合法值输出各自标签、零值输出 "unknown"、
+// 其余非法值统一输出 "invalid"；对 5 个合法值另断言 Coarse 幂等且
+// ∈ {Work, Rest}、IsWork/IsRest 恰一为真、位与判类恰一非零。
 func TestDayTypeExhaustiveInvariants(t *testing.T) {
-	legalNames := map[string]bool{
-		"work": true, "rest": true, "festival": true,
-		"adjusted_rest": true, "adjusted_work": true, "unknown": true,
-	}
-	for v := 0; v <= 255; v++ {
+	for v := range 256 {
 		dt := goliday.DayType(v)
-		t.Run(dt.String(), func(t *testing.T) {
-			for part := range strings.SplitSeq(dt.String(), "|") {
-				if !legalNames[part] {
-					t.Fatalf("DayType(%d).String() = %q 含非法分段 %q", v, dt.String(), part)
+		got := dt.String()
+		want := "invalid" // 非法值统一词
+		switch {
+		case v == 0:
+			want = "unknown" // 零值 Unknown
+		case legalFineValues[dt]:
+			for _, tt := range validFineValues {
+				if tt.dt == dt {
+					want = tt.str
 				}
 			}
+		}
+		if got != want {
+			t.Fatalf("DayType(%d).String() = %q, want %q", v, got, want)
+		}
+		t.Run(got, func(t *testing.T) {
 			if !legalFineValues[dt] {
 				return
 			}

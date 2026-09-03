@@ -168,3 +168,9 @@
 - [x] `DayTypeUnknown = 0` 落地：零值/默认值语义（`var zero DayType` 即 Unknown）、非合法取值（`IsValid()` false）、判类五方法恒 false、`Coarse()/Adjustment()` 均 0、`String()` 输出 `unknown`；黑盒 `TestUnknown` 全维度断言
 - [x] `String()` 查表化：初始化期预计算 `dayTypeStrings`（由 `dayTypeNames` 物化 0~31 全 5 位组合域，`joinNames` 为构建原语），域内值直接查表返回（合法值与零值无逐次运行时构建），域外值（≥32）运行时 `joinNames` 逐位构建；穷举测试继续兜底 256 值输出不变
 - [x] spec 常量表加 `DayTypeUnknown` 行、非法值条款（0 标注默认零值）、String 条款（预计算表约定）、「字符串表示」Scenario 扩 Unknown；docs/API.md 与 CONFIG_FORMAT.md 常量表及非法值表述同步；验证命令全绿；执行提交（feat: 新增 DayTypeUnknown 零值并预计算 String 查表）
+
+## String 契约收紧（非法值统一 invalid）
+
+- [x] `String()` 收紧落地：标签表 `dayTypeStrings` 改为六个组合常量显式索引（Unknown/work/rest/FestivalRest/AdjustedRestDay/AdjustedWorkDay），合法值与零值查表直返；任何非法值统一返回 `"invalid"`；删除 `joinNames()` 与按位名表 `dayTypeNames`，根包 strings 导入移除（依赖面缩小）
+- [x] 测试同步：穷举测试改为 256 值全收敛断言（六标签 ∪ invalid，含越界值 33）、删除分段名白名单逻辑；`TestString` 补非法值 3/5/12/33 统一 invalid 回归；`TestUnknown` 的 unknown 断言不变（0 → unknown 语义延续）
+- [x] spec String 条款（静态标签表 + invalid 统一词及其理由）与「字符串表示」Scenario、docs/API.md 与 CONFIG_FORMAT.md 的 label 机制说明同步；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）；执行提交（refactor: String 非法值统一返回 invalid 并改静态标签表）

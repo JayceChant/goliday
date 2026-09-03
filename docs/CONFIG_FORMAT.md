@@ -162,7 +162,7 @@ work = [ "2026-02-14", "2026-02-28" ]   # 春节补班
 
 > 注 1：节日无论落在工作日（经 `off` 落地）还是自然周末，细粒度同为 `rest|festival`——「调整前是工作日还是周末」不进入类型值，可由日期星期推导。校验规则保证不会产生矛盾值：work 不含节日当天（不会出现「补班×过节」）、工作日节日必须在 `off`（不会出现「普通上班×过节」）。
 >
-> 注 2：`String()` 按位**从低到高**连接位名（位名与常量名逐字对应，去 `DayType` 前缀的小写蛇形），故 `FestivalRest`（2|4 = 6）输出 `rest|festival`，`AdjustedWorkDay`（1|16 = 17）输出 `work|adjusted_work`；粗粒度值 1/2 天然输出 `work`/`rest`。
+> 注 2：`String()` 对合法值查静态标签表直返（标签与常量名逐字对应），故 `FestivalRest`（6）输出 `rest|festival`，`AdjustedWorkDay`（17）输出 `work|adjusted_work`；粗粒度值 1/2 天然输出 `work`/`rest`；非法值统一输出 `invalid`（配置校验保证不会产生）。
 >
 > 注 3：净增假日审计参考：净增 = 过节数（`rest|festival` 天数）− 补班数（`work|adjusted_work` 天数）；「调休放假日」不新增假期（挪移自周末或节日逢周末的补休）。此为公告层不变式，不做硬校验。
 
