@@ -176,8 +176,8 @@ func TestCalendarQueryRange(t *testing.T) {
 	}
 }
 
-// fineKeyOf 将细粒度值映射为 Fine 计数键（位名键）：五值各对应一个键
-// ——Work 单值计 ordinary 键、Rest 单值计 weekend 键、三个组合值计其调整位键。
+// fineKeyOf 将细粒度值映射为 Fine 计数键（单 bit 键 {1,2,4,8,16}）：
+// Work(1) 与 Rest(2) 以自身为键，三个组合值折叠为其调整位键。
 func fineKeyOf(dt goliday.DayType) goliday.DayType {
 	switch dt {
 	case goliday.DayTypeFestivalRest:
@@ -191,7 +191,8 @@ func fineKeyOf(dt goliday.DayType) goliday.DayType {
 }
 
 // bruteForceStats 逐日 Query 暴力统计，作为前缀和路径的一致性基准。
-// 细粒度为按值 MECE 计数（键即五位名键），粗粒度为基本位投影。
+// 细粒度为按值 MECE 计数（键为五个单 bit 值 {1,2,4,8,16}），
+// 粗粒度为基本位投影。
 func bruteForceStats(t *testing.T, c *goliday.Calendar, start, end time.Time, detailed bool) goliday.StatsResult {
 	t.Helper()
 	r := goliday.StatsResult{Total: 0, Coarse: map[goliday.DayType]int{}}

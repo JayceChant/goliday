@@ -81,7 +81,7 @@ docker pull ghcr.io/jaycechant/goliday:latest
 | HTTP | `GET /healthz` | 健康检查，返回已加载年份 |
 | gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`，与 HTTP 一一对应，另注册 gRPC 标准健康检查 |
 
-日期类型掩码（`type_label` 即 `DayType.String()`，组合按位从低到高以 `|` 连接；`|` 在全部取值上均为 all-of 语义，粗粒度即基本位投影）：
+日期类型掩码（`type_label` 即 `DayType.String()`：合法值查静态标签表直返，组合值两段以 `|` 连接，非法值统一输出 `invalid`；`|` 在全部取值上均为 all-of 语义，粗粒度即基本位投影）：
 
 | 值 | 组合 | 含义 | | 值 | 组合 | 含义 |
 |---|---|---|---|---|---|---|

@@ -434,7 +434,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 | `FuzzDaysHandler` | `cmd/goliday-server` `package main`（白盒） | 任意查询串打到 `/api/v1/days` 与 `/api/v1/stats`：不 panic、状态码仅 200/400、响应恒为合法 JSON；200 且含 `days` 时升序唯一、`total_days == len(days)`；粗粒度 stats 之和 == `total_days`，细粒度五键之和 == `total_days`（MECE）；单日模式 `total_days == 1`；stats 路径不因跨度报错（未加载年份报 `year_not_loaded` 除外） |
 | `FuzzGenDraft` | `cmd/goliday-tool` `package main`（白盒） | 任意年份 + 公告文本：解析条目区间有效且在年内；草稿 off 全为周一~五、work 全为周六/日、互斥无重复、全在年内；festival 日期非 TODO 则为合法 `YYYY-MM-DD`；`selfCheck` 失败仅允许 TODO 占位、"festival 日期重复"、"节日当天不得补班"或"节日当天为工作日但不在 off"；自检通过且文件名年份合法时 `render` 产物可被 `LoadYear` 加载 |
 
-补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`String` 分段均为合法位名或 `unknown`、不 panic、`IsValid` 恰对 {1,2,6,10,17} 为 true）覆盖；对 5 个合法值 {1,2,6,10,17} 另行断言：`Coarse` 结果 ∈ {`DayTypeWork`, `DayTypeRest`} 且幂等、`IsWork`/`IsRest` 恰一为真、`t & DayTypeWork` 与 `t & DayTypeRest` 恰一非零。不再另设 fuzz 目标。
+补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`String` 输出收敛于合法值标签 ∪ `unknown` ∪ `invalid`、不 panic、`IsValid` 恰对 {1,2,6,10,17} 为 true）覆盖；对 5 个合法值 {1,2,6,10,17} 另行断言：`Coarse` 结果 ∈ {`DayTypeWork`, `DayTypeRest`} 且幂等、`IsWork`/`IsRest` 恰一为真、`t & DayTypeWork` 与 `t & DayTypeRest` 恰一非零。不再另设 fuzz 目标。
 
 约束：fuzz 目标不得新增第三方依赖（仅 `testing`/`time`/标准库）；失败语料按 Go 惯例落盘 `testdata/fuzz/<Name>/` 后 SHALL 转写为常规回归用例（普通 Test 或种子）再删除语料文件，保持仓库无 fuzz 语料残留。
 

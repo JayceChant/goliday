@@ -81,7 +81,7 @@ docker pull ghcr.io/jaycechant/goliday:latest
 | HTTP | `GET /healthz` | Health check, returns loaded years |
 | gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`, one-to-one with HTTP; standard gRPC health checking also registered |
 
-Day-type bitmask (`type_label` is exactly `DayType.String()`; combinations are joined by `|` from low to high bits; `|` is all-of semantics across all values, coarse granularity is the base-bit projection):
+Day-type bitmask (`type_label` is exactly `DayType.String()`: legal values look up a static label table, combo labels join two segments with `|`, illegal values yield `invalid`; `|` is all-of semantics across all values, coarse granularity is the base-bit projection):
 
 | Value | Combination | Meaning | | Value | Combination | Meaning |
 |---|---|---|---|---|---|---|

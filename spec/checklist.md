@@ -174,3 +174,4 @@
 - [x] `String()` 收紧落地：标签表 `dayTypeStrings` 改为六个组合常量显式索引（Unknown/work/rest/FestivalRest/AdjustedRestDay/AdjustedWorkDay），合法值与零值查表直返；任何非法值统一返回 `"invalid"`；删除 `joinNames()` 与按位名表 `dayTypeNames`，根包 strings 导入移除（依赖面缩小）
 - [x] 测试同步：穷举测试改为 256 值全收敛断言（六标签 ∪ invalid，含越界值 33）、删除分段名白名单逻辑；`TestString` 补非法值 3/5/12/33 统一 invalid 回归；`TestUnknown` 的 unknown 断言不变（0 → unknown 语义延续）
 - [x] spec String 条款（静态标签表 + invalid 统一词及其理由）与「字符串表示」Scenario、docs/API.md 与 CONFIG_FORMAT.md 的 label 机制说明同步；验证命令全绿（build/vet/test 3 包 ok、gofmt 空、lint 0 issues、go fix 幂等）；执行提交（refactor: String 非法值统一返回 invalid 并改静态标签表）
+- [x] DayType 影响面终检：旧名零残留（历史勾选记录除外）；补修 README 双语 type_label 表述、spec fuzz 不变量条款、docs/ARCHITECTURE.md 穷举描述、calendar_test.go Fine 键注释措辞共 5 处遗漏；验证命令全绿；执行提交（docs: DayType 影响面终检并补修机制描述遗漏）
