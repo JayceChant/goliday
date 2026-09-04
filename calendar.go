@@ -48,18 +48,13 @@ func comboIndex(t DayType) int {
 	return -1
 }
 
-// comboCounts 5 种合法细粒度值各自的累计天数（按值计数，五值 MECE）。
-// 粗粒度计数可由其线性组合导出。
-type comboCounts [len(comboValues)]int
+// comboCounts 5 种合法细粒度值各自的年内累计天数（按值计数，五值 MECE）。
+// 粗粒度计数可由其线性组合导出。单一类型年内天数有界（普通工作日至多
+// 248 天，其余类型更少），uint8 足以存储；跨年/多段累加不得直接在本类型
+// 上进行（会溢出），须先转入 comboTotals。
+type comboCounts [len(comboValues)]uint8
 
-// add 累加另一组计数。
-func (c *comboCounts) add(o comboCounts) {
-	for i := range o {
-		c[i] += o[i]
-	}
-}
-
-// diff 返回两组前缀计数的差（b-a，要求 b 的前缀位置不早于 a）。
+// diff 返回两组年内前缀计数的差（b-a，前缀和单调不减于被减数，无下溢）。
 func diffPrefix(b, a comboCounts) comboCounts {
 	var out comboCounts
 	for i := range b {
@@ -68,9 +63,20 @@ func diffPrefix(b, a comboCounts) comboCounts {
 	return out
 }
 
-// result 将按值累计计数导出为统计结果：细粒度五键 MECE（之和恒等于
+// comboTotals 跨年统计的宽类型累加器：各段年内差分（comboCounts，uint8）
+// 显式转入 int 后再相加，避免 uint8 多段直接累加溢出。
+type comboTotals [len(comboValues)]int
+
+// add 累加一段年内差分计数（逐元素转 int）。
+func (c *comboTotals) add(o comboCounts) {
+	for i, v := range o {
+		c[i] += int(v)
+	}
+}
+
+// result 将跨年累计计数导出为统计结果：细粒度五键 MECE（之和恒等于
 // total），粗粒度按基本位投影归并。detailed=false 时 Fine 为 nil。
-func (c comboCounts) result(total int, detailed bool) StatsResult {
+func (c comboTotals) result(total int, detailed bool) StatsResult {
 	r := StatsResult{
 		Total: total,
 		Coarse: map[DayType]int{
@@ -100,9 +106,10 @@ type yearIndex struct {
 	// first 该年元旦（UTC 午夜）；days 该年天数（365/366）。
 	first time.Time
 	days  int
-	// prefix 细粒度组合计数前缀和，长度 days+1：prefix[0] 为全零，
-	// prefix[i] 为 [元旦, 元旦+i天)（左闭右开）的组合累计，
-	// 因此年内区间 [a, b) 的统计即 prefix[idx(b)] - prefix[idx(a)]。
+	// prefix 细粒度组合计数前缀和，长度 days（与年天数一致，无全零首
+	// 元素）：prefix[i] 为闭区间 [元旦, 元旦+i天]（含两端）的组合累计。
+	// 左闭右开查询 [a, b) 须转换下标后差分：prefix[idx(b)-1] -
+	// prefix[idx(a)-1]，下标为 -1（端点为元旦或之前）时以全零参与差分。
 	// 构建完成后只读，可被多个 goroutine 并发访问。
 	prefix []comboCounts
 }
@@ -138,17 +145,28 @@ func (idx *yearIndex) nextYearStart() time.Time {
 	return idx.first.AddDate(1, 0, 0)
 }
 
-// comboRange 返回年内左闭右开区间 [a, b) 的组合计数（b 可为次年元旦）。
-func (idx *yearIndex) comboRange(a, b time.Time) comboCounts {
-	return diffPrefix(idx.prefix[idx.dayIndex(b)], idx.prefix[idx.dayIndex(a)])
+// cumAt 返回闭区间 [元旦, 元旦+i天] 的组合累计；i < 0（元旦之前，无
+// 覆盖日）返回全零。闭区间前缀无全零首元素，左闭右开查询经此统一转换。
+func (idx *yearIndex) cumAt(i int) comboCounts {
+	if i < 0 {
+		return comboCounts{}
+	}
+	return idx.prefix[i]
 }
 
-// buildPrefix 逐日判定并构建该年的组合计数前缀和。
+// comboRange 返回年内左闭右开区间 [a, b) 的组合计数（b 可为次年元旦）。
+// 闭区间下标转换：两端取 dayIndex-1，负值由 cumAt 归零。
+func (idx *yearIndex) comboRange(a, b time.Time) comboCounts {
+	return diffPrefix(idx.cumAt(idx.dayIndex(b)-1), idx.cumAt(idx.dayIndex(a)-1))
+}
+
+// buildPrefix 逐日判定并构建该年的组合计数前缀和（闭区间下标）。
 func (idx *yearIndex) buildPrefix() {
-	idx.prefix = make([]comboCounts, idx.days+1)
-	for i := 1; i <= idx.days; i++ {
-		idx.prefix[i] = idx.prefix[i-1]
-		idx.prefix[i][comboIndex(idx.dayType(idx.first.AddDate(0, 0, i-1)))]++
+	idx.prefix = make([]comboCounts, idx.days)
+	for i := range idx.prefix {
+		c := idx.cumAt(i - 1)
+		c[comboIndex(idx.dayType(idx.first.AddDate(0, 0, i)))]++
+		idx.prefix[i] = c
 	}
 }
 
@@ -341,7 +359,7 @@ func (c *Calendar) StatsRange(start, end time.Time, detailed bool) (StatsResult,
 		return StatsResult{}, yearNotLoadedErr(missing)
 	}
 
-	var acc comboCounts
+	var acc comboTotals
 	total := 0
 	for d := s; d.Before(e); {
 		idx := c.years[d.Year()]
@@ -383,12 +401,12 @@ func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error) 
 		return StatsResult{}, yearNotLoadedErr(missing)
 	}
 
-	var acc comboCounts
+	var acc comboTotals
 	for _, d := range dates {
 		dn := normalizeDate(d)
 		idx := c.years[dn.Year()]
 		i := idx.dayIndex(dn)
-		acc.add(diffPrefix(idx.prefix[i+1], idx.prefix[i]))
+		acc.add(diffPrefix(idx.cumAt(i), idx.cumAt(i-1)))
 	}
 	return acc.result(len(dates), detailed), nil
 }

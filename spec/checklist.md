@@ -181,3 +181,10 @@
 - [x] 附注 tag `v0.1.0` 已推送至 origin（触发 docker.yml 发布多架构镜像至 GHCR）；中英双语 release notes 已交付（用户自行在 GitHub 创建 Release）
 - [x] README 双语同步补充：go install 安装方式（server/tool）、server 启动参数表（-addr/-grpc-addr/-config-dir/-v）、configs 内置 2025 官方方案与 2026 假设示例说明、明文 HTTP/gRPC 安全提示（不暴露公网）、「作为 Go 库使用」最小示例（LoadDir/NewCalendar/Query/IsWork/StatsRange）、gRPC proto 文件位置（非 Go 客户端生成入口）、镜像拉取示例改为 v0.1.0 版本 tag、Docker 章节补充配置自备与年度更新流程链接
 - [x] 双语语义一致、无本地绝对路径；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空；纯文档变更，无 Go 代码改动）；执行提交（docs: README 补齐安装方式、库使用与部署提示等用户信息）
+
+## 前缀和存储优化（uint8 + 闭区间下标）
+
+- [x] 前缀和元素改 uint8 存储：年内单一类型天数有界（普通工作日至多 248 天）uint8 足以存下；跨年/多段累加不直接在 uint8 上进行，先经新增宽类型累加器 `comboTotals`（int）转换再相加，无溢出
+- [x] 前缀数组长度改为与年天数一致（去掉无意义的全零 0 下标），`prefix[i]` 为闭区间 `[元旦, 元旦+i天]` 累计；左闭右开查询统一转换为闭区间下标差分（`cumAt` 处理下标 -1 归零），统计结果与改造前完全一致（既有前缀和 vs 暴力统计一致性测试全过）
+- [x] spec.md「细粒度组合计数前缀和统计」Requirement（数组约定、年内差分 Scenario、决策依据）与 docs/ARCHITECTURE.md、docs/API.md 表述同步
+- [x] `go fix ./...` 幂等无改动、`golangci-lint run ./...` 0 issues；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（perf: 前缀和改 uint8 存储并收敛为闭区间下标）
