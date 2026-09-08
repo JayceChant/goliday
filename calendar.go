@@ -145,9 +145,9 @@ func (idx *yearIndex) nextYearStart() time.Time {
 	return idx.first.AddDate(1, 0, 0)
 }
 
-// cumAt 返回闭区间 [元旦, 元旦+i天] 的组合累计；i < 0（元旦之前，无
+// cumulationAt 返回闭区间 [元旦, 元旦+i天] 的组合累计；i < 0（元旦之前，无
 // 覆盖日）返回全零。闭区间前缀无全零首元素，左闭右开查询经此统一转换。
-func (idx *yearIndex) cumAt(i int) comboCounts {
+func (idx *yearIndex) cumulationAt(i int) comboCounts {
 	if i < 0 {
 		return comboCounts{}
 	}
@@ -155,16 +155,16 @@ func (idx *yearIndex) cumAt(i int) comboCounts {
 }
 
 // comboRange 返回年内左闭右开区间 [a, b) 的组合计数（b 可为次年元旦）。
-// 闭区间下标转换：两端取 dayIndex-1，负值由 cumAt 归零。
+// 闭区间下标转换：两端取 dayIndex-1，负值由 cumulationAt 归零。
 func (idx *yearIndex) comboRange(a, b time.Time) comboCounts {
-	return diffPrefix(idx.cumAt(idx.dayIndex(b)-1), idx.cumAt(idx.dayIndex(a)-1))
+	return diffPrefix(idx.cumulationAt(idx.dayIndex(b)-1), idx.cumulationAt(idx.dayIndex(a)-1))
 }
 
 // buildPrefix 逐日判定并构建该年的组合计数前缀和（闭区间下标）。
 func (idx *yearIndex) buildPrefix() {
 	idx.prefix = make([]comboCounts, idx.days)
 	for i := range idx.prefix {
-		c := idx.cumAt(i - 1)
+		c := idx.cumulationAt(i - 1)
 		c[comboIndex(idx.dayType(idx.first.AddDate(0, 0, i)))]++
 		idx.prefix[i] = c
 	}
@@ -406,7 +406,7 @@ func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error) 
 		dn := normalizeDate(d)
 		idx := c.years[dn.Year()]
 		i := idx.dayIndex(dn)
-		acc.add(diffPrefix(idx.cumAt(i), idx.cumAt(i-1)))
+		acc.add(diffPrefix(idx.cumulationAt(i), idx.cumulationAt(i-1)))
 	}
 	return acc.result(len(dates), detailed), nil
 }
