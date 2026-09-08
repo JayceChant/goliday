@@ -2,6 +2,7 @@
 
 ## [0.1.1](https://github.com/JayceChant/goliday/compare/v0.1.0...v0.1.1) (2026-09-08)
 
+> 摘要：内部性能与内存优化——日期判定索引合并为整数键稀疏终态表，统计前缀和改定长内联数组并以 uint8 存储；判定与统计行为完全不变，无需迁移。
 
 ### Performance Improvements
 
