@@ -188,3 +188,10 @@
 - [x] 前缀数组长度改为与年天数一致（去掉无意义的全零 0 下标），`prefix[i]` 为闭区间 `[元旦, 元旦+i天]` 累计；左闭右开查询统一转换为闭区间下标差分（`cumulationAt` 处理下标 -1 归零），统计结果与改造前完全一致（既有前缀和 vs 暴力统计一致性测试全过）
 - [x] spec.md「细粒度组合计数前缀和统计」Requirement（数组约定、年内差分 Scenario、决策依据）与 docs/ARCHITECTURE.md、docs/API.md 表述同步
 - [x] `go fix ./...` 幂等无改动、`golangci-lint run ./...` 0 issues；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空）；执行提交（perf: 前缀和改 uint8 存储并收敛为闭区间下标）
+
+## 查询索引与前缀和存储再优化（整数键 + 稀疏终态表 + 定长内联）
+
+- [x] `normalizeDate` 改返回「(年份, 年内 0-based 天序)」整数键（壁钟语义不变，按 t 自身时区取年与 YearDay-1）；三张 time.Time 键哈希集合合并为单一 `map[int]DayType` 稀疏终态表，构建期按 off→work→festival 依序覆写（festival 最后，工作日节日同落 off 与 festival 时终态收敛 FestivalRest），与判定优先级一致；未命中回退周休判断
+- [x] 前缀和改定长 `[366]comboCounts` 内联数组（前 days 项有效、平年尾部闲置不参与差分；每年省一次独立堆分配与切片头，访问少一次间接寻址）；区间终点恰为次年元旦（天序 0）时折叠为上一年末（天序 = 该年天数），不进入未加载的终点年（回归于跨年暴力一致性测试覆盖）
+- [x] 判定/区间/离散统计行为与重构前完全一致（黑盒/白盒测试零改动全过，`FuzzQueryConsistency` 15s 冒烟通过）；spec.md 前缀和条款与决策依据、docs/ARCHITECTURE.md（NewCalendar 流程、Query 请求流、按值计数前缀和、日期键规范化）同步
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues、`go fix ./...` 幂等）；执行提交（perf: 查询索引与前缀和改整数键稀疏表与定长内联数组）
