@@ -44,3 +44,18 @@ func TestNewCalendarSkipsNilConfig(t *testing.T) {
 		t.Error("nil 配置年份查询应报错")
 	}
 }
+
+// TestYearDaysMatchesTimeCalc yearDays 的闰年直判须与 time 包
+// 「元旦至次年元旦差值」计算在宽年份区间上逐点一致：Go time 包为
+// 外推公历，除闰年规则外无任何日期调整，二者恒等价（含世纪年
+// 1900/2100 平年与 2000/2400 闰年）。年份文件名为四位数字，区间
+// 覆盖其全集 1000~9999 并外扩验证。
+func TestYearDaysMatchesTimeCalc(t *testing.T) {
+	for y := 1000; y <= 9999; y++ {
+		jan1 := time.Date(y, 1, 1, 0, 0, 0, 0, time.UTC)
+		want := int(jan1.AddDate(1, 0, 0).Sub(jan1).Hours() / 24)
+		if got := yearDays(y); got != want {
+			t.Fatalf("yearDays(%d) = %d，time 包计算为 %d", y, got, want)
+		}
+	}
+}

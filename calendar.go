@@ -152,11 +152,15 @@ func (idx *yearIndex) buildPrefix() {
 	}
 }
 
-// yearDays 返回指定年份的天数（365/366）。
+// yearDays 返回指定年份的天数（365/366）：公历闰年直判（被 4 整除且
+// 不被 100 整除，或被 400 整除）。Go time 包为外推公历，除闰年规则外
+// 无其他日期调整，直判与「元旦至次年元旦差值」恒等价（宽年份区间
+// 回归断言见 calendar_internal_test.go）。
 func yearDays(year int) int {
-	y := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
-	next := y.AddDate(1, 0, 0)
-	return int(next.Sub(y).Hours() / 24)
+	if year%4 == 0 && (year%100 != 0 || year%400 == 0) {
+		return 366
+	}
+	return 365
 }
 
 // Calendar 提供日期类型查询与统计能力。由 Store 一次性构建各年份的
@@ -175,7 +179,7 @@ func NewCalendar(s *Store) *Calendar {
 		if cfg == nil {
 			continue
 		}
-		idx := &yearIndex{
+		yearIdx := &yearIndex{
 			adjust: make(map[int]DayType, len(cfg.Adjust.Off)+len(cfg.Adjust.Work)+len(cfg.Festivals)),
 			first:  time.Date(y, 1, 1, 0, 0, 0, 0, time.UTC),
 			days:   yearDays(y),
@@ -185,18 +189,18 @@ func NewCalendar(s *Store) *Calendar {
 		// 为 FestivalRest；work 与其余表互斥（Validate 保证），覆写无歧义。
 		for _, d := range cfg.Adjust.Off {
 			_, day := normalizeDate(d)
-			idx.adjust[day] = DayTypeAdjustedRestDay
+			yearIdx.adjust[day] = DayTypeAdjustedRestDay
 		}
 		for _, d := range cfg.Adjust.Work {
 			_, day := normalizeDate(d)
-			idx.adjust[day] = DayTypeAdjustedWorkDay
+			yearIdx.adjust[day] = DayTypeAdjustedWorkDay
 		}
 		for _, f := range cfg.Festivals {
 			_, day := normalizeDate(f.Date)
-			idx.adjust[day] = DayTypeFestivalRest
+			yearIdx.adjust[day] = DayTypeFestivalRest
 		}
-		idx.buildPrefix()
-		c.years[y] = idx
+		yearIdx.buildPrefix()
+		c.years[y] = yearIdx
 	}
 	return c
 }

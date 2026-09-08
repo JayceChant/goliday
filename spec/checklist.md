@@ -195,3 +195,9 @@
 - [x] 前缀和改定长 `[366]comboCounts` 内联数组（前 days 项有效、平年尾部闲置不参与差分；每年省一次独立堆分配与切片头，访问少一次间接寻址）；区间终点恰为次年元旦（天序 0）时折叠为上一年末（天序 = 该年天数），不进入未加载的终点年（回归于跨年暴力一致性测试覆盖）
 - [x] 判定/区间/离散统计行为与重构前完全一致（黑盒/白盒测试零改动全过，`FuzzQueryConsistency` 15s 冒烟通过）；spec.md 前缀和条款与决策依据、docs/ARCHITECTURE.md（NewCalendar 流程、Query 请求流、按值计数前缀和、日期键规范化）同步
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues、`go fix ./...` 幂等）；执行提交（perf: 查询索引与前缀和改整数键稀疏表与定长内联数组）
+
+## yearDays 改公历闰年直判
+
+- [x] `yearDays` 改为整数直判（被 4 整除且不被 100 整除，或被 400 整除 → 366，否则 365），消除两次 `time.Date` 构造与浮点除法；正确性与「元旦至次年元旦差值」恒等价（Go time 包为外推公历，无闰年规则以外的日期调整）
+- [x] 等价性固化为白盒回归 `TestYearDaysMatchesTimeCalc`：1000~9999（四位年份文件名全集）逐点断言直判结果与 time 包计算一致，世纪年（1900/2100 平年、2000/2400 闰年）随之覆盖
+- [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues、`go fix ./...` 幂等）；执行提交（refactor: yearDays 改为公历闰年直判并固化等价回归）
