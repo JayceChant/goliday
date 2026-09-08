@@ -201,3 +201,11 @@
 - [x] `yearDays` 改为整数直判（被 4 整除且不被 100 整除，或被 400 整除 → 366，否则 365），消除两次 `time.Date` 构造与浮点除法；正确性与「元旦至次年元旦差值」恒等价（Go time 包为外推公历，无闰年规则以外的日期调整）
 - [x] 等价性固化为白盒回归 `TestYearDaysMatchesTimeCalc`：1000~9999（四位年份文件名全集）逐点断言直判结果与 time 包计算一致，世纪年（1900/2100 平年、2000/2400 闰年）随之覆盖
 - [x] 验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues、`go fix ./...` 幂等）；执行提交（refactor: yearDays 改为公历闰年直判并固化等价回归）
+
+## release-please 自动化发布
+
+- [x] `.github/workflows/release-please.yml` 入库：push master / workflow_dispatch 触发；`permissions` 最小化（contents: write、pull-requests: write、issues: write、actions: write）；`googleapis/release-please-action` 固定完整 SHA（v5.0.0，与全仓 Action 固定策略一致），`release-type: simple`（Go 模块无内嵌版本文件，仅维护 CHANGELOG.md 与 tag/Release）；`releases_created` 为真时 `gh workflow run docker.yml --ref <tag_name>` 衔接镜像发布（`GITHUB_TOKEN` 的 tag push 不级联触发其他工作流，workflow_dispatch 是例外可触发事件；docker.yml 零改动）；无自定义 secrets，无本地绝对路径
+- [x] 根目录 `.release-please-manifest.json` 记录版本基线 `"." : "0.1.0"`（与已发布的 v0.1.0 tag 对齐，下版从 0.1.0 起算增量）
+- [x] spec.md 新增「自动化版本发布（GitHub 环境）」Requirement：工作流约定 6 条（触发/策略/版本基线/权限/镜像衔接/无 secrets）+「Release PR 生成与合并」「发布后镜像自动推送」2 个 Scenario；tasks.md 追加批次条目
+- [x] README 双语 Docker 章节同步 tag 自动化来源说明（语义一致）；docs/ARCHITECTURE.md 第 7 节质量门禁表格新增 release-please 条目（含工作流链接）
+- [x] YAML 解析校验通过；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯 workflow/文档变更，无 Go 代码改动，go fix 无输入）；执行提交（ci: 新增 release-please 自动化版本发布工作流）

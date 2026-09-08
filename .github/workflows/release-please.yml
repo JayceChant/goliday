@@ -1,0 +1,44 @@
+# 自动化版本发布（release-please）：
+# - push master 后依 Conventional Commits 维护 Release PR（更新 CHANGELOG.md）
+# - Release PR 合并时创建 git tag（vX.Y.Z）与 GitHub Release
+# - GITHUB_TOKEN 产生的 tag push 不触发其他工作流，故显式 dispatch docker.yml 发布镜像
+name: release-please
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release PR / tag / release
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # Go 模块无内嵌版本文件，simple 策略仅维护 CHANGELOG.md 与 tag/release；
+          # 起始版本取 .release-please-manifest.json（0.1.0）
+          release-type: simple
+
+      - name: Trigger docker image publish
+        # workflow_dispatch 是 GITHUB_TOKEN 可触发的例外事件，用于衔接镜像发布
+        if: steps.release.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docker.yml --ref "${{ steps.release.outputs.tag_name }}"
+
+      - name: Summarize
+        if: steps.release.outputs.releases_created == 'true'
+        run: |
+          {
+            echo "### 新版本已发布"
+            echo "- tag: \`${{ steps.release.outputs.tag_name }}\`"
+            echo "- 镜像发布工作流已触发（docker.yml @ \`${{ steps.release.outputs.tag_name }}\`）"
+          } >> "$GITHUB_STEP_SUMMARY"

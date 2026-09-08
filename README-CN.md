@@ -106,7 +106,7 @@ curl "http://localhost:8080/healthz"
 # {"status":"ok","years":[2025,2026]}
 ```
 
-镜像由 [GitHub Actions](.github/workflows/docker.yml) 在推送 `v*` tag 时自动发布至 GHCR（多架构 `linux/amd64` + `linux/arm64`；默认分支、PR 与手动触发仅做构建验证，不发布）：
+镜像由 [GitHub Actions](.github/workflows/docker.yml) 在推送 `v*` tag 时自动发布至 GHCR（多架构 `linux/amd64` + `linux/arm64`；默认分支、PR 与手动触发仅做构建验证，不发布）。tag 由 [release-please](.github/workflows/release-please.yml) 自动化产生：提交遵循 Conventional Commits（项目已采用），合并 Release PR 后自动打 `v*` tag、创建 GitHub Release、更新 CHANGELOG 并发布镜像，无需手动推送 tag：
 
 ```bash
 # 拉取已发布版本镜像（建议固定具体版本号）

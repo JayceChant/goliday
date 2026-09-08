@@ -106,7 +106,7 @@ curl "http://localhost:8080/healthz"
 # {"status":"ok","years":[2025,2026]}
 ```
 
-Images are published to GHCR by [GitHub Actions](.github/workflows/docker.yml) on every `v*` tag push (multi-arch `linux/amd64` + `linux/arm64`; pushes to the default branch, PRs and manual runs build for verification only, without publishing):
+Images are published to GHCR by [GitHub Actions](.github/workflows/docker.yml) on every `v*` tag push (multi-arch `linux/amd64` + `linux/arm64`; pushes to the default branch, PRs and manual runs build for verification only, without publishing). Tags are produced automatically by [release-please](.github/workflows/release-please.yml): commits follow Conventional Commits (already adopted in this repo), and merging a release PR creates the `v*` tag, GitHub Release and CHANGELOG entry, then publishes the image — no manual tag push needed:
 
 ```bash
 docker pull ghcr.io/jaycechant/goliday:latest

@@ -522,6 +522,26 @@ README 双语 SHALL 在标题下接入 MIT License 徽章（链接 `LICENSE`）�
 - **WHEN** GitHub 或 OpenSSF Scorecard 检测仓库许可证
 - **THEN** 识别为 MIT；README 双语徽章均可跳转至 `LICENSE`
 
+### Requirement: 自动化版本发布（GitHub 环境）
+
+仓库 SHALL 提供 `.github/workflows/release-please.yml` 与根目录 `.release-please-manifest.json`，基于 Conventional Commits 自动化版本发布（release-please）。
+
+工作流约定：
+- 触发：`push` 默认分支、`workflow_dispatch`；
+- `googleapis/release-please-action`（完整 commit SHA 固定，与全仓 Action 固定策略一致）以 `release-type: simple` 运行——Go 模块无内嵌版本文件，无需更新产物版本，仅维护 `CHANGELOG.md` 与 tag/Release；
+- 版本基线取 `.release-please-manifest.json`（当前 `"." : "0.1.0"`）：有 `feat`/`fix`/`BREAKING CHANGE` 累积时生成 Release PR（汇总提交并更新 `CHANGELOG.md`）；Release PR 合并后创建附注 tag `vX.Y.Z` 与 GitHub Release；
+- 权限最小化：`contents: write`（提交 CHANGELOG、打 tag、建 Release）+ `pull-requests: write` + `issues: write`（Release PR 标签）+ `actions: write`（下游工作流 dispatch）；
+- 镜像发布衔接：`GITHUB_TOKEN` 产生的 tag push 不触发其他工作流（GitHub 防递归约定），release-please 输出 `releases_created` 为真时以 `gh workflow run docker.yml --ref <tag_name>` 显式 dispatch（`workflow_dispatch` 是 GITHUB_TOKEN 可触发的例外事件），docker.yml 零改动复用既有 tag 发布口径；
+- 无自定义 secrets：全部使用内置 `GITHUB_TOKEN`。
+
+#### Scenario: Release PR 生成与合并
+- **WHEN** 默认分支合并含 `feat` 的提交后 release-please.yml 运行
+- **THEN** 生成/更新 Release PR（含 `CHANGELOG.md` 增量与版本号提升）；PR 合并后新 tag `vX.Y.Z` 与 GitHub Release 自动创建，`CHANGELOG.md` 入库
+
+#### Scenario: 发布后镜像自动推送
+- **WHEN** Release PR 合并触发 release-please 创建新 tag
+- **THEN** release-please.yml dispatch docker.yml 于该 tag ref 运行，多架构镜像以对应 semver 标签发布至 GHCR（与手动推送 tag 同口径）
+
 ## 附录：核心包 API 形态
 
 ```go

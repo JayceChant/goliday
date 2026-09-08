@@ -209,3 +209,4 @@ JSON 序列化返回
 | [pkg.go.dev](https://pkg.go.dev/github.com/JayceChant/goliday) | Go 官方文档构建与导入检查，随模块版本自动更新 |
 | [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/JayceChant/goliday) | 仓库安全实践自动评分，每周定时运行，SARIF 同步至 code scanning（[工作流](../.github/workflows/scorecard.yml)） |
 | [SonarCloud](https://sonarcloud.io/summary/new_code?id=JayceChant_goliday) | 独立质量门禁：代码异味/漏洞/重复率/覆盖率，sonarcloud.yml 在 push/PR 触发 CI 扫描（覆盖率经 go test 生成，参数见根目录 sonar-project.properties，依赖 secret `SONAR_TOKEN`）（[工作流](../.github/workflows/sonarcloud.yml)） |
+| [release-please](https://github.com/JayceChant/goliday/actions/workflows/release-please.yml) | 自动化版本发布：依 Conventional Commits 维护 Release PR 与 CHANGELOG.md，Release PR 合并后自动打 tag、建 GitHub Release 并 dispatch docker.yml 发布 GHCR 镜像（[工作流](../.github/workflows/release-please.yml)） |
