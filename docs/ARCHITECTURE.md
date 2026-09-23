@@ -12,6 +12,7 @@ goliday 是一个基于 Go 1.27 的中国法定节假日服务：以**按年组�
 goliday/
 ├── go.mod                          # module github.com/JayceChant/goliday，go 1.27
 ├── go.sum
+├── Makefile                        # 构建入口：二进制与 Docker 镜像共用同一编译命令（make build-server）
 ├── buf.yaml                        # buf 工作区（模块根 proto/，lint STANDARD 零豁免）
 ├── buf.gen.yaml                    # buf generate 插件与参数（本地 protoc-gen-go/go-grpc）
 ├── daytype.go                      # DayType 位掩码枚举、Coarse/String 映射
@@ -96,6 +97,8 @@ goliday/
 
 零框架、零 ORM、零数据库：配置纯内存、启动时一次性加载，换来极小的二进制与部署面。gRPC 运行时被隔离在服务入口与生成代码中，核心库的依赖面不受影响。
 
+**构建入口统一（Makefile）**：编译命令唯一定义于 `make build-server`（`CGO_ENABLED=0` 静态、`-trimpath`、`-s -w`、`-X main.version=$(VERSION)` 注入版本号）。本地 `make build` 产出 `bin/` 二进制；Dockerfile 构建阶段执行同一目标（`OUT_DIR=/out`），`make image` 与 `docker build` 的镜像内二进制与本地制品出自同一命令、同一参数，不随时间漂移。`make check`/`make lint`/`make fix` 对应 AGENTS.md 提交门禁四件套、golangci-lint 与 go fix。
+
 ---
 
 ## 4. 数据流
@@ -110,14 +113,15 @@ LoadYear：toml 解析 → 日期严格解析（YYYY-MM-DD、真实存在）
         → Validate（稀疏约束/互斥/年份一致，见 CONFIG_FORMAT.md 第 5 节）
         → 文件名与 year 一致性校验
       ▼
-Store：map[int]*YearConfig（加载完成后只读）
+Store：map[int]*YearConfig（LoadDir 构建后不可变）
       ▼
 NewCalendar：为每年构建 yearIndex——被调整日期的稀疏终态表
              map[年内天序]DayType（off→work→festival 依序覆写，
              未命中回退周休判断，键由日期归一为「年 + 年内天序」），
              并逐日判定构建「元旦起闭区间下标的细粒度组合计数前缀和」
-             （定长 [366] 内联数组，前 days 项有效，uint8 按组合
-             计数存储，跨年累加转 int）
+             （定长 [366] 内联数组，前 days 项有效，uint16 按组合
+             计数存储——无调整年普通工作日可达 262 天，超出 uint8
+             上界；跨年累加转 int）
       ▼
 注册路由 → ListenAndServe
 ```
@@ -155,9 +159,9 @@ JSON 序列化返回
 关键设计点：
 
 - **稀疏表 + 年份强校验**：配置只存「被调整过」的日期，年文件仅 20~30 行，可人工审计；其余日期由标准库按星期推导。查询覆盖未加载年份直接报 `year_not_loaded`（含跨年区间中间整年），不再静默回退周休判断，避免「未配置」被误读为「真实周末」。
-- **按值计数前缀和**：`NewCalendar` 为每年构建定长 `[366]` 的内联前缀数组（平年仅前「年天数」项有效、尾部闲置；`prefix[i]` 为闭区间 `[元旦, 元旦+i 天]` 的 5 种合法细粒度值累计天数，五值 MECE；元素 uint8 存储——年内单一类型天数有界，跨年累加先转 int 防溢出），构建 O(年天数) 一次完成、构建后只读；统计为年内 O(1) 差分（左闭右开查询转闭区间下标，下标 -1 视为全零）、跨年 O(覆盖年数) 拆段相加，因此 `/stats` 无需限制查询跨度。
+- **按值计数前缀和**：`NewCalendar` 为每年构建定长 `[366]` 的内联前缀数组（平年仅前「年天数」项有效、尾部闲置；`prefix[i]` 为闭区间 `[元旦, 元旦+i 天]` 的 5 种合法细粒度值累计天数，五值 MECE；元素 uint16 存储——无调整年的普通工作日至多 262 天，超出 uint8 上界 255 会回绕，跨年累加先转 int 防溢出），构建 O(年天数) 一次完成、构建后只读；统计为年内 O(1) 差分（左闭右开查询转闭区间下标，下标 -1 视为全零）、跨年 O(覆盖年数) 拆段相加，因此 `/stats` 无需限制查询跨度。
 - **日期键规范化**：索引与查询统一用 `normalizeDate` 将任意时刻归一为「年 + 年内天序（0-based）」整数键，消除时刻与时区差异；整型键直接驱动稀疏终态表与前缀和数组的下标访问。
-- **并发模型**：`Store` 以 `RWMutex` 保障并发读安全；`Calendar`（含前缀和）构建后不可变，可被任意多 goroutine 并发调用。请求路径上无锁竞争、无内存分配热点。
+- **并发模型**：`Store` 由 `LoadDir` 构建后不可变（无任何修改途径），并发读取天然安全且无锁开销；`Calendar`（含前缀和）构建后同样不可变，可被任意多 goroutine 并发调用。请求路径上无锁竞争、无内存分配热点。
 - **无热加载**：配置仅在启动时加载，更新配置的流程是「改文件 → 重启 → `/healthz` 确认 years」（见 CONFIG_FORMAT.md 第 7 节）。
 
 ---

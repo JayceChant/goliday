@@ -65,14 +65,14 @@ func (s *grpcServer) GetDay(_ context.Context, req *pb.GetDayRequest) (*pb.GetDa
 	detailed := req.GetDetailed()
 	shown, err := s.cal.Query(d)
 	if err != nil {
-		return nil, grpcErr(errInternalQuery)
+		return nil, grpcErr(internalQueryErr("GetDay Query", err))
 	}
 	if !detailed {
 		shown = shown.Coarse()
 	}
 	st, err := s.cal.Stats([]time.Time{d}, detailed)
 	if err != nil {
-		return nil, grpcErr(errInternalQuery)
+		return nil, grpcErr(internalQueryErr("GetDay Stats", err))
 	}
 	return &pb.GetDayResponse{
 		Date:      d.Format(dateLayout),
@@ -119,7 +119,7 @@ func (s *grpcServer) QueryDays(_ context.Context, req *pb.QueryDaysRequest) (*pb
 	for i, d := range dates {
 		t, qerr := s.cal.Query(d)
 		if qerr != nil {
-			return nil, grpcErr(errInternalQuery)
+			return nil, grpcErr(internalQueryErr("QueryDays Query", qerr))
 		}
 		days[i] = &pb.Day{Date: d.Format(dateLayout), Type: uint32(t), TypeLabel: t.String()}
 	}
@@ -151,6 +151,7 @@ func (s *grpcServer) QueryStats(_ context.Context, req *pb.QueryStatsRequest) (*
 
 // statsProto 将统计结果转为 Stats 消息：workday/holiday 恒填充（粗粒度），
 // 五个细粒度键仅 detailed=true 时填充（五键 MECE，之和恒等于总天数）。
+// Fine 键为五个合法终态组合值（1/2/6/10/17）。
 func statsProto(st goliday.StatsResult, detailed bool) *pb.Stats {
 	p := &pb.Stats{
 		Workday: int32(st.Coarse[goliday.DayTypeWork]),
@@ -159,9 +160,9 @@ func statsProto(st goliday.StatsResult, detailed bool) *pb.Stats {
 	if detailed {
 		p.Ordinary = int32(st.Fine[goliday.DayTypeWork])
 		p.Weekend = int32(st.Fine[goliday.DayTypeRest])
-		p.Festival = int32(st.Fine[goliday.DayTypeFestival])
-		p.AdjustedRest = int32(st.Fine[goliday.DayTypeAdjustedRest])
-		p.AdjustedWork = int32(st.Fine[goliday.DayTypeAdjustedWork])
+		p.Festival = int32(st.Fine[goliday.DayTypeFestivalRest])
+		p.AdjustedRest = int32(st.Fine[goliday.DayTypeAdjustedRestDay])
+		p.AdjustedWork = int32(st.Fine[goliday.DayTypeAdjustedWorkDay])
 	}
 	return p
 }

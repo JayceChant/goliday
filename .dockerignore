@@ -1,4 +1,4 @@
-# 构建上下文最小化：仅保留 Go 源码、go.mod/go.sum 与运行时必需文件。
+# 构建上下文最小化：仅保留 Go 源码、Makefile、go.mod/go.sum 与运行时必需文件。
 .git
 .github
 .env*
@@ -9,6 +9,10 @@ Dockerfile
 .golangci.yml
 buf.yaml
 buf.gen.yaml
+
+bin
+coverage.out
+coverage.txt
 
 docs
 spec

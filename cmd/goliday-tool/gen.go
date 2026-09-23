@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -233,12 +233,6 @@ func mkDate(year int, d dateMD) (time.Time, bool) {
 	return t, true
 }
 
-// weekdayName 返回中文星期名。
-func weekdayName(t time.Time) string {
-	names := [...]string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
-	return names[int(t.Weekday())]
-}
-
 // lunarMarks 扫描全文，收集"X月X日（正月初一/除夕/八月十五/清明）"类表述，
 // 返回规范化节日名 → 月-日 映射（同一节日取首次出现）。
 func lunarMarks(text string) map[string]dateMD {
@@ -285,9 +279,8 @@ func parseAnnouncement(year int, text string) *parseResult {
 		}
 
 		// 放假条目：节日名与日期取"放假"之前的片段。
-		if idx := strings.Index(seg, "放假"); idx >= 0 {
+		if window, _, found := strings.Cut(seg, "放假"); found {
 			matched = true
-			window := seg[:idx]
 			names := canonicalNames(window)
 			dates := extractDates(window)
 			switch {
@@ -361,7 +354,7 @@ func buildDraft(year int, res *parseResult, marks map[string]dateMD) *draft {
 	seenWork := map[time.Time]bool{}
 	for _, t := range res.work {
 		if wd := t.Weekday(); wd != time.Saturday && wd != time.Sunday {
-			res.warnf("补班日期 %s（%s）不是周末，已跳过", t.Format(dateLayoutTool), weekdayName(t))
+			res.warnf("补班日期 %s（%s）不是周末，已跳过", t.Format(dateLayoutTool), goliday.WeekdayCN(t))
 			continue
 		}
 		if seenWork[t] {
@@ -386,17 +379,19 @@ func buildDraft(year int, res *parseResult, marks map[string]dateMD) *draft {
 		d.festivals = append(d.festivals, draftFestival{Name: e.name, Date: dateStr})
 	}
 
-	sort.Slice(d.off, func(i, j int) bool { return d.off[i].Before(d.off[j]) })
-	sort.Slice(d.work, func(i, j int) bool { return d.work[i].Before(d.work[j]) })
-	sort.SliceStable(d.festivals, func(i, j int) bool {
-		a, b := d.festivals[i], d.festivals[j]
+	slices.SortFunc(d.off, func(a, b time.Time) int { return a.Compare(b) })
+	slices.SortFunc(d.work, func(a, b time.Time) int { return a.Compare(b) })
+	slices.SortStableFunc(d.festivals, func(a, b draftFestival) int {
 		if (a.Date == dateTODO) != (b.Date == dateTODO) {
-			return b.Date == dateTODO // TODO 排在末尾
+			if b.Date == dateTODO { // TODO 排在末尾
+				return -1
+			}
+			return 1
 		}
 		if a.Date != b.Date {
-			return a.Date < b.Date
+			return strings.Compare(a.Date, b.Date)
 		}
-		return a.Name < b.Name
+		return strings.Compare(a.Name, b.Name)
 	})
 	return d
 }

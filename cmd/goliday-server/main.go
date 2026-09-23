@@ -21,11 +21,23 @@ import (
 	"github.com/JayceChant/goliday"
 )
 
-// version 服务版本号。
-const version = "0.1.0"
+// version 服务版本号：缺省 dev（本地/go install 构建），正式版本经构建期
+// 注入——docker.yml 的 tag 构建以 -ldflags "-X main.version=<semver>"
+// 覆盖（release-please 的 simple 策略只维护 CHANGELOG/tag，不改代码常量，
+// 硬编码会随每次发版漂移）。
+var version = "dev"
 
 // shutdownTimeout 优雅关闭时等待存量请求完成的超时时间。
 const shutdownTimeout = 5 * time.Second
+
+// HTTP 服务端超时（README 已声明服务应置于反代之后；直连暴露时这些
+// 超时可阻断慢请求对连接的长期占用，如 slowloris 式读挂起）。
+const (
+	// readHeaderTimeout 读请求头超时：防止慢速发送头部的连接占坑。
+	readHeaderTimeout = 10 * time.Second
+	// idleTimeout keep-alive 空闲超时：回收长期无请求的连接。
+	idleTimeout = 120 * time.Second
+)
 
 func main() {
 	addr := flag.String("addr", ":8080", "HTTP 监听地址")
@@ -52,8 +64,10 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:    *addr,
-		Handler: newHandler(store, calendar),
+		Addr:              *addr,
+		Handler:           newHandler(store, calendar),
+		ReadHeaderTimeout: readHeaderTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	// gRPC 与 HTTP 同进程：-grpc-addr 为空字符串时禁用。

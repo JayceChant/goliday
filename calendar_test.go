@@ -176,22 +176,14 @@ func TestCalendarQueryRange(t *testing.T) {
 	}
 }
 
-// fineKeyOf 将细粒度值映射为 Fine 计数键（单 bit 键 {1,2,4,8,16}）：
-// Work(1) 与 Rest(2) 以自身为键，三个组合值折叠为其调整位键。
+// fineKeyOf 将细粒度值映射为 Fine 计数键：键为五个合法终态组合值
+// （1/2/6/10/17），组合值即键本身，普通工作日/周休以基本位单值为键。
 func fineKeyOf(dt goliday.DayType) goliday.DayType {
-	switch dt {
-	case goliday.DayTypeFestivalRest:
-		return goliday.DayTypeFestival
-	case goliday.DayTypeAdjustedRestDay:
-		return goliday.DayTypeAdjustedRest
-	case goliday.DayTypeAdjustedWorkDay:
-		return goliday.DayTypeAdjustedWork
-	}
-	return dt // Work(1)→ordinary 键、Rest(2)→weekend 键
+	return dt // Work(1)/Rest(2) 与三个组合值 6/10/17 本身即 Fine 键
 }
 
 // bruteForceStats 逐日 Query 暴力统计，作为前缀和路径的一致性基准。
-// 细粒度为按值 MECE 计数（键为五个单 bit 值 {1,2,4,8,16}），
+// 细粒度为按值 MECE 计数（键为五个终态组合值 {1,2,6,10,17}），
 // 粗粒度为基本位投影。
 func bruteForceStats(t *testing.T, c *goliday.Calendar, start, end time.Time, detailed bool) goliday.StatsResult {
 	t.Helper()
@@ -225,8 +217,8 @@ func wantSameStats(t *testing.T, name string, got, want goliday.StatsResult) {
 	}
 	if len(want.Fine) > 0 {
 		fineKeys := []goliday.DayType{
-			goliday.DayTypeWork, goliday.DayTypeRest, goliday.DayTypeFestival,
-			goliday.DayTypeAdjustedRest, goliday.DayTypeAdjustedWork,
+			goliday.DayTypeWork, goliday.DayTypeRest, goliday.DayTypeFestivalRest,
+			goliday.DayTypeAdjustedRestDay, goliday.DayTypeAdjustedWorkDay,
 		}
 		for _, k := range fineKeys {
 			if got.Fine[k] != want.Fine[k] {
@@ -257,11 +249,11 @@ func TestCalendarStats(t *testing.T) {
 		t.Fatalf("Fine = %v，期望 5 键（MECE）", r.Fine)
 	}
 	wantFine := map[goliday.DayType]int{
-		goliday.DayTypeFestival:     1,
-		goliday.DayTypeAdjustedWork: 1,
-		goliday.DayTypeWork:         1,
-		goliday.DayTypeRest:         0,
-		goliday.DayTypeAdjustedRest: 0,
+		goliday.DayTypeFestivalRest:    1,
+		goliday.DayTypeAdjustedWorkDay: 1,
+		goliday.DayTypeWork:            1,
+		goliday.DayTypeRest:            0,
+		goliday.DayTypeAdjustedRestDay: 0,
 	}
 	sum := 0
 	for k, v := range r.Fine {
@@ -290,6 +282,115 @@ func TestCalendarStats(t *testing.T) {
 
 	if r, err := c.Stats(nil, true); err != nil || r.Total != 0 || len(r.Coarse) != 0 || len(r.Fine) != 0 {
 		t.Errorf("空输入 Stats = %+v, %v，期望全零且无错", r, err)
+	}
+}
+
+// TestStatsRangeNoAdjustmentOverflow 无调整年（空 off/work、无节日，校验
+// 允许的合法配置）的普通工作日可达 262 天（闰年且元旦为周一，2024 即是），
+// 超出 uint8 上界 255：前缀和元素曾以 uint8 存储，累计到 256 即回绕，
+// 导致五键之和 ≠ total_days（MECE 不变量破坏）。本回归固化 uint16 存储
+// 的正确性。
+func TestStatsRangeNoAdjustmentOverflow(t *testing.T) {
+	dir := t.TempDir()
+	// 2024：闰年 366 天、元旦为周一（周末恰 104 天），无任何调整时
+	// ordinary = 262 > 255。
+	writeYearFile(t, dir, "2024.toml", "year = 2024\n\n[adjust]\noff = []\nwork = []\n")
+	c := goliday.NewCalendar(mustLoadDir(t, dir))
+
+	r, err := c.StatsRange(date(t, "2024-01-01"), date(t, "2025-01-01"), true)
+	if err != nil {
+		t.Fatalf("StatsRange 意外报错: %v", err)
+	}
+	if r.Total != 366 {
+		t.Errorf("Total = %d，期望 366（闰年全年）", r.Total)
+	}
+	if got := r.Fine[goliday.DayTypeWork]; got != 262 {
+		t.Errorf("Fine[ordinary] = %d，期望 262（uint8 回绕会得到 6）", got)
+	}
+	if got := r.Fine[goliday.DayTypeRest]; got != 104 {
+		t.Errorf("Fine[weekend] = %d，期望 104", got)
+	}
+	sum := 0
+	for _, v := range r.Fine {
+		sum += v
+	}
+	if sum != r.Total {
+		t.Errorf("五键之和 = %d，期望 == Total = %d（MECE）", sum, r.Total)
+	}
+}
+
+// TestStatsDefensiveNormalization Stats 对输入做内部排序去重：乱序、重复
+// 输入与排序去重输入结果一致；入参切片不被修改；首个日期为 0 年时不再
+// 跳过年份校验（原 prev := 0 哨兵会漏判导致空指针 panic，应返回错误）。
+func TestStatsDefensiveNormalization(t *testing.T) {
+	c := newTestCalendar(t)
+
+	sorted := []time.Time{date(t, "2025-12-31"), date(t, "2026-01-01"), date(t, "2026-02-17")}
+	messy := []time.Time{
+		date(t, "2026-02-17"), date(t, "2025-12-31"), date(t, "2026-01-01"),
+		date(t, "2026-02-17"), date(t, "2025-12-31"),
+	}
+	want, err := c.Stats(sorted, true)
+	if err != nil {
+		t.Fatalf("Stats（有序输入）意外报错: %v", err)
+	}
+	backup := slicesClone(messy)
+	got, err := c.Stats(messy, true)
+	if err != nil {
+		t.Fatalf("Stats（乱序重复输入）意外报错: %v", err)
+	}
+	if got.Total != want.Total || len(got.Fine) != len(want.Fine) {
+		t.Fatalf("乱序重复输入 Total = %d，期望与去重输入一致 = %d", got.Total, want.Total)
+	}
+	for k, v := range want.Fine {
+		if got.Fine[k] != v {
+			t.Errorf("Fine[%d（%s）] = %d，期望 %d（乱序重复输入应与去重输入一致）", k, k, got.Fine[k], v)
+		}
+	}
+	for i := range messy {
+		if !messy[i].Equal(backup[i]) {
+			t.Errorf("入参切片被修改：messy[%d] = %v，期望保持 %v", i, messy[i], backup[i])
+		}
+	}
+
+	// 年份 0 哨兵回归：首日期年份为 0 时同样校验加载状态，返回错误而非 panic。
+	if _, err := c.Stats([]time.Time{time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC)}, true); !errors.Is(err, goliday.ErrYearNotLoaded) {
+		t.Errorf("Stats（首日期年份 0）错误 = %v，期望包装 ErrYearNotLoaded（不应 panic）", err)
+	}
+}
+
+// slicesClone 测试内用的切片复制（保持入参不被修改的断言可对照）。
+func slicesClone(ds []time.Time) []time.Time {
+	out := make([]time.Time, len(ds))
+	copy(out, ds)
+	return out
+}
+
+// TestCoveredYears 导出的区间覆盖年份计算：空区间为空集、同年、跨年
+// 含中间整年、终点恰为次年元旦时折叠进上一年（与库内校验同一实现）。
+func TestCoveredYears(t *testing.T) {
+	tests := []struct {
+		name       string
+		start, end string
+		want       []int
+	}{
+		{"空区间 end==start", "2026-05-01", "2026-05-01", nil},
+		{"倒置区间 end<start", "2026-05-02", "2026-05-01", nil},
+		{"同年", "2026-02-01", "2026-02-28", []int{2026}},
+		{"跨年", "2025-11-01", "2026-03-01", []int{2025, 2026}},
+		{"终点为次年元旦折叠", "2025-11-01", "2026-01-01", []int{2025}},
+		{"起点为元旦", "2026-01-01", "2027-01-01", []int{2026}},
+	}
+	for _, tt := range tests {
+		got := goliday.CoveredYears(date(t, tt.start), date(t, tt.end))
+		if len(got) != len(tt.want) {
+			t.Fatalf("%s: CoveredYears = %v，期望 %v", tt.name, got, tt.want)
+		}
+		for i, y := range tt.want {
+			if got[i] != y {
+				t.Errorf("%s: CoveredYears[%d] = %d，期望 %d", tt.name, i, got[i], y)
+			}
+		}
 	}
 }
 

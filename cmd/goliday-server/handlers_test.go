@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JayceChant/goliday"
 )
@@ -255,6 +256,16 @@ func TestHealthzAndRouting(t *testing.T) {
 		t.Fatalf("healthz 状态码 = %d, want 200", code)
 	}
 	wantStr(t, "status", body["status"], "ok")
+	// 版本与加载时间：版本为构建期注入（测试构建为 dev），加载时间为
+	// RFC3339 且不晚于当前时刻（零值仅为未走 LoadDir 的构造路径）。
+	wantStr(t, "version", body["version"], version)
+	loadedAt, ok := body["loaded_at"].(string)
+	if !ok {
+		t.Fatalf("healthz 响应缺少 loaded_at 字符串: %#v", body["loaded_at"])
+	}
+	if ts, err := time.Parse(time.RFC3339, loadedAt); err != nil || ts.IsZero() {
+		t.Errorf("loaded_at = %q，期望非零 RFC3339 时间（err=%v）", loadedAt, err)
+	}
 	years, ok := body["years"].([]any)
 	if !ok {
 		t.Fatalf("healthz 响应缺少 years 数组: %#v", body["years"])

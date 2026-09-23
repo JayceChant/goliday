@@ -96,14 +96,15 @@ Full API reference via the pkg.go.dev badge at the top.
 Multi-stage build: compiled as a static binary (`CGO_ENABLED=0`), the runtime image is `gcr.io/distroless/static-debian12:nonroot` (no shell, no package manager) and contains only the server binary. Year configs are **not** baked into the image — mount your own config directory read-only at runtime (generate the target year via the [annual config update process](#annual-config-update)).
 
 ```bash
-# Build locally
+# Build locally (or: make image VERSION=0.2.0 — the Dockerfile builds
+# via the same Makefile target as the plain binaries)
 docker build -t goliday .
 
 # Run: HTTP :8080, gRPC :50051; mount the config directory read-only
 docker run -p 8080:8080 -v $PWD/configs:/data:ro goliday -config-dir /data
 
 curl "http://localhost:8080/healthz"
-# {"status":"ok","years":[2025,2026]}
+# {"status":"ok","version":"0.1.1","years":[2025,2026],"loaded_at":"2026-11-20T02:15:04Z"}
 ```
 
 Images are published to GHCR by [GitHub Actions](.github/workflows/docker.yml) on every `v*` tag push (multi-arch `linux/amd64` + `linux/arm64`; pushes to the default branch, PRs and manual runs build for verification only, without publishing). Tags are produced automatically by [release-please](.github/workflows/release-please.yml): commits follow Conventional Commits (already adopted in this repo), and merging a release PR creates the `v*` tag, GitHub Release and CHANGELOG entry, then publishes the image — no manual tag push needed:
@@ -118,7 +119,7 @@ docker pull ghcr.io/jaycechant/goliday:latest
 |---|---|---|
 | HTTP | `GET /api/v1/days` | Single-day / range (half-open) / discrete / mixed-union queries with per-day details; range span ≤366 days |
 | HTTP | `GET /api/v1/stats` | Same statistics as `/days`, without details; no span limit |
-| HTTP | `GET /healthz` | Health check, returns loaded years |
+| HTTP | `GET /healthz` | Health check: status, version, loaded years, config load time |
 | gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`, one-to-one with HTTP; standard gRPC health checking also registered. Proto definition at [proto/goliday/v1/goliday.proto](proto/goliday/v1/goliday.proto) — non-Go clients can generate their own stubs from it |
 
 Day-type bitmask (`type_label` is exactly `DayType.String()`: legal values look up a static label table, combo labels join two segments with `|`, illegal values yield `invalid`; `|` is all-of semantics across all values, coarse granularity is the base-bit projection):
@@ -163,7 +164,16 @@ Dependencies are tiered per package: the root package uses only `BurntSushi/toml
 ## Development
 
 ```bash
+# Full gate (build/vet/test/gofmt), also what CI runs
 go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .
+# or: make check    (same gate; make lint / make fix for golangci-lint / go fix)
+
+# Build binaries into bin/ (VERSION injected via ldflags; defaults to dev)
+make build VERSION=0.2.0
+
+# Build the container image — the Dockerfile calls the same Makefile target,
+# so binaries and image always come from one build recipe
+make image VERSION=0.2.0
 ```
 
 Test data: `testdata/2025.toml` (real official plan), `testdata/2026.toml` (hypothetical sample), `testdata/invalid/` (invalid samples).

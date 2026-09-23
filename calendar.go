@@ -4,6 +4,7 @@ package goliday
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -50,10 +51,12 @@ func comboIndex(t DayType) int {
 }
 
 // comboCounts 5 种合法细粒度值各自的年内累计天数（按值计数，五值 MECE）。
-// 粗粒度计数可由其线性组合导出。单一类型年内天数有界（普通工作日至多
-// 248 天，其余类型更少），uint8 足以存储；跨年/多段累加不得直接在本类型
-// 上进行（会溢出），须先转入 comboTotals。
-type comboCounts [len(comboValues)]uint8
+// 粗粒度计数可由其线性组合导出。单一类型年内天数有界：无调整年（空 off/
+// work、无节日，校验允许）的普通工作日至多 262 天（闰年且元旦为周一~周四，
+// 366−104 周末），超出 uint8 上界 255——uint8 存储会在累计到 256 时回绕出
+// 错误统计，故用 uint16；跨年/多段累加仍不得直接在本类型上进行，须先转入
+// comboTotals。
+type comboCounts [len(comboValues)]uint16
 
 // diff 返回两组年内前缀计数的差（b-a，前缀和单调不减于被减数，无下溢）。
 func diffPrefix(b, a comboCounts) comboCounts {
@@ -64,8 +67,8 @@ func diffPrefix(b, a comboCounts) comboCounts {
 	return out
 }
 
-// comboTotals 跨年统计的宽类型累加器：各段年内差分（comboCounts，uint8）
-// 显式转入 int 后再相加，避免 uint8 多段直接累加溢出。
+// comboTotals 跨年统计的宽类型累加器：各段年内差分（comboCounts，uint16）
+// 显式转入 int 后再相加，避免 uint16 多段直接累加溢出。
 type comboTotals [len(comboValues)]int
 
 // add 累加一段年内差分计数（逐元素转 int）。
@@ -77,6 +80,11 @@ func (c *comboTotals) add(o comboCounts) {
 
 // result 将跨年累计计数导出为统计结果：细粒度五键 MECE（之和恒等于
 // total），粗粒度按基本位投影归并。detailed=false 时 Fine 为 nil。
+//
+// Fine 的键为五个合法终态组合值（validFineValues：1/2/6/10/17，即
+// ordinary/weekend/festival/adjusted_rest/adjusted_work 各键），而非
+// 4/8/16 裸调整位——裸调整位非合法 DayType 取值，作键打印时显示
+// "invalid"，调用方也难以直接索引。
 func (c comboTotals) result(total int, detailed bool) StatsResult {
 	r := StatsResult{
 		Total: total,
@@ -87,11 +95,11 @@ func (c comboTotals) result(total int, detailed bool) StatsResult {
 	}
 	if detailed {
 		r.Fine = map[DayType]int{
-			DayTypeWork:         c[comboOrdinary],
-			DayTypeRest:         c[comboWeekend],
-			DayTypeFestival:     c[comboFestival],
-			DayTypeAdjustedRest: c[comboAdjusted],
-			DayTypeAdjustedWork: c[comboCompensate],
+			DayTypeWork:            c[comboOrdinary],
+			DayTypeRest:            c[comboWeekend],
+			DayTypeFestivalRest:    c[comboFestival],
+			DayTypeAdjustedRestDay: c[comboAdjusted],
+			DayTypeAdjustedWorkDay: c[comboCompensate],
 		}
 	}
 	return r
@@ -247,6 +255,18 @@ func coveredYears(sYear, eYear, eDay int) []int {
 	return years
 }
 
+// CoveredYears 返回左闭右开时间区间 [start, end) 覆盖的全部年份
+// （升序，含仅被部分覆盖的中间整年）。空区间（end 不晚于 start）
+// 返回 nil。服务层与库内校验共用同一实现，避免两处规则漂移。
+func CoveredYears(start, end time.Time) []int {
+	sy, sd := normalizeDate(start)
+	ey, ed := normalizeDate(end)
+	if ey < sy || (ey == sy && ed <= sd) {
+		return nil
+	}
+	return coveredYears(sy, ey, ed)
+}
+
 // Query 返回 date 的细粒度日期类型。任意时刻均先按其所在日规范化再查询。
 //
 // 判断优先级：节日当天 → FestivalRest（必为放假日）；work 命中 →
@@ -325,10 +345,13 @@ func (c *Calendar) QueryRange(start, end time.Time) ([]Dated, error) {
 
 // StatsResult 统计结果：
 //
-//	Total  覆盖天数（区间天数或 len(dates)，不做去重）；
+//	Total  覆盖天数（区间天数或去重后的列表长度）；
 //	Coarse 粗粒度计数，键为 DayTypeWork / DayTypeRest；
 //	Fine   细粒度五键 MECE 计数（普通工作日/普通周休/节日放假日/
-//	       调休放假日/补班日），各键之和恒等于 Total；detailed=false 时为 nil。
+//	       调休放假日/补班日），键为五个合法终态组合值
+//	       （DayTypeWork/DayTypeRest/DayTypeFestivalRest/
+//	       DayTypeAdjustedRestDay/DayTypeAdjustedWorkDay），
+//	       各键之和恒等于 Total；detailed=false 时为 nil。
 type StatsResult struct {
 	Total  int
 	Coarse map[DayType]int
@@ -380,8 +403,8 @@ func (c *Calendar) StatsRange(start, end time.Time, detailed bool) (StatsResult,
 	return acc.result(total, detailed), nil
 }
 
-// Stats 统计日期集合。dates 视为已去重升序的日期集合（去重与排序由
-// 调用方负责），逐元素计数不去重。
+// Stats 统计日期集合。dates 经内部排序去重后逐元素计数（不去重输入时
+// Total 为排序去重后的元素数）。
 //
 // 实现上逐日取前缀和的单日差分（prefix[day] - prefix[day-1]），复用与
 // StatsRange 相同的前缀和数据。任一日期所在年份未加载时返回包装
@@ -391,16 +414,23 @@ func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error) 
 		return StatsResult{Coarse: map[DayType]int{}}, nil
 	}
 
-	// 年份校验：dates 已升序，年份按序首见时收集。
+	// 防御式归一：排序去重副本，输入乱序/重复亦不致统计失真或哨兵误判。
+	ds := slices.Clone(dates)
+	slices.SortFunc(ds, func(a, b time.Time) int { return a.Compare(b) })
+	ds = slices.CompactFunc(ds, func(a, b time.Time) bool { return a.Equal(b) })
+
+	// 年份校验：ds 已升序去重，年份按序首见时收集。
 	var missing []int
 	prev := 0
-	for _, d := range dates {
+	first := true
+	for _, d := range ds {
 		y, _ := normalizeDate(d)
-		if y != prev {
+		if y != prev || first {
 			if !c.HasYear(y) {
 				missing = append(missing, y)
 			}
 			prev = y
+			first = false
 		}
 	}
 	if missing != nil {
@@ -408,10 +438,10 @@ func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error) 
 	}
 
 	var acc comboTotals
-	for _, d := range dates {
+	for _, d := range ds {
 		y, day := normalizeDate(d)
 		idx := c.years[y]
 		acc.add(diffPrefix(idx.cumulationAt(day), idx.cumulationAt(day-1)))
 	}
-	return acc.result(len(dates), detailed), nil
+	return acc.result(len(ds), detailed), nil
 }

@@ -128,6 +128,13 @@ var (
 	errInternalQuery = &apiError{http.StatusInternalServerError, "internal_error", "服务器内部错误"}
 )
 
+// internalQueryErr 查询意外失败的兜底：记录底层错误（供排查，调用方仅见
+// 统一 500 文案）后返回 errInternalQuery。HTTP 与 gRPC 共用。
+func internalQueryErr(op string, err error) *apiError {
+	log.Printf("goliday-server: 查询意外失败（%s）: %v", op, err)
+	return errInternalQuery
+}
+
 // yearNotLoadedError 构造未加载年份错误：message 列出升序去重的全部
 // 未加载年份，HTTP 400 ↔ gRPC InvalidArgument 同源。
 func yearNotLoadedError(years []int) *apiError {
@@ -180,12 +187,21 @@ func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
 
 // ---- 路由处理器 ----
 
-// handleHealthz 返回服务健康状态与已加载年份。
+// handleHealthz 返回服务健康状态：状态、运行版本（构建期注入，见
+// main.go version）、已加载年份与配置加载完成时间（运维确认「新配置
+// 已生效」的依据）。
 func (s *server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
-		Status string `json:"status"`
-		Years  []int  `json:"years"`
-	}{Status: "ok", Years: s.store.Years()})
+		Status   string `json:"status"`
+		Version  string `json:"version"`
+		Years    []int  `json:"years"`
+		LoadedAt string `json:"loaded_at"`
+	}{
+		Status:   "ok",
+		Version:  version,
+		Years:    s.store.Years(),
+		LoadedAt: s.store.LoadedAt().UTC().Format(time.RFC3339),
+	})
 }
 
 // handleDays 返回日期类型明细与统计。
@@ -232,14 +248,15 @@ type daysResponse struct {
 
 // fillStats 将统计结果填充为响应的 stats 字段：粗粒度恒为 workday/holiday
 // 两键；细粒度为固定 5 键 MECE 计数（即使为 0 也输出，之和恒等于 total_days）。
+// Fine 键为五个合法终态组合值（1/2/6/10/17）。
 func fillStats(resp *daysResponse, st goliday.StatsResult, detailed bool) {
 	if detailed {
 		resp.Stats = map[string]int{
 			"ordinary":      st.Fine[goliday.DayTypeWork],
 			"weekend":       st.Fine[goliday.DayTypeRest],
-			"festival":      st.Fine[goliday.DayTypeFestival],
-			"adjusted_rest": st.Fine[goliday.DayTypeAdjustedRest],
-			"adjusted_work": st.Fine[goliday.DayTypeAdjustedWork],
+			"festival":      st.Fine[goliday.DayTypeFestivalRest],
+			"adjusted_rest": st.Fine[goliday.DayTypeAdjustedRestDay],
+			"adjusted_work": st.Fine[goliday.DayTypeAdjustedWorkDay],
 		}
 	} else {
 		resp.Stats = map[string]int{
@@ -289,7 +306,7 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 		}
 		t, err := s.calendar.Query(d)
 		if err != nil {
-			return nil, errInternalQuery
+			return nil, internalQueryErr("单日 Query", err)
 		}
 		resp.Date = d.Format(dateLayout)
 		shown := t
@@ -301,7 +318,7 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 
 		st, err := s.calendar.Stats([]time.Time{d}, detailed)
 		if err != nil {
-			return nil, errInternalQuery
+			return nil, internalQueryErr("单日 Stats", err)
 		}
 		fillStats(resp, st, detailed)
 		resp.TotalDays = st.Total
@@ -330,7 +347,7 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 		for i, d := range dates {
 			t, err := s.calendar.Query(d)
 			if err != nil {
-				return nil, errInternalQuery
+				return nil, internalQueryErr("多日明细 Query", err)
 			}
 			resp.Days[i] = dayEntry{Date: d.Format(dateLayout), Type: int(t), TypeLabel: t.String()}
 		}
@@ -363,12 +380,11 @@ type multiQuery struct {
 
 // coveredYears 返回该查询覆盖的全部年份（升序去重）：区间 [startT, endT)
 // 覆盖的整年（含中间整年；空区间为空集）并上列表各日期年份。
+// 区间部分复用根包 goliday.CoveredYears（与库内校验同一实现）。
 func (mq *multiQuery) coveredYears() []int {
-	var years []int
-	if mq.hasRange && mq.endT.After(mq.startT) {
-		for y := mq.startT.Year(); y <= mq.endT.AddDate(0, 0, -1).Year(); y++ {
-			years = append(years, y)
-		}
+	years := goliday.CoveredYears(mq.startT, mq.endT)
+	if !mq.hasRange {
+		years = nil
 	}
 	for _, d := range mq.listDates {
 		years = append(years, d.Year())
@@ -458,7 +474,7 @@ func statsFor(cal *goliday.Calendar, mq *multiQuery, detailed bool) (goliday.Sta
 	if mq.hasRange {
 		r, err := cal.StatsRange(mq.startT, mq.endT, detailed)
 		if err != nil {
-			return goliday.StatsResult{}, errInternalQuery
+			return goliday.StatsResult{}, internalQueryErr("区间 StatsRange", err)
 		}
 		st = r
 	}
@@ -470,7 +486,7 @@ func statsFor(cal *goliday.Calendar, mq *multiQuery, detailed bool) (goliday.Sta
 		if len(dates) > 0 {
 			r, err := cal.Stats(dates, detailed)
 			if err != nil {
-				return goliday.StatsResult{}, errInternalQuery
+				return goliday.StatsResult{}, internalQueryErr("列表 Stats", err)
 			}
 			st = addStats(st, r)
 		}
@@ -511,14 +527,13 @@ func filterOutsideRange(dates []time.Time, start, end time.Time) []time.Time {
 
 // ---- 参数解析 helper ----
 
-// parseDate 严格解析 YYYY-MM-DD。time.Parse 对不存在的日期（如 2026-02-30）
-// 会进位而非报错，故须回格式化比对兜底。
+// parseDate 严格解析 YYYY-MM-DD，失败映射为 invalid_date API 错误；
+// 解析逻辑复用根包导出的 goliday.ParseDate（与服务层配置加载同口径）。
 func parseDate(s string) (time.Time, *apiError) {
-	t, err := time.Parse(dateLayout, s)
-	if err != nil || t.Format(dateLayout) != s {
+	t, err := goliday.ParseDate(s)
+	if err != nil {
 		return time.Time{}, &apiError{
-			http.StatusBadRequest, "invalid_date",
-			fmt.Sprintf("非法日期 %q：须为 YYYY-MM-DD 格式的有效日期", s),
+			http.StatusBadRequest, "invalid_date", err.Error(),
 		}
 	}
 	return t, nil

@@ -17,9 +17,9 @@ go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 | `-addr` | `":8080"` | HTTP 监听地址 |
 | `-grpc-addr` | `":50051"` | gRPC 监听地址；空字符串 `""` 禁用 gRPC |
 | `-config-dir` | `"./configs"` | 年度配置目录（`<year>.toml`，格式见 [CONFIG_FORMAT.md](./CONFIG_FORMAT.md)） |
-| `-v` | — | 输出 `goliday-server version 0.1.0` 后退出 |
+| `-v` | — | 输出 `goliday-server version <版本号>` 后退出（发布镜像经构建注入 tag 版本号；本地 / `go install` 构建为 `dev`） |
 
-启动时全量加载配置目录；任一文件解析或校验失败则启动失败并打印带文件路径的错误。加载成功后输出已加载年份列表日志。收到 SIGINT/SIGTERM 后依次优雅关闭 HTTP 与 gRPC。
+启动时全量加载配置目录；任一文件解析或校验失败则启动失败并打印带文件路径的错误。加载成功后由服务入口输出已加载年份列表日志（核心库本身不写日志）。收到 SIGINT/SIGTERM 后依次优雅关闭 HTTP 与 gRPC。HTTP 服务端配置 `ReadHeaderTimeout` 10s 与 `IdleTimeout` 120s（直连暴露时阻断慢连接占坑；服务仍建议置于反代之后）。
 
 路由一览（Go 1.22+ `ServeMux`「方法 + 路径」模式）：
 
@@ -27,7 +27,7 @@ go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 |---|---|---|
 | GET | `/api/v1/days` | 日期类型查询，含逐日明细 `days` |
 | GET | `/api/v1/stats` | 与 `/days` 统计口径一致，不含 `days` 明细 |
-| GET | `/healthz` | 健康检查，返回已加载年份 |
+| GET | `/healthz` | 健康检查，返回状态、版本、已加载年份与配置加载时间 |
 
 所有日期参数格式均为 `YYYY-MM-DD`。下文示例使用 2026 年假设配置数据（非官方方案）。
 
@@ -216,10 +216,15 @@ curl "http://localhost:8080/healthz"
 ```
 
 ```json
-{"status": "ok", "years": [2025, 2026]}
+{
+  "status": "ok",
+  "version": "0.1.1",
+  "years": [2025, 2026],
+  "loaded_at": "2026-11-20T02:15:04Z"
+}
 ```
 
-`years` 为已加载的年份（升序），可用于部署后确认新年度配置已被加载。
+`years` 为已加载的年份（升序）；`version` 为运行版本（构建期注入，本地/`go install` 构建为 `dev`）；`loaded_at` 为配置加载完成时刻（RFC3339，UTC），可用于部署后确认新年度配置已被加载、以及「新配置是否已随重启生效」。
 
 ---
 

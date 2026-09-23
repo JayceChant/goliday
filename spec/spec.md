@@ -144,7 +144,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 #### Scenario: 启动加载
 - **WHEN** 服务以 `-config-dir /etc/goliday` 启动且目录含 `2025.toml`、`2026.toml`、`README.md` 及子目录
-- **THEN** 仅加载两个年份文件，其余忽略（不报错），日志输出已加载年份
+- **THEN** 仅加载两个年份文件，其余忽略（不报错）；核心包不写日志（日志由服务入口基于 `Years()` 输出，已加载年份另可经 `/healthz` 查询）
 
 #### Scenario: 工作日调休（配置优先）
 - **WHEN** `2026.toml` 的 `off` 含 `2026-02-20`（周五）
@@ -179,6 +179,10 @@ work = [ "2026-01-24", "2026-02-28" ]
 核心包 SHALL 提供 `Query(date time.Time) (DayType, error)`（细粒度）与 `QueryCoarse(date time.Time) (DayType, error)`；`IsWork`/`IsRest` 同步返回 `error`。`date` 年份未加载时返回包装 `ErrYearNotLoaded` 的错误（`errors.Is` 可判别，message 含年份），不回退周休判断（见「年份加载强校验」）。
 
 **决策依据**：消除「未配置」与「真实周末」的静默混淆，故由早期的"无配置年回退周休"改为强校验报错。
+
+核心包 SHALL 提供 `Stats(dates []time.Time, detailed bool) (StatsResult, error)` 统计任意日期集合：输入经内部**排序去重副本**归一（调用方无须预处理，入参切片不被修改），`Total` 为归一后的元素数；任一日期所在年份未加载时返回包装 `ErrYearNotLoaded` 的错误（未加载年份升序去重列出），空输入返回全零结果。实现为逐日单日差分，复用前缀和数据。
+
+**决策依据**：早期版本要求调用方自行排序去重，并以 `prev := 0` 哨兵检测年份首见——首个日期恰为 0 年时哨兵失效，跳过加载校验导致空指针 panic，且该前置契约对调用方过脆；改为内部归一后 API 防御式容错（O(n log n) 归一成本无感知，服务层输入本已有序，行为不变）。
 
 服务层 SHALL 暴露 HTTP 单日查询：
 
@@ -250,13 +254,15 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 命令行参数（`flag`）：`-addr`（默认 `":8080"`）、`-grpc-addr`（默认 `":50051"`，空字符串禁用 gRPC）、`-config-dir`（默认 `"./configs"`）、`-v`（输出版本后退出）。
 
-路由：`GET /api/v1/days`、`GET /api/v1/stats`、`GET /healthz`；中间件（函数装饰器实现）：请求日志、Panic 恢复。
+路由：`GET /api/v1/days`、`GET /api/v1/stats`、`GET /healthz`；中间件（函数装饰器实现）：请求日志、Panic 恢复。HTTP 服务端 SHALL 配置 `ReadHeaderTimeout`（10s，防慢速头部连接长期占用）与 `IdleTimeout`（120s，回收 keep-alive 空闲连接）；不设读写整体超时（纯内存查询无长请求，避免干扰正常客户端）。
 
 错误响应统一格式 `{"error":{"code":"...","message":"..."}}`；日期解析统一 `2006-01-02`。错误码：`missing_query`、`invalid_date`、`invalid_range`、`invalid_detailed`、`year_not_loaded`、`not_found`（404）、`method_not_allowed`（405）。
 
+`GET /healthz` SHALL 返回 200 与健康信息：`status`（恒 `"ok"`）、`version`（构建期注入的运行版本，本地/`go install` 构建为 `dev`）、`years`（已加载年份，升序）、`loaded_at`（配置加载完成时刻，RFC3339 UTC；运维确认「新配置已随重启生效」的依据）。
+
 #### Scenario: 健康检查
 - **WHEN** `GET /healthz`
-- **THEN** 返回 200 与 `{"status":"ok","years":[2025,2026]}`（已加载年份）
+- **THEN** 返回 200 与 `{"status":"ok","version":"<版本>","years":[2025,2026],"loaded_at":"<RFC3339>"}`
 
 #### Scenario: 未知路径/方法
 - **WHEN** 访问未注册路径，或对 `/api/v1/days` 使用 POST
@@ -285,25 +291,33 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 ### Requirement: 容器镜像与发布（GitHub 环境）
 
-仓库根 SHALL 提供 `Dockerfile`（多阶段构建）与 `.dockerignore`，GitHub Actions SHALL 提供 `.github/workflows/docker.yml` 自动构建并发布镜像至 GHCR（`ghcr.io/<owner>/goliday`）。
+仓库根 SHALL 提供 `Makefile`（构建入口）、`Dockerfile`（多阶段构建，构建阶段调用 Makefile）与 `.dockerignore`，GitHub Actions SHALL 提供 `.github/workflows/docker.yml` 自动构建并发布镜像至 GHCR（`ghcr.io/<owner>/goliday`）。
+
+Makefile 约定（二进制与镜像**共用同一构建逻辑**，编译命令唯一定义）：
+- 目标：`build`（= `build-server` + `build-tool`，产物到 `bin/`，Windows 交叉编译自动加 `.exe` 后缀）、`download-deps`（`go mod download`，供 Dockerfile 依赖层）、`image`（`docker build --build-arg VERSION=<VERSION>`，缺省 tag `goliday:$(VERSION)`）、`check`（AGENTS.md 提交门禁四件套 build/vet/test/gofmt）、`lint`、`fix`、`clean`；
+- 变量：`VERSION`（缺省 `dev`，经 `-ldflags "-s -w -X main.version=$(VERSION)"` 注入）、`OUT_DIR`（缺省 `bin`）；`GOOS`/`GOARCH` 经环境变量透传供交叉编译；
+- 编译参数唯一定义于 `build-server`（`CGO_ENABLED=0` 静态、`-trimpath`、`-s -w`、版本注入），Dockerfile 与本地 `make build` 调用同一目标，产物出自同一命令。
 
 Dockerfile 约定：
-- 构建阶段：`golang:1.27`（`AS build`），仅复制 `go.mod`/`go.sum` 后 `go mod download`（层缓存友好），再复制源码；`CGO_ENABLED=0` 静态编译 `cmd/goliday-server`（distroless 无动态 loader，必须静态链接）。
+- 构建阶段：`golang:1.27`（`AS build`，基于 Debian 须先 `apt-get install make`），仅复制 `Makefile`/`go.mod`/`go.sum` 后 `make download-deps`（层缓存友好），再复制源码，`make build-server VERSION=${VERSION} OUT_DIR=/out` 编译；`ARG VERSION=dev` 透传给 Makefile（版本号注入见 Makefile 约定；本地/`go install` 构建为 `dev`；release-please 的 simple 策略只维护 CHANGELOG/tag 不改代码，版本号不得硬编码常量，否则随发版漂移）。
 - 运行阶段：`gcr.io/distroless/static-debian12:nonroot`；仅复制 server 二进制至 `/goliday-server`；`USER nonroot`（镜像内已内置）；`EXPOSE 8080 50051`；`ENTRYPOINT ["/goliday-server"]`。
 - 不打包 `configs/`：配置与镜像解耦，运行时经 volume 挂载后以 `-config-dir` 指向；distroless 无 shell，容器内一切命令参数走 exec 形式。
-- 构建上下文最小化：`.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`*.md`、`.env*` 等非构建必需内容。
+- 构建上下文最小化：`.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`bin`、覆盖率产物、`*.md`、`.env*` 等非构建必需内容（`Makefile`、Go 源码与 `go.mod`/`go.sum` 保留）。
 
 工作流约定：
 - 触发：`push` 默认分支、`push` tag `v*`、`pull_request`、`workflow_dispatch`；
-- 推送策略：仅 `push` tag `v*` 事件发布镜像至 GHCR；`push` 默认分支、`pull_request`、`workflow_dispatch` 仅构建验证不推送（master 滚动镜像无消费场景，保留只会产生冗余版本记录；构建可行性由验证构建保障）；
-- 权限最小化：`contents: read` + `packages: write`；
-- 步骤：checkout → buildx → QEMU（多架构）→ GHCR 登录（`GITHUB_TOKEN`，仅 tag 事件执行）→ metadata 提取标签 → build（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance`/`sbom` 关闭以保持镜像单 manifest；仅 tag 事件 push）；
+- 推送策略：仅 `push` tag `v*` 事件发布镜像至 GHCR；`push` 默认分支、`pull_request`、`workflow_dispatch` 仅构建验证不推送（master 滚动镜像无消费场景，保留只会产生冗余版本记录；构建可行性由验证构建保障）；- 权限最小化：`contents: read` + `packages: write`；
+- 步骤：checkout（`persist-credentials: false`）→ buildx → QEMU（多架构）→ 版本号派生（tag 事件去 `v` 前缀为 `VERSION` 构建参数，其余事件不注入）→ GHCR 登录（`GITHUB_TOKEN`，仅 tag 事件执行）→ metadata 提取标签 → build（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance: mode=min` 与 `sbom: true` 生成供应链证明（attestation 附着于镜像索引，ghcr.io 支持 OCI 1.1 展示；曾为「单 manifest」关闭，与 Scorecard 供应链目标相悖，改回开启）；仅 tag 事件 push）；
 - 标签策略（metadata-action）：语义化版本 `v1.2.3` → `1.2.3` / `1.2` / `1`、tag 事件附加 `latest`；分支名 / PR 编号标签仅作非推送事件的构建标识，不发布；
 - 无自定义 secrets：GHCR 认证仅用内置 `GITHUB_TOKEN`。
 
+#### Scenario: 本地构建二进制
+- **WHEN** 在仓库根执行 `make build VERSION=0.2.0`
+- **THEN** `bin/` 下生成 `goliday-server` 与 `goliday-tool` 静态二进制，`./bin/goliday-server -v` 输出 `0.2.0`
+
 #### Scenario: 本地构建镜像
-- **WHEN** 在仓库根执行 `docker build -t goliday .`
-- **THEN** 多阶段构建成功，最终镜像基于 distroless 且以 nonroot 运行，`docker run goliday -v` 输出版本后退出
+- **WHEN** 在仓库根执行 `make image VERSION=0.2.0`（或 `docker build --build-arg VERSION=0.2.0 -t goliday .`）
+- **THEN** 多阶段构建成功（镜像内二进制经 `make build-server` 产出，与本地同一构建逻辑），最终镜像基于 distroless 且以 nonroot 运行，`docker run goliday -v` 输出版本后退出
 
 #### Scenario: 容器启动并挂载配置
 - **WHEN** `docker run -p 8080:8080 -v $PWD/configs:/data:ro goliday -config-dir /data`
@@ -321,9 +335,10 @@ Dockerfile 约定：
 
 ci.yml 约定：
 - 触发：`push` 默认分支、`pull_request`（默认分支）、`workflow_dispatch`；权限最小化 `contents: read`；
-- 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile`；
+- 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile` → fuzz 冒烟（仅 `stable` 项：对全部 5 个 fuzz 目标各 `-fuzztime 30s` 短时真实 fuzz，普通测试仅覆盖种子语料）；
 - 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；上传前过滤 profile 中 `proto/goliday/v1` 生成代码的记录，并经仓库根 `codecov.yml`（`ignore: proto/`）在 Codecov 端同步排除——生成代码不设测试目标，避免零覆盖记录拉低统计（与 `.golangci.yml` 对生成代码的豁免同一口径）；
-- lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警。
+- lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警；
+- proto 作业：`go install` 固定版本安装 buf（v1.72.0）与 protoc-gen-go（v1.36.5）/protoc-gen-go-grpc（v1.5.1，与 `buf.gen.yaml` 及 proto 头注释参考版本一致）→ `buf lint`（STANDARD 零豁免）→ `buf breaking --against <远端 master,subdir=proto>`（FILE 级，仅 PR 事件——master push 对照自身无意义）→ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`，入库生成代码与 proto 内容不得漂移）。
 
 scorecard.yml 约定（OpenSSF Scorecard，无需注册）：
 - 触发：`push` 默认分支、每周 `schedule`、`branch_protection_rule`；顶层 `permissions: read-all`，作业内最小化（`id-token: write` 供发布 OIDC 认证、`security-events: write` 供 SARIF 上传）；
@@ -415,7 +430,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 | 包 | 文件 | 视角 |
 |---|---|---|
-| 根包 `goliday` | `config_test.go`（未导出 `parseDate` 的严格解析 + `FuzzParseDate`） | 白盒 |
+| 根包 `goliday` | `config_test.go`（`ParseDate` 严格解析 + `FuzzParseDate`） | 白盒 |
 | 根包 `goliday` | `calendar_internal_test.go`（未导出 `comboIndex` 非法组合、`NewCalendar` nil 配置兜底） | 白盒 |
 | 根包 `goliday_test` | `daytype_test.go`（枚举契约 + 256 值穷举不变量） | 黑盒 |
 | 根包 `goliday_test` | `calendar_test.go`（判定/区间/统计契约 + `FuzzQueryConsistency`） | 黑盒 |
@@ -436,6 +451,8 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 补充：DayType 为 uint8 小域，其映射不变量 SHALL 以**穷举测试**（黑盒遍历全部 256 个取值：`String` 输出收敛于合法值标签 ∪ `unknown` ∪ `invalid`、不 panic、`IsValid` 恰对 {1,2,6,10,17} 为 true）覆盖；对 5 个合法值 {1,2,6,10,17} 另行断言：`Coarse` 结果 ∈ {`DayTypeWork`, `DayTypeRest`} 且幂等、`IsWork`/`IsRest` 恰一为真、`t & DayTypeWork` 与 `t & DayTypeRest` 恰一非零。不再另设 fuzz 目标。
 
+性能取向的实现（稀疏终态表、按值计数前缀和等）SHALL 以黑盒基准测试（`calendar_bench_test.go`：`BenchmarkQuery`/`BenchmarkQueryCoarse`/`BenchmarkStatsRangeFullYear`/`BenchmarkStatsList`/`BenchmarkQueryRangeFullYear`，`b.Loop` + `ReportAllocs`，testdata 真实配置复用加载）提供回归基线；基准仅在显式 `-bench` 时运行，不进入 CI 门禁。
+
 约束：fuzz 目标不得新增第三方依赖（仅 `testing`/`time`/标准库）；失败语料按 Go 惯例落盘 `testdata/fuzz/<Name>/` 后 SHALL 转写为常规回归用例（普通 Test 或种子）再删除语料文件，保持仓库无 fuzz 语料残留。
 
 #### Scenario: 黑盒仅用导出 API
@@ -444,7 +461,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 #### Scenario: fuzz 种子即回归
 - **WHEN** 运行 `go test ./...`（不带 `-fuzz`）
-- **THEN** 各 Fuzz 目标仅以种子语料执行且全部通过；`go test -fuzz=Fuzz -fuzztime=10s ./...`（逐包）无 crash
+- **THEN** 各 Fuzz 目标仅以种子语料执行且全部通过；CI 测试作业对全部 5 个 fuzz 目标各做 `-fuzztime 30s` 短时真实 fuzz（见「在线质量门禁与 CI 测试矩阵」），无 crash
 
 #### Scenario: 崩溃语料回填
 - **WHEN** fuzz 发现失败并在 `testdata/fuzz/<Name>/` 落盘语料
@@ -456,7 +473,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 **决策依据**：早期版本对无配置年份整年回退周休判断，会将「未配置」与「真实周末」混淆，故改为强校验报错。不要改回静默回退。
 
-覆盖年份集合的确定规则：
+覆盖年份集合的确定规则（统一经根包 `CoveredYears` 计算，服务层与库内同一实现，不得各自另写）：
 - 单日 `date`：`{date.Year()}`；
 - 区间 `[start, end)`：`start==end`（空区间）时为空集（不报错，返回空统计）；否则为 `[start.Year(), (end-1天).Year()]` 闭区间内全部整数年份（含中间整年）；
 - 离散 `dates`：各日期年份的并集；
@@ -486,15 +503,15 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 `Calendar` SHALL 在构造时（`NewCalendar`）为每个已加载年份构建前缀和数组，加载完成后只读、可被多个 goroutine 并发访问：
 
-- 每年定长数组 `prefix`（`[366]`，覆盖闰年最大天数；平年仅前 365 个元素有效，尾部 1 个元素闲置不用；无全零首元素），随年份索引结构体内联（无独立堆分配与切片头），元素为 5 种合法细粒度值（`1/2/6/10/17`）各自的年内累计天数，以 **uint8 存储**（单一类型年内天数有界：普通工作日至多 248 天，其余类型更少；**按值计数**，五值 MECE）；
+- 每年定长数组 `prefix`（`[366]`，覆盖闰年最大天数；平年仅前 365 个元素有效，尾部 1 个元素闲置不用；无全零首元素），随年份索引结构体内联（无独立堆分配与切片头），元素为 5 种合法细粒度值（`1/2/6/10/17`）各自的年内累计天数，以 **uint16 存储**（单一类型年内天数有界：无调整年的普通工作日至多 262 天——闰年且元旦为周一~周四，366 减 104 个周末；超出 uint8 上界 255，uint8 存储会在累计到 256 时回绕破坏 MECE 不变量；**按值计数**，五值 MECE）；
 - `prefix[i]` 为**闭区间** `[元旦, 元旦+i天]`（含两端，即元旦起前 i+1 天）的累计；年内左闭右开查询 `[a, b)` SHALL 转换为闭区间下标后差分：`prefix[idx(b)-1] - prefix[idx(a)-1]`，下标为 -1（端点为元旦或之前）时以全零参与差分；
-- 跨年/多段累加 SHALL 先将各段年内差分转入 int 宽类型累加器（`comboTotals`）再相加，禁止 uint8 直接跨段累加（会溢出）；
+- 跨年/多段累加 SHALL 先将各段年内差分转入 int 宽类型累加器（`comboTotals`）再相加，禁止 uint16 直接跨段累加（会溢出）；
 - 构建成本 O(年天数)，仅在构造时发生一次。
 
-**决策依据**：统计 O(覆盖年数) 差分即可完成，故 `/stats` 解除范围限制；days 明细接口保留 366 天上限防响应膨胀。前缀元素以 uint8 存储、数组定长 `[366]` 随年份索引结构体内联（省去切片头与独立堆分配、访问少一次间接寻址；平年尾部闲置 5B 为代价，闭区间下标省去无意义的全零首元素）压缩内存与分配数；uint8 只约束年内单段，跨年累加经 int 转换保持溢出安全。
+**决策依据**：统计 O(覆盖年数) 差分即可完成，故 `/stats` 解除范围限制；days 明细接口保留 366 天上限防响应膨胀。前缀元素以 uint16 存储（uint8 的「工作日至多 248 天」上界估计漏算了无调整年：空 off/work 配置合法，闰年且元旦为周一~周四时普通工作日达 262 天，uint8 累计到 256 回绕会破坏五键之和 == Total 的 MECE 不变量）、数组定长 `[366]` 随年份索引结构体内联（省去切片头与独立堆分配、访问少一次间接寻址；平年尾部闲置 10B 为代价，闭区间下标省去无意义的全零首元素）压缩内存与分配数；uint16 只约束年内单段，跨年累加经 int 转换保持溢出安全。
 
 统计导出规则（由按值计数 `C(v)` 直接映射，语义与逐日统计完全等价）：
-- 细粒度（五键 MECE，之和恒等于 `Total`）：`ordinary=C(1)`、`weekend=C(2)`、`festival=C(6)`、`adjusted_rest=C(10)`、`adjusted_work=C(17)`；
+- 细粒度（五键 MECE，之和恒等于 `Total`）：`ordinary=C(1)`、`weekend=C(2)`、`festival=C(6)`、`adjusted_rest=C(10)`、`adjusted_work=C(17)`；`StatsResult.Fine` 的 map 键 SHALL 为五个合法终态组合值（`DayTypeWork`/`DayTypeRest`/`DayTypeFestivalRest`/`DayTypeAdjustedRestDay`/`DayTypeAdjustedWorkDay`），不得使用 4/8/16 裸调整位（非合法 `DayType` 取值，`String()` 输出 `invalid`，调用方难以索引与打印）；
 - 粗粒度（单次位与归类）：`workday=C(1)+C(17)`、`holiday=C(2)+C(6)+C(10)`；
 - `Total` = 覆盖天数（区间天数或列表长度）。
 
@@ -550,6 +567,14 @@ package goliday // 根包
 // ErrYearNotLoaded 查询覆盖了未加载配置的年份；errors.Is 判别，message 含年份。
 var ErrYearNotLoaded = errors.New("年份配置未加载")
 
+// ParseDate 严格解析 YYYY-MM-DD（拒绝格式错误与不存在的日期）；配置加载与服务层共用。
+func ParseDate(s string) (time.Time, error)
+// WeekdayCN 返回中文星期名（错误信息与工具输出共用）。
+func WeekdayCN(t time.Time) string
+// CoveredYears 返回 [start, end) 覆盖的年份（升序含中间整年；空区间 nil）；
+// 服务层年份校验与库内同一实现。
+func CoveredYears(start, end time.Time) []int
+
 type DayType uint8
 func (t DayType) IsWork() bool
 func (t DayType) IsRest() bool
@@ -565,8 +590,9 @@ type YearConfig struct { Year int; Name string; Festivals []Festival; Adjust Adj
 type Festival  struct { Name string; Date time.Time }
 type Adjust    struct { Off, Work []time.Time }
 
-func LoadDir(dir string) (*Store, error)   // 加载 <year>.toml
+func LoadDir(dir string) (*Store, error)   // 加载 <year>.toml；构建后不可变，并发读安全无锁
 func (s *Store) Has(year int) bool
+func (s *Store) LoadedAt() time.Time       // 配置加载完成时刻（/healthz loaded_at 来源）
 
 type Calendar struct{ /* 由 Store 构造：各年索引 + 组合计数前缀和 */ }
 func NewCalendar(s *Store) *Calendar
@@ -577,5 +603,5 @@ func (c *Calendar) IsWork(date time.Time) (bool, error)          // 未加载年
 func (c *Calendar) IsRest(date time.Time) (bool, error)          // 未加载年 → ErrYearNotLoaded
 func (c *Calendar) QueryRange(start, end time.Time) ([]Dated, error) // 左闭右开逐日；未加载年 → ErrYearNotLoaded
 func (c *Calendar) StatsRange(start, end time.Time, detailed bool) (StatsResult, error) // 前缀和差分，不限跨度
-func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error)        // 排序去重集合分段差分
+func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error)        // 内部排序去重后分段差分
 ```
