@@ -46,3 +46,4 @@
 - [x] 复查修复：Store 移除冗余 RWMutex——加载后无任何修改途径，锁为死开销并暗示可变性；改为不可变声明（注释明确「构建后不可变、并发读天然安全」），Has/Get/Years 去锁，Years 排序顺带改 slices.Sort；docs/ARCHITECTURE.md 并发模型与数据流、spec 附录注释同步。
 - [x] 复查修复：LoadDir 移除库内 log.Printf——库不应直接写日志（嵌入方无法路由/抑制），且服务入口已输出同一信息，启动日志原本重复两行；日志职责收敛到调用方（main 基于 Years() 输出），spec 启动加载 Scenario 与 docs/API.md 启动说明同步。
 - [x] 复查修复：HTTP 服务端补 ReadHeaderTimeout（10s）与 IdleTimeout（120s）——原 http.Server 未设任何超时，直连暴露时慢连接可长期占用（slowloris 式读挂起）；不设整体读写超时（纯内存查询无长请求），spec HTTP 服务子包 Requirement 与 docs/API.md 启动说明同步。
+- [x] 复查修复：ci.yml 新增 proto 作业——buf lint（STANDARD 零豁免）、buf breaking 对照远端 master（FILE 级，仅 PR）、再生成一致性校验（buf generate 后 git diff --exit-code）；工具经 go install 固定版本（与 buf.gen.yaml/proto 头注释参考版本一致），三项检查本机全部实测通过；spec ci.yml 约定同步。

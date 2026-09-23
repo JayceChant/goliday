@@ -91,3 +91,39 @@ jobs:
         with:
           # 与 .golangci.yml（version: "2"）匹配的 v2.x
           version: v2.13
+
+  proto:
+    name: proto (buf)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache: true
+
+      - name: Install buf and protoc plugins
+        # 经 go install 固定版本（模块版本即内容寻址）；版本与 buf.gen.yaml
+        # 及 proto 头注释的参考版本一致（buf v1.72.0、protoc-gen-go v1.36.5、
+        # protoc-gen-go-grpc v1.5.1）。
+        run: go install github.com/bufbuild/buf/cmd/buf@v1.72.0 google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5 google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+
+      - name: buf lint
+        run: buf lint
+
+      - name: buf breaking (vs master)
+        # PR 上对照远端 master 做破坏性变更检查（FILE 级，配置见 buf.yaml）；
+        # 公共仓库可匿名拉取对照目标。master push 事件对照自身无意义，跳过。
+        if: github.event_name == 'pull_request'
+        run: buf breaking --against 'https://github.com/${{ github.repository }}.git#branch=master,subdir=proto'
+
+      - name: Regenerated code consistency
+        # 入库的生成代码须与 proto 当前内容一致：重新生成后工作区不得有差异
+        run: |
+          buf generate
+          git diff --exit-code -- proto/
