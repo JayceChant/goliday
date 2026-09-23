@@ -254,7 +254,7 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 命令行参数（`flag`）：`-addr`（默认 `":8080"`）、`-grpc-addr`（默认 `":50051"`，空字符串禁用 gRPC）、`-config-dir`（默认 `"./configs"`）、`-v`（输出版本后退出）。
 
-路由：`GET /api/v1/days`、`GET /api/v1/stats`、`GET /healthz`；中间件（函数装饰器实现）：请求日志、Panic 恢复。
+路由：`GET /api/v1/days`、`GET /api/v1/stats`、`GET /healthz`；中间件（函数装饰器实现）：请求日志、Panic 恢复。HTTP 服务端 SHALL 配置 `ReadHeaderTimeout`（10s，防慢速头部连接长期占用）与 `IdleTimeout`（120s，回收 keep-alive 空闲连接）；不设读写整体超时（纯内存查询无长请求，避免干扰正常客户端）。
 
 错误响应统一格式 `{"error":{"code":"...","message":"..."}}`；日期解析统一 `2006-01-02`。错误码：`missing_query`、`invalid_date`、`invalid_range`、`invalid_detailed`、`year_not_loaded`、`not_found`（404）、`method_not_allowed`（405）。
 

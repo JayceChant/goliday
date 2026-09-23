@@ -45,3 +45,4 @@
 - [x] 复查修复：StatsResult.Fine 键由 4/8/16 裸调整位改为五个合法终态组合值（1/2/6/10/17）——裸调整位非合法 DayType 取值，作键打印显示 invalid 且调用方难索引；handlers fillStats 与 grpc statsProto 映射、黑盒 fineKeyOf/一致性基准键、spec 统计导出规则同步；HTTP/gRPC 对外 JSON/proto 键名不变。
 - [x] 复查修复：Store 移除冗余 RWMutex——加载后无任何修改途径，锁为死开销并暗示可变性；改为不可变声明（注释明确「构建后不可变、并发读天然安全」），Has/Get/Years 去锁，Years 排序顺带改 slices.Sort；docs/ARCHITECTURE.md 并发模型与数据流、spec 附录注释同步。
 - [x] 复查修复：LoadDir 移除库内 log.Printf——库不应直接写日志（嵌入方无法路由/抑制），且服务入口已输出同一信息，启动日志原本重复两行；日志职责收敛到调用方（main 基于 Years() 输出），spec 启动加载 Scenario 与 docs/API.md 启动说明同步。
+- [x] 复查修复：HTTP 服务端补 ReadHeaderTimeout（10s）与 IdleTimeout（120s）——原 http.Server 未设任何超时，直连暴露时慢连接可长期占用（slowloris 式读挂起）；不设整体读写超时（纯内存查询无长请求），spec HTTP 服务子包 Requirement 与 docs/API.md 启动说明同步。
