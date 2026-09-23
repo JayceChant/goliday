@@ -324,7 +324,7 @@ Dockerfile 约定：
 
 ci.yml 约定：
 - 触发：`push` 默认分支、`pull_request`（默认分支）、`workflow_dispatch`；权限最小化 `contents: read`；
-- 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile`；
+- 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile` → fuzz 冒烟（仅 `stable` 项：对全部 5 个 fuzz 目标各 `-fuzztime 30s` 短时真实 fuzz，普通测试仅覆盖种子语料）；
 - 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；上传前过滤 profile 中 `proto/goliday/v1` 生成代码的记录，并经仓库根 `codecov.yml`（`ignore: proto/`）在 Codecov 端同步排除——生成代码不设测试目标，避免零覆盖记录拉低统计（与 `.golangci.yml` 对生成代码的豁免同一口径）；
 - lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警；
 - proto 作业：`go install` 固定版本安装 buf（v1.72.0）与 protoc-gen-go（v1.36.5）/protoc-gen-go-grpc（v1.5.1，与 `buf.gen.yaml` 及 proto 头注释参考版本一致）→ `buf lint`（STANDARD 零豁免）→ `buf breaking --against <远端 master,subdir=proto>`（FILE 级，仅 PR 事件——master push 对照自身无意义）→ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`，入库生成代码与 proto 内容不得漂移）。
@@ -448,7 +448,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 #### Scenario: fuzz 种子即回归
 - **WHEN** 运行 `go test ./...`（不带 `-fuzz`）
-- **THEN** 各 Fuzz 目标仅以种子语料执行且全部通过；`go test -fuzz=Fuzz -fuzztime=10s ./...`（逐包）无 crash
+- **THEN** 各 Fuzz 目标仅以种子语料执行且全部通过；CI 测试作业对全部 5 个 fuzz 目标各做 `-fuzztime 30s` 短时真实 fuzz（见「在线质量门禁与 CI 测试矩阵」），无 crash
 
 #### Scenario: 崩溃语料回填
 - **WHEN** fuzz 发现失败并在 `testdata/fuzz/<Name>/` 落盘语料

@@ -54,6 +54,21 @@ jobs:
         # -race 检测数据竞争；store/calendar 读多写少，CI 顺带验证并发安全
         run: go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
 
+      - name: Fuzz smoke test
+        # 普通测试仅跑种子语料；对全部 5 个 fuzz 目标（FuzzParseDate/
+        # FuzzQueryConsistency/FuzzLoadYearTOML/FuzzDaysHandler/FuzzGenDraft）
+        # 逐目标做短时真实 fuzz，挖掘种子外的崩溃。仅 stable 矩阵项执行，
+        # 失败即门禁失败。
+        if: matrix.go == 'stable' && matrix.os == 'ubuntu-latest'
+        run: |
+          set -e
+          fuzz_one() { go test -run '^$' -fuzz "^$1\$" -fuzztime 30s -count=1 "$2"; }
+          fuzz_one FuzzParseDate .
+          fuzz_one FuzzQueryConsistency .
+          fuzz_one FuzzLoadYearTOML .
+          fuzz_one FuzzDaysHandler ./cmd/goliday-server
+          fuzz_one FuzzGenDraft ./cmd/goliday-tool
+
       - name: Filter coverage profile
         # proto/goliday/v1 为 buf 生成的桩代码，不设测试目标（与 codecov.yml
         # 的 ignore 及 .golangci.yml 的 generated 豁免同一口径）：从覆盖率
