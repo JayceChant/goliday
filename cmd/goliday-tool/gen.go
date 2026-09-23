@@ -285,9 +285,8 @@ func parseAnnouncement(year int, text string) *parseResult {
 		}
 
 		// 放假条目：节日名与日期取"放假"之前的片段。
-		if idx := strings.Index(seg, "放假"); idx >= 0 {
+		if window, _, found := strings.Cut(seg, "放假"); found {
 			matched = true
-			window := seg[:idx]
 			names := canonicalNames(window)
 			dates := extractDates(window)
 			switch {
