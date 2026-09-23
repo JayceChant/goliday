@@ -41,3 +41,4 @@
 - [x] 复查修复（代码审查问题批次）：前缀和计数元素 uint8 改 uint16（无调整年普通工作日可达 262 天 > 255，uint8 累计到 256 回绕破坏 MECE 不变量；黑盒回归以 2024 空调整年固化 ordinary=262/weekend=104/五键之和==Total）；spec 前缀和 Requirement 与决策依据、docs/ARCHITECTURE.md 同步修订。
 - [x] 复查修复：Stats 改为内部排序去重副本（防御式归一，放宽「调用方须排序去重」前置契约；修复 prev := 0 哨兵在首日期年份为 0 时跳过加载校验导致的空指针 panic）；spec 单日期查询 Requirement 增补 Stats 核心包条款与决策依据、附录 API 形态注释同步；黑盒回归覆盖乱序/重复输入、入参不变性与年份 0 场景。
 - [x] 复查修复：服务版本号改构建期注入（main.go 硬编码 0.1.0 已落后 release please 发布的 0.1.1）：`var version = "dev"` + Dockerfile `ARG VERSION` + `-ldflags -X main.version`，docker.yml tag 构建去 v 前缀注入；spec 容器 Requirement 构建阶段与工作流步骤、docs/API.md `-v` 行同步。
+- [x] 复查修复：500 兜底错误不再吞因——新增 internalQueryErr 辅助函数（记录操作名与底层错误链后返回统一 errInternalQuery），HTTP handlers 5 处与 gRPC 3 处兜底分支全部改经该函数，日志可排查、对外文案不变。

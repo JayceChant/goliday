@@ -65,14 +65,14 @@ func (s *grpcServer) GetDay(_ context.Context, req *pb.GetDayRequest) (*pb.GetDa
 	detailed := req.GetDetailed()
 	shown, err := s.cal.Query(d)
 	if err != nil {
-		return nil, grpcErr(errInternalQuery)
+		return nil, grpcErr(internalQueryErr("GetDay Query", err))
 	}
 	if !detailed {
 		shown = shown.Coarse()
 	}
 	st, err := s.cal.Stats([]time.Time{d}, detailed)
 	if err != nil {
-		return nil, grpcErr(errInternalQuery)
+		return nil, grpcErr(internalQueryErr("GetDay Stats", err))
 	}
 	return &pb.GetDayResponse{
 		Date:      d.Format(dateLayout),
@@ -119,7 +119,7 @@ func (s *grpcServer) QueryDays(_ context.Context, req *pb.QueryDaysRequest) (*pb
 	for i, d := range dates {
 		t, qerr := s.cal.Query(d)
 		if qerr != nil {
-			return nil, grpcErr(errInternalQuery)
+			return nil, grpcErr(internalQueryErr("QueryDays Query", qerr))
 		}
 		days[i] = &pb.Day{Date: d.Format(dateLayout), Type: uint32(t), TypeLabel: t.String()}
 	}

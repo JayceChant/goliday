@@ -128,6 +128,13 @@ var (
 	errInternalQuery = &apiError{http.StatusInternalServerError, "internal_error", "服务器内部错误"}
 )
 
+// internalQueryErr 查询意外失败的兜底：记录底层错误（供排查，调用方仅见
+// 统一 500 文案）后返回 errInternalQuery。HTTP 与 gRPC 共用。
+func internalQueryErr(op string, err error) *apiError {
+	log.Printf("goliday-server: 查询意外失败（%s）: %v", op, err)
+	return errInternalQuery
+}
+
 // yearNotLoadedError 构造未加载年份错误：message 列出升序去重的全部
 // 未加载年份，HTTP 400 ↔ gRPC InvalidArgument 同源。
 func yearNotLoadedError(years []int) *apiError {
@@ -289,7 +296,7 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 		}
 		t, err := s.calendar.Query(d)
 		if err != nil {
-			return nil, errInternalQuery
+			return nil, internalQueryErr("单日 Query", err)
 		}
 		resp.Date = d.Format(dateLayout)
 		shown := t
@@ -301,7 +308,7 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 
 		st, err := s.calendar.Stats([]time.Time{d}, detailed)
 		if err != nil {
-			return nil, errInternalQuery
+			return nil, internalQueryErr("单日 Stats", err)
 		}
 		fillStats(resp, st, detailed)
 		resp.TotalDays = st.Total
@@ -330,7 +337,7 @@ func (s *server) buildQueryResponse(q url.Values, wantDays bool) (*daysResponse,
 		for i, d := range dates {
 			t, err := s.calendar.Query(d)
 			if err != nil {
-				return nil, errInternalQuery
+				return nil, internalQueryErr("多日明细 Query", err)
 			}
 			resp.Days[i] = dayEntry{Date: d.Format(dateLayout), Type: int(t), TypeLabel: t.String()}
 		}
@@ -458,7 +465,7 @@ func statsFor(cal *goliday.Calendar, mq *multiQuery, detailed bool) (goliday.Sta
 	if mq.hasRange {
 		r, err := cal.StatsRange(mq.startT, mq.endT, detailed)
 		if err != nil {
-			return goliday.StatsResult{}, errInternalQuery
+			return goliday.StatsResult{}, internalQueryErr("区间 StatsRange", err)
 		}
 		st = r
 	}
@@ -470,7 +477,7 @@ func statsFor(cal *goliday.Calendar, mq *multiQuery, detailed bool) (goliday.Sta
 		if len(dates) > 0 {
 			r, err := cal.Stats(dates, detailed)
 			if err != nil {
-				return goliday.StatsResult{}, errInternalQuery
+				return goliday.StatsResult{}, internalQueryErr("列表 Stats", err)
 			}
 			st = addStats(st, r)
 		}
