@@ -300,7 +300,7 @@ Dockerfile 约定：
 工作流约定：
 - 触发：`push` 默认分支、`push` tag `v*`、`pull_request`、`workflow_dispatch`；
 - 推送策略：仅 `push` tag `v*` 事件发布镜像至 GHCR；`push` 默认分支、`pull_request`、`workflow_dispatch` 仅构建验证不推送（master 滚动镜像无消费场景，保留只会产生冗余版本记录；构建可行性由验证构建保障）；- 权限最小化：`contents: read` + `packages: write`；
-- 步骤：checkout（`persist-credentials: false`）→ buildx → QEMU（多架构）→ 版本号派生（tag 事件去 `v` 前缀为 `VERSION` 构建参数，其余事件不注入）→ GHCR 登录（`GITHUB_TOKEN`，仅 tag 事件执行）→ metadata 提取标签 → build（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance`/`sbom` 关闭以保持镜像单 manifest；仅 tag 事件 push）；
+- 步骤：checkout（`persist-credentials: false`）→ buildx → QEMU（多架构）→ 版本号派生（tag 事件去 `v` 前缀为 `VERSION` 构建参数，其余事件不注入）→ GHCR 登录（`GITHUB_TOKEN`，仅 tag 事件执行）→ metadata 提取标签 → build（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance: mode=min` 与 `sbom: true` 生成供应链证明（attestation 附着于镜像索引，ghcr.io 支持 OCI 1.1 展示；曾为「单 manifest」关闭，与 Scorecard 供应链目标相悖，改回开启）；仅 tag 事件 push）；
 - 标签策略（metadata-action）：语义化版本 `v1.2.3` → `1.2.3` / `1.2` / `1`、tag 事件附加 `latest`；分支名 / PR 编号标签仅作非推送事件的构建标识，不发布；
 - 无自定义 secrets：GHCR 认证仅用内置 `GITHUB_TOKEN`。
 

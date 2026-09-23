@@ -77,5 +77,9 @@ jobs:
           build-args: ${{ env.VERSION_BUILD_ARG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
-          sbom: false
+          # 供应链证明：provenance（mode=min，构建出处）与 sbom（软件物料
+          # 清单）以 attestation manifest 附着于镜像索引，ghcr.io 支持
+          # OCI 1.1 展示。此前为「保持镜像单 manifest」显式关闭，与仓库
+          # OpenSSF Scorecard 供应链目标相悖，改回显式开启。
+          provenance: mode=min
+          sbom: true
