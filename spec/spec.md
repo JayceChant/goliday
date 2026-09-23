@@ -568,7 +568,7 @@ type YearConfig struct { Year int; Name string; Festivals []Festival; Adjust Adj
 type Festival  struct { Name string; Date time.Time }
 type Adjust    struct { Off, Work []time.Time }
 
-func LoadDir(dir string) (*Store, error)   // 加载 <year>.toml
+func LoadDir(dir string) (*Store, error)   // 加载 <year>.toml；构建后不可变，并发读安全无锁
 func (s *Store) Has(year int) bool
 
 type Calendar struct{ /* 由 Store 构造：各年索引 + 组合计数前缀和 */ }
