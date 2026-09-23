@@ -293,6 +293,40 @@ func TestCalendarStats(t *testing.T) {
 	}
 }
 
+// TestStatsRangeNoAdjustmentOverflow 无调整年（空 off/work、无节日，校验
+// 允许的合法配置）的普通工作日可达 262 天（闰年且元旦为周一，2024 即是），
+// 超出 uint8 上界 255：前缀和元素曾以 uint8 存储，累计到 256 即回绕，
+// 导致五键之和 ≠ total_days（MECE 不变量破坏）。本回归固化 uint16 存储
+// 的正确性。
+func TestStatsRangeNoAdjustmentOverflow(t *testing.T) {
+	dir := t.TempDir()
+	// 2024：闰年 366 天、元旦为周一（周末恰 104 天），无任何调整时
+	// ordinary = 262 > 255。
+	writeYearFile(t, dir, "2024.toml", "year = 2024\n\n[adjust]\noff = []\nwork = []\n")
+	c := goliday.NewCalendar(mustLoadDir(t, dir))
+
+	r, err := c.StatsRange(date(t, "2024-01-01"), date(t, "2025-01-01"), true)
+	if err != nil {
+		t.Fatalf("StatsRange 意外报错: %v", err)
+	}
+	if r.Total != 366 {
+		t.Errorf("Total = %d，期望 366（闰年全年）", r.Total)
+	}
+	if got := r.Fine[goliday.DayTypeWork]; got != 262 {
+		t.Errorf("Fine[ordinary] = %d，期望 262（uint8 回绕会得到 6）", got)
+	}
+	if got := r.Fine[goliday.DayTypeRest]; got != 104 {
+		t.Errorf("Fine[weekend] = %d，期望 104", got)
+	}
+	sum := 0
+	for _, v := range r.Fine {
+		sum += v
+	}
+	if sum != r.Total {
+		t.Errorf("五键之和 = %d，期望 == Total = %d（MECE）", sum, r.Total)
+	}
+}
+
 // TestStatsRangeMatchesBruteForce 前缀和 vs 暴力一致性：全年、随机子区间、
 // 跨年区间，粗/细/Total 完全一致。
 func TestStatsRangeMatchesBruteForce(t *testing.T) {

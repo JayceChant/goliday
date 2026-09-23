@@ -209,3 +209,7 @@
 - [x] spec.md 新增「自动化版本发布（GitHub 环境）」Requirement：工作流约定 6 条（触发/策略/版本基线/权限/镜像衔接/无 secrets）+「Release PR 生成与合并」「发布后镜像自动推送」2 个 Scenario；tasks.md 追加批次条目
 - [x] README 双语 Docker 章节同步 tag 自动化来源说明（语义一致）；docs/ARCHITECTURE.md 第 7 节质量门禁表格新增 release-please 条目（含工作流链接）
 - [x] YAML 解析校验通过；验证命令全绿（`go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`gofmt -l .` 为空、`golangci-lint run` 0 issues；纯 workflow/文档变更，无 Go 代码改动，go fix 无输入）；执行提交（ci: 新增 release-please 自动化版本发布工作流）
+
+## 复查修复（代码审查问题批次）
+
+- [x] 前缀和计数元素 `comboCounts` 改 uint16：`TestStatsRangeNoAdjustmentOverflow` 以 2024 空调整年（闰年、元旦周一）断言 ordinary=262、weekend=104、五键之和 == Total（uint8 回绕时 ordinary 得 6、之和 110 ≠ 366）；spec.md 前缀和 Requirement 与决策依据（上界估计漏算无调整年）、docs/ARCHITECTURE.md 两处表述同步；`go fix` 幂等、`golangci-lint run` 0 issues；验证命令全绿；执行提交（fix: 前缀和计数改 uint16 修复无调整年溢出回绕）

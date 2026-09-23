@@ -50,10 +50,12 @@ func comboIndex(t DayType) int {
 }
 
 // comboCounts 5 种合法细粒度值各自的年内累计天数（按值计数，五值 MECE）。
-// 粗粒度计数可由其线性组合导出。单一类型年内天数有界（普通工作日至多
-// 248 天，其余类型更少），uint8 足以存储；跨年/多段累加不得直接在本类型
-// 上进行（会溢出），须先转入 comboTotals。
-type comboCounts [len(comboValues)]uint8
+// 粗粒度计数可由其线性组合导出。单一类型年内天数有界：无调整年（空 off/
+// work、无节日，校验允许）的普通工作日至多 262 天（闰年且元旦为周一~周四，
+// 366−104 周末），超出 uint8 上界 255——uint8 存储会在累计到 256 时回绕出
+// 错误统计，故用 uint16；跨年/多段累加仍不得直接在本类型上进行，须先转入
+// comboTotals。
+type comboCounts [len(comboValues)]uint16
 
 // diff 返回两组年内前缀计数的差（b-a，前缀和单调不减于被减数，无下溢）。
 func diffPrefix(b, a comboCounts) comboCounts {
@@ -64,8 +66,8 @@ func diffPrefix(b, a comboCounts) comboCounts {
 	return out
 }
 
-// comboTotals 跨年统计的宽类型累加器：各段年内差分（comboCounts，uint8）
-// 显式转入 int 后再相加，避免 uint8 多段直接累加溢出。
+// comboTotals 跨年统计的宽类型累加器：各段年内差分（comboCounts，uint16）
+// 显式转入 int 后再相加，避免 uint16 多段直接累加溢出。
 type comboTotals [len(comboValues)]int
 
 // add 累加一段年内差分计数（逐元素转 int）。
