@@ -462,7 +462,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 **决策依据**：早期版本对无配置年份整年回退周休判断，会将「未配置」与「真实周末」混淆，故改为强校验报错。不要改回静默回退。
 
-覆盖年份集合的确定规则：
+覆盖年份集合的确定规则（统一经根包 `CoveredYears` 计算，服务层与库内同一实现，不得各自另写）：
 - 单日 `date`：`{date.Year()}`；
 - 区间 `[start, end)`：`start==end`（空区间）时为空集（不报错，返回空统计）；否则为 `[start.Year(), (end-1天).Year()]` 闭区间内全部整数年份（含中间整年）；
 - 离散 `dates`：各日期年份的并集；
@@ -560,6 +560,9 @@ var ErrYearNotLoaded = errors.New("年份配置未加载")
 func ParseDate(s string) (time.Time, error)
 // WeekdayCN 返回中文星期名（错误信息与工具输出共用）。
 func WeekdayCN(t time.Time) string
+// CoveredYears 返回 [start, end) 覆盖的年份（升序含中间整年；空区间 nil）；
+// 服务层年份校验与库内同一实现。
+func CoveredYears(start, end time.Time) []int
 
 type DayType uint8
 func (t DayType) IsWork() bool

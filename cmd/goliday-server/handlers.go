@@ -371,12 +371,11 @@ type multiQuery struct {
 
 // coveredYears 返回该查询覆盖的全部年份（升序去重）：区间 [startT, endT)
 // 覆盖的整年（含中间整年；空区间为空集）并上列表各日期年份。
+// 区间部分复用根包 goliday.CoveredYears（与库内校验同一实现）。
 func (mq *multiQuery) coveredYears() []int {
-	var years []int
-	if mq.hasRange && mq.endT.After(mq.startT) {
-		for y := mq.startT.Year(); y <= mq.endT.AddDate(0, 0, -1).Year(); y++ {
-			years = append(years, y)
-		}
+	years := goliday.CoveredYears(mq.startT, mq.endT)
+	if !mq.hasRange {
+		years = nil
 	}
 	for _, d := range mq.listDates {
 		years = append(years, d.Year())

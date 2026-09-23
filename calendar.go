@@ -255,6 +255,18 @@ func coveredYears(sYear, eYear, eDay int) []int {
 	return years
 }
 
+// CoveredYears 返回左闭右开时间区间 [start, end) 覆盖的全部年份
+// （升序，含仅被部分覆盖的中间整年）。空区间（end 不晚于 start）
+// 返回 nil。服务层与库内校验共用同一实现，避免两处规则漂移。
+func CoveredYears(start, end time.Time) []int {
+	sy, sd := normalizeDate(start)
+	ey, ed := normalizeDate(end)
+	if ey < sy || (ey == sy && ed <= sd) {
+		return nil
+	}
+	return coveredYears(sy, ey, ed)
+}
+
 // Query 返回 date 的细粒度日期类型。任意时刻均先按其所在日规范化再查询。
 //
 // 判断优先级：节日当天 → FestivalRest（必为放假日）；work 命中 →

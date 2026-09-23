@@ -366,6 +366,34 @@ func slicesClone(ds []time.Time) []time.Time {
 	return out
 }
 
+// TestCoveredYears 导出的区间覆盖年份计算：空区间为空集、同年、跨年
+// 含中间整年、终点恰为次年元旦时折叠进上一年（与库内校验同一实现）。
+func TestCoveredYears(t *testing.T) {
+	tests := []struct {
+		name       string
+		start, end string
+		want       []int
+	}{
+		{"空区间 end==start", "2026-05-01", "2026-05-01", nil},
+		{"倒置区间 end<start", "2026-05-02", "2026-05-01", nil},
+		{"同年", "2026-02-01", "2026-02-28", []int{2026}},
+		{"跨年", "2025-11-01", "2026-03-01", []int{2025, 2026}},
+		{"终点为次年元旦折叠", "2025-11-01", "2026-01-01", []int{2025}},
+		{"起点为元旦", "2026-01-01", "2027-01-01", []int{2026}},
+	}
+	for _, tt := range tests {
+		got := goliday.CoveredYears(date(t, tt.start), date(t, tt.end))
+		if len(got) != len(tt.want) {
+			t.Fatalf("%s: CoveredYears = %v，期望 %v", tt.name, got, tt.want)
+		}
+		for i, y := range tt.want {
+			if got[i] != y {
+				t.Errorf("%s: CoveredYears[%d] = %d，期望 %d", tt.name, i, got[i], y)
+			}
+		}
+	}
+}
+
 // TestStatsRangeMatchesBruteForce 前缀和 vs 暴力一致性：全年、随机子区间、
 // 跨年区间，粗/细/Total 完全一致。
 func TestStatsRangeMatchesBruteForce(t *testing.T) {
