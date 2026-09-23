@@ -419,7 +419,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 | 包 | 文件 | 视角 |
 |---|---|---|
-| 根包 `goliday` | `config_test.go`（未导出 `parseDate` 的严格解析 + `FuzzParseDate`） | 白盒 |
+| 根包 `goliday` | `config_test.go`（`ParseDate` 严格解析 + `FuzzParseDate`） | 白盒 |
 | 根包 `goliday` | `calendar_internal_test.go`（未导出 `comboIndex` 非法组合、`NewCalendar` nil 配置兜底） | 白盒 |
 | 根包 `goliday_test` | `daytype_test.go`（枚举契约 + 256 值穷举不变量） | 黑盒 |
 | 根包 `goliday_test` | `calendar_test.go`（判定/区间/统计契约 + `FuzzQueryConsistency`） | 黑盒 |
@@ -555,6 +555,11 @@ package goliday // 根包
 
 // ErrYearNotLoaded 查询覆盖了未加载配置的年份；errors.Is 判别，message 含年份。
 var ErrYearNotLoaded = errors.New("年份配置未加载")
+
+// ParseDate 严格解析 YYYY-MM-DD（拒绝格式错误与不存在的日期）；配置加载与服务层共用。
+func ParseDate(s string) (time.Time, error)
+// WeekdayCN 返回中文星期名（错误信息与工具输出共用）。
+func WeekdayCN(t time.Time) string
 
 type DayType uint8
 func (t DayType) IsWork() bool

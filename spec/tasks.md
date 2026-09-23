@@ -52,3 +52,4 @@
 - [x] 复查修复：docker.yml checkout 补 persist-credentials: false——其余显式 checkout 的工作流均已设置，唯 docker.yml 遗漏（release-please/govulncheck 无显式 checkout 步骤，动作内部自管）；spec 容器工作流步骤条款同步。
 - [x] 复查修复：docker 镜像构建恢复供应链证明——provenance（mode=min）与 sbom 显式开启，attestation 附着镜像索引（ghcr.io 支持 OCI 1.1 展示）；原为「单 manifest」关闭与仓库 OpenSSF Scorecard 目标相悖；spec 容器工作流 build 条款同步。
 - [x] 复查修复：gen.go 排序统一改 slices（SortFunc/SortStableFunc，比较函数改三值返回）；与 AGENTS 现代 Go 基线及全仓其余排序写法（store/handlers 均已用 slices）一致。
+- [x] 复查修复：三份重复的严格日期解析与两份中文星期名收敛——根包导出 ParseDate/WeekdayCN，config.go、handlers.go（invalid_date 错误复用根包错误文案）、goliday-tool gen.go 统一引用；spec 附录 API 形态与测试分层表同步。

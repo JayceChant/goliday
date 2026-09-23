@@ -36,6 +36,20 @@ type YearConfig struct {
 // dateLayout 配置文件中的日期格式，严格要求 YYYY-MM-DD。
 const dateLayout = "2006-01-02"
 
+// ParseDate 严格解析 YYYY-MM-DD 日期字符串：拒绝格式错误与不存在的
+// 日期（time.Parse 对 "2026-02-30" 会进位而非报错，须回格式化比对）。
+// 配置加载与服务层参数解析共用，保证错误口径一致。
+func ParseDate(s string) (time.Time, error) {
+	t, err := time.Parse(dateLayout, s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("非法日期 %q：须为 YYYY-MM-DD 格式的有效日期", s)
+	}
+	if t.Format(dateLayout) != s {
+		return time.Time{}, fmt.Errorf("非法日期 %q：该日期不存在", s)
+	}
+	return t, nil
+}
+
 // tomlFestival TOML 中 [[festival]] 的中间结构。
 type tomlFestival struct {
 	Name string `toml:"name"`
@@ -56,19 +70,6 @@ type tomlConfig struct {
 	Adjust    tomlAdjust     `toml:"adjust"`
 }
 
-// parseDate 严格解析 YYYY-MM-DD 日期字符串。
-func parseDate(s string) (time.Time, error) {
-	t, err := time.Parse(dateLayout, s)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("非法日期 %q：须为 YYYY-MM-DD 格式的有效日期", s)
-	}
-	// time.Parse 对 "2026-02-30" 这类不存在的日期会进位而非报错，须额外校验。
-	if t.Format(dateLayout) != s {
-		return time.Time{}, fmt.Errorf("非法日期 %q：该日期不存在", s)
-	}
-	return t, nil
-}
-
 // toYearConfig 将中间结构转换为导出的 YearConfig。
 func (tc *tomlConfig) toYearConfig() (*YearConfig, error) {
 	cfg := &YearConfig{
@@ -76,21 +77,21 @@ func (tc *tomlConfig) toYearConfig() (*YearConfig, error) {
 		Name: tc.Name,
 	}
 	for i, f := range tc.Festivals {
-		d, err := parseDate(f.Date)
+		d, err := ParseDate(f.Date)
 		if err != nil {
 			return nil, fmt.Errorf("festival[%d]（%s）%w", i, f.Name, err)
 		}
 		cfg.Festivals = append(cfg.Festivals, Festival{Name: f.Name, Date: d})
 	}
 	for i, s := range tc.Adjust.Off {
-		d, err := parseDate(s)
+		d, err := ParseDate(s)
 		if err != nil {
 			return nil, fmt.Errorf("adjust.off[%d] %w", i, err)
 		}
 		cfg.Adjust.Off = append(cfg.Adjust.Off, d)
 	}
 	for i, s := range tc.Adjust.Work {
-		d, err := parseDate(s)
+		d, err := ParseDate(s)
 		if err != nil {
 			return nil, fmt.Errorf("adjust.work[%d] %w", i, err)
 		}
@@ -99,8 +100,9 @@ func (tc *tomlConfig) toYearConfig() (*YearConfig, error) {
 	return cfg, nil
 }
 
-// weekdayCN 返回中文星期名，用于错误信息。
-func weekdayCN(t time.Time) string {
+// WeekdayCN 返回中文星期名（周日/周一/……/周六），用于错误信息与
+// 工具输出；配置校验与 goliday-tool 共用，保证口径一致。
+func WeekdayCN(t time.Time) string {
 	names := [...]string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
 	return names[int(t.Weekday())]
 }
@@ -140,7 +142,7 @@ func (c *YearConfig) Validate() error {
 		wd := d.Weekday()
 		if wd == time.Saturday || wd == time.Sunday {
 			return fmt.Errorf("off 含周末日期 %s（%s）：违反稀疏表原则",
-				d.Format(dateLayout), weekdayCN(d))
+				d.Format(dateLayout), WeekdayCN(d))
 		}
 		if seenOff[d] {
 			return fmt.Errorf("off 日期重复 %s", d.Format(dateLayout))
@@ -165,7 +167,7 @@ func (c *YearConfig) Validate() error {
 		wd := d.Weekday()
 		if wd != time.Saturday && wd != time.Sunday {
 			return fmt.Errorf("work 含工作日日期 %s（%s）：违反稀疏表原则",
-				d.Format(dateLayout), weekdayCN(d))
+				d.Format(dateLayout), WeekdayCN(d))
 		}
 		if _, isFestival := seenFestival[d]; isFestival {
 			return fmt.Errorf("work 日期 %s 为节日当天，节日当天不得补班", d.Format(dateLayout))
@@ -180,7 +182,7 @@ func (c *YearConfig) Validate() error {
 		}
 		if wd := f.Date.Weekday(); wd != time.Saturday && wd != time.Sunday {
 			return fmt.Errorf("festival %q 日期 %s（%s）为工作日但不在 off 中：节日当天为工作日须调整为休息",
-				f.Name, f.Date.Format(dateLayout), weekdayCN(f.Date))
+				f.Name, f.Date.Format(dateLayout), WeekdayCN(f.Date))
 		}
 	}
 

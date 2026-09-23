@@ -233,12 +233,6 @@ func mkDate(year int, d dateMD) (time.Time, bool) {
 	return t, true
 }
 
-// weekdayName 返回中文星期名。
-func weekdayName(t time.Time) string {
-	names := [...]string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
-	return names[int(t.Weekday())]
-}
-
 // lunarMarks 扫描全文，收集"X月X日（正月初一/除夕/八月十五/清明）"类表述，
 // 返回规范化节日名 → 月-日 映射（同一节日取首次出现）。
 func lunarMarks(text string) map[string]dateMD {
@@ -360,7 +354,7 @@ func buildDraft(year int, res *parseResult, marks map[string]dateMD) *draft {
 	seenWork := map[time.Time]bool{}
 	for _, t := range res.work {
 		if wd := t.Weekday(); wd != time.Saturday && wd != time.Sunday {
-			res.warnf("补班日期 %s（%s）不是周末，已跳过", t.Format(dateLayoutTool), weekdayName(t))
+			res.warnf("补班日期 %s（%s）不是周末，已跳过", t.Format(dateLayoutTool), goliday.WeekdayCN(t))
 			continue
 		}
 		if seenWork[t] {

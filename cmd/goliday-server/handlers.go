@@ -519,14 +519,13 @@ func filterOutsideRange(dates []time.Time, start, end time.Time) []time.Time {
 
 // ---- 参数解析 helper ----
 
-// parseDate 严格解析 YYYY-MM-DD。time.Parse 对不存在的日期（如 2026-02-30）
-// 会进位而非报错，故须回格式化比对兜底。
+// parseDate 严格解析 YYYY-MM-DD，失败映射为 invalid_date API 错误；
+// 解析逻辑复用根包导出的 goliday.ParseDate（与服务层配置加载同口径）。
 func parseDate(s string) (time.Time, *apiError) {
-	t, err := time.Parse(dateLayout, s)
-	if err != nil || t.Format(dateLayout) != s {
+	t, err := goliday.ParseDate(s)
+	if err != nil {
 		return time.Time{}, &apiError{
-			http.StatusBadRequest, "invalid_date",
-			fmt.Sprintf("非法日期 %q：须为 YYYY-MM-DD 格式的有效日期", s),
+			http.StatusBadRequest, "invalid_date", err.Error(),
 		}
 	}
 	return t, nil
