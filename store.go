@@ -2,11 +2,9 @@ package goliday
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 )
 
 // Store 持有多个年份的稀疏配置。由 LoadDir 构建后不可变（无任何导出
@@ -58,13 +56,6 @@ func LoadDir(dir string) (*Store, error) {
 		}
 		s.years[cfg.Year] = cfg
 	}
-
-	years := s.Years()
-	names := make([]string, len(years))
-	for i, y := range years {
-		names[i] = strconv.Itoa(y)
-	}
-	log.Printf("goliday: 已从 %s 加载 %d 个年份配置：%v", dir, len(years), names)
 
 	return s, nil
 }

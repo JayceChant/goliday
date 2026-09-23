@@ -19,7 +19,7 @@ go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 | `-config-dir` | `"./configs"` | 年度配置目录（`<year>.toml`，格式见 [CONFIG_FORMAT.md](./CONFIG_FORMAT.md)） |
 | `-v` | — | 输出 `goliday-server version <版本号>` 后退出（发布镜像经构建注入 tag 版本号；本地 / `go install` 构建为 `dev`） |
 
-启动时全量加载配置目录；任一文件解析或校验失败则启动失败并打印带文件路径的错误。加载成功后输出已加载年份列表日志。收到 SIGINT/SIGTERM 后依次优雅关闭 HTTP 与 gRPC。
+启动时全量加载配置目录；任一文件解析或校验失败则启动失败并打印带文件路径的错误。加载成功后由服务入口输出已加载年份列表日志（核心库本身不写日志）。收到 SIGINT/SIGTERM 后依次优雅关闭 HTTP 与 gRPC。
 
 路由一览（Go 1.22+ `ServeMux`「方法 + 路径」模式）：
 
