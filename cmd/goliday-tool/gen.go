@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -386,17 +386,19 @@ func buildDraft(year int, res *parseResult, marks map[string]dateMD) *draft {
 		d.festivals = append(d.festivals, draftFestival{Name: e.name, Date: dateStr})
 	}
 
-	sort.Slice(d.off, func(i, j int) bool { return d.off[i].Before(d.off[j]) })
-	sort.Slice(d.work, func(i, j int) bool { return d.work[i].Before(d.work[j]) })
-	sort.SliceStable(d.festivals, func(i, j int) bool {
-		a, b := d.festivals[i], d.festivals[j]
+	slices.SortFunc(d.off, func(a, b time.Time) int { return a.Compare(b) })
+	slices.SortFunc(d.work, func(a, b time.Time) int { return a.Compare(b) })
+	slices.SortStableFunc(d.festivals, func(a, b draftFestival) int {
 		if (a.Date == dateTODO) != (b.Date == dateTODO) {
-			return b.Date == dateTODO // TODO 排在末尾
+			if b.Date == dateTODO { // TODO 排在末尾
+				return -1
+			}
+			return 1
 		}
 		if a.Date != b.Date {
-			return a.Date < b.Date
+			return strings.Compare(a.Date, b.Date)
 		}
-		return a.Name < b.Name
+		return strings.Compare(a.Name, b.Name)
 	})
 	return d
 }

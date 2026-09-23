@@ -51,3 +51,4 @@
 - [x] 复查修复：新增黑盒基准 calendar_bench_test.go（b.Loop + ReportAllocs，testdata 配置复用加载）——Query/QueryCoarse 单日判定、StatsRangeFullYear 前缀和差分、StatsList 排序去重逐日差分、QueryRangeFullYear 逐日明细共 5 个基准，为性能取向实现提供回归基线；spec 测试分层 Requirement 补基准条款。
 - [x] 复查修复：docker.yml checkout 补 persist-credentials: false——其余显式 checkout 的工作流均已设置，唯 docker.yml 遗漏（release-please/govulncheck 无显式 checkout 步骤，动作内部自管）；spec 容器工作流步骤条款同步。
 - [x] 复查修复：docker 镜像构建恢复供应链证明——provenance（mode=min）与 sbom 显式开启，attestation 附着镜像索引（ghcr.io 支持 OCI 1.1 展示）；原为「单 manifest」关闭与仓库 OpenSSF Scorecard 目标相悖；spec 容器工作流 build 条款同步。
+- [x] 复查修复：gen.go 排序统一改 slices（SortFunc/SortStableFunc，比较函数改三值返回）；与 AGENTS 现代 Go 基线及全仓其余排序写法（store/handlers 均已用 slices）一致。
