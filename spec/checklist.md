@@ -213,3 +213,4 @@
 ## 复查修复（代码审查问题批次）
 
 - [x] 前缀和计数元素 `comboCounts` 改 uint16：`TestStatsRangeNoAdjustmentOverflow` 以 2024 空调整年（闰年、元旦周一）断言 ordinary=262、weekend=104、五键之和 == Total（uint8 回绕时 ordinary 得 6、之和 110 ≠ 366）；spec.md 前缀和 Requirement 与决策依据（上界估计漏算无调整年）、docs/ARCHITECTURE.md 两处表述同步；`go fix` 幂等、`golangci-lint run` 0 issues；验证命令全绿；执行提交（fix: 前缀和计数改 uint16 修复无调整年溢出回绕）
+- [x] Stats 防御式归一：内部 `slices.Clone` + 排序 + 去重（入参不被修改），年份校验显式首见标记（年份 0 不再漏判，回归断言返回 ErrYearNotLoaded 而非 panic）；`TestStatsDefensiveNormalization` 覆盖乱序/重复输入一致性、入参不变性、年份 0；spec.md 核心包 Stats 条款与决策依据、附录注释同步；`go fix` 幂等、`golangci-lint run` 0 issues；验证命令全绿；执行提交（fix: Stats 改内部排序去重并修复年份哨兵漏判）

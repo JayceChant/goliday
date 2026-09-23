@@ -180,6 +180,10 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 **决策依据**：消除「未配置」与「真实周末」的静默混淆，故由早期的"无配置年回退周休"改为强校验报错。
 
+核心包 SHALL 提供 `Stats(dates []time.Time, detailed bool) (StatsResult, error)` 统计任意日期集合：输入经内部**排序去重副本**归一（调用方无须预处理，入参切片不被修改），`Total` 为归一后的元素数；任一日期所在年份未加载时返回包装 `ErrYearNotLoaded` 的错误（未加载年份升序去重列出），空输入返回全零结果。实现为逐日单日差分，复用前缀和数据。
+
+**决策依据**：早期版本要求调用方自行排序去重，并以 `prev := 0` 哨兵检测年份首见——首个日期恰为 0 年时哨兵失效，跳过加载校验导致空指针 panic，且该前置契约对调用方过脆；改为内部归一后 API 防御式容错（O(n log n) 归一成本无感知，服务层输入本已有序，行为不变）。
+
 服务层 SHALL 暴露 HTTP 单日查询：
 
 `GET /api/v1/days?date=2026-02-20`（`detailed=true|false`，默认 false）
@@ -577,5 +581,5 @@ func (c *Calendar) IsWork(date time.Time) (bool, error)          // 未加载年
 func (c *Calendar) IsRest(date time.Time) (bool, error)          // 未加载年 → ErrYearNotLoaded
 func (c *Calendar) QueryRange(start, end time.Time) ([]Dated, error) // 左闭右开逐日；未加载年 → ErrYearNotLoaded
 func (c *Calendar) StatsRange(start, end time.Time, detailed bool) (StatsResult, error) // 前缀和差分，不限跨度
-func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error)        // 排序去重集合分段差分
+func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error)        // 内部排序去重后分段差分
 ```

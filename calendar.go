@@ -4,6 +4,7 @@ package goliday
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -382,8 +383,8 @@ func (c *Calendar) StatsRange(start, end time.Time, detailed bool) (StatsResult,
 	return acc.result(total, detailed), nil
 }
 
-// Stats 统计日期集合。dates 视为已去重升序的日期集合（去重与排序由
-// 调用方负责），逐元素计数不去重。
+// Stats 统计日期集合。dates 经内部排序去重后逐元素计数（不去重输入时
+// Total 为排序去重后的元素数）。
 //
 // 实现上逐日取前缀和的单日差分（prefix[day] - prefix[day-1]），复用与
 // StatsRange 相同的前缀和数据。任一日期所在年份未加载时返回包装
@@ -393,16 +394,23 @@ func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error) 
 		return StatsResult{Coarse: map[DayType]int{}}, nil
 	}
 
-	// 年份校验：dates 已升序，年份按序首见时收集。
+	// 防御式归一：排序去重副本，输入乱序/重复亦不致统计失真或哨兵误判。
+	ds := slices.Clone(dates)
+	slices.SortFunc(ds, func(a, b time.Time) int { return a.Compare(b) })
+	ds = slices.CompactFunc(ds, func(a, b time.Time) bool { return a.Equal(b) })
+
+	// 年份校验：ds 已升序去重，年份按序首见时收集。
 	var missing []int
 	prev := 0
-	for _, d := range dates {
+	first := true
+	for _, d := range ds {
 		y, _ := normalizeDate(d)
-		if y != prev {
+		if y != prev || first {
 			if !c.HasYear(y) {
 				missing = append(missing, y)
 			}
 			prev = y
+			first = false
 		}
 	}
 	if missing != nil {
@@ -410,10 +418,10 @@ func (c *Calendar) Stats(dates []time.Time, detailed bool) (StatsResult, error) 
 	}
 
 	var acc comboTotals
-	for _, d := range dates {
+	for _, d := range ds {
 		y, day := normalizeDate(d)
 		idx := c.years[y]
 		acc.add(diffPrefix(idx.cumulationAt(day), idx.cumulationAt(day-1)))
 	}
-	return acc.result(len(dates), detailed), nil
+	return acc.result(len(ds), detailed), nil
 }

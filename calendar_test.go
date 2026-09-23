@@ -327,6 +327,53 @@ func TestStatsRangeNoAdjustmentOverflow(t *testing.T) {
 	}
 }
 
+// TestStatsDefensiveNormalization Stats 对输入做内部排序去重：乱序、重复
+// 输入与排序去重输入结果一致；入参切片不被修改；首个日期为 0 年时不再
+// 跳过年份校验（原 prev := 0 哨兵会漏判导致空指针 panic，应返回错误）。
+func TestStatsDefensiveNormalization(t *testing.T) {
+	c := newTestCalendar(t)
+
+	sorted := []time.Time{date(t, "2025-12-31"), date(t, "2026-01-01"), date(t, "2026-02-17")}
+	messy := []time.Time{
+		date(t, "2026-02-17"), date(t, "2025-12-31"), date(t, "2026-01-01"),
+		date(t, "2026-02-17"), date(t, "2025-12-31"),
+	}
+	want, err := c.Stats(sorted, true)
+	if err != nil {
+		t.Fatalf("Stats（有序输入）意外报错: %v", err)
+	}
+	backup := slicesClone(messy)
+	got, err := c.Stats(messy, true)
+	if err != nil {
+		t.Fatalf("Stats（乱序重复输入）意外报错: %v", err)
+	}
+	if got.Total != want.Total || len(got.Fine) != len(want.Fine) {
+		t.Fatalf("乱序重复输入 Total = %d，期望与去重输入一致 = %d", got.Total, want.Total)
+	}
+	for k, v := range want.Fine {
+		if got.Fine[k] != v {
+			t.Errorf("Fine[%d（%s）] = %d，期望 %d（乱序重复输入应与去重输入一致）", k, k, got.Fine[k], v)
+		}
+	}
+	for i := range messy {
+		if !messy[i].Equal(backup[i]) {
+			t.Errorf("入参切片被修改：messy[%d] = %v，期望保持 %v", i, messy[i], backup[i])
+		}
+	}
+
+	// 年份 0 哨兵回归：首日期年份为 0 时同样校验加载状态，返回错误而非 panic。
+	if _, err := c.Stats([]time.Time{time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC)}, true); !errors.Is(err, goliday.ErrYearNotLoaded) {
+		t.Errorf("Stats（首日期年份 0）错误 = %v，期望包装 ErrYearNotLoaded（不应 panic）", err)
+	}
+}
+
+// slicesClone 测试内用的切片复制（保持入参不被修改的断言可对照）。
+func slicesClone(ds []time.Time) []time.Time {
+	out := make([]time.Time, len(ds))
+	copy(out, ds)
+	return out
+}
+
 // TestStatsRangeMatchesBruteForce 前缀和 vs 暴力一致性：全年、随机子区间、
 // 跨年区间，粗/细/Total 完全一致。
 func TestStatsRangeMatchesBruteForce(t *testing.T) {
