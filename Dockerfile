@@ -10,7 +10,10 @@
 
 # 构建阶段：先复制 Makefile/go.mod/go.sum（构建脚本与依赖下载分层缓存友好），
 # 再复制源码，经 make build-server 编译——与本地二进制构建同一命令同一参数。
-# golang 镜像基于 buildpack-deps 的 scm 变体，不含 make，须先安装。
+# 防递归约束：本文件只调用不触碰 docker 的 Makefile 目标
+# （download-deps/build-server），不得调用 make image——否则与 Makefile
+# 的 image 目标互引构成真实构建循环。golang 镜像基于 buildpack-deps 的
+# scm 变体，不含 make，须先安装。
 FROM golang:1.27 AS build
 
 RUN apt-get update \

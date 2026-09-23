@@ -53,6 +53,12 @@ build-tool:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(OUT_DIR)/goliday-tool$(EXE_SUFFIX) ./cmd/goliday-tool
 
 # 容器镜像：Dockerfile 内部同样执行 make build-server，构建逻辑唯一。
+#
+# 防递归约束：Dockerfile 只允许引用不触碰 docker 的目标（如
+# download-deps / build-server），不得引用本目标——否则
+# make image → docker build → 容器内 make image 将构成真实循环
+# （docker-in-docker）。二者互引是「入口委托 + 构建同一性」的分层
+# 委托，执行路径为 DAG，本约束是其成立的前提。
 image:
 	docker build --build-arg VERSION=$(VERSION) -t goliday:$(VERSION) .
 
