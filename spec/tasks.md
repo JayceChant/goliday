@@ -48,3 +48,4 @@
 - [x] 复查修复：HTTP 服务端补 ReadHeaderTimeout（10s）与 IdleTimeout（120s）——原 http.Server 未设任何超时，直连暴露时慢连接可长期占用（slowloris 式读挂起）；不设整体读写超时（纯内存查询无长请求），spec HTTP 服务子包 Requirement 与 docs/API.md 启动说明同步。
 - [x] 复查修复：ci.yml 新增 proto 作业——buf lint（STANDARD 零豁免）、buf breaking 对照远端 master（FILE 级，仅 PR）、再生成一致性校验（buf generate 后 git diff --exit-code）；工具经 go install 固定版本（与 buf.gen.yaml/proto 头注释参考版本一致），三项检查本机全部实测通过；spec ci.yml 约定同步。
 - [x] 复查修复：ci.yml 测试作业增加 fuzz 冒烟——stable 矩阵项对全部 5 个 fuzz 目标各 30s 短时真实 fuzz（普通 go test 仅跑种子语料），失败即门禁失败；spec 测试作业步骤与「fuzz 种子即回归」Scenario 同步。
+- [x] 复查修复：新增黑盒基准 calendar_bench_test.go（b.Loop + ReportAllocs，testdata 配置复用加载）——Query/QueryCoarse 单日判定、StatsRangeFullYear 前缀和差分、StatsList 排序去重逐日差分、QueryRangeFullYear 逐日明细共 5 个基准，为性能取向实现提供回归基线；spec 测试分层 Requirement 补基准条款。
