@@ -27,7 +27,7 @@ go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 |---|---|---|
 | GET | `/api/v1/days` | 日期类型查询，含逐日明细 `days` |
 | GET | `/api/v1/stats` | 与 `/days` 统计口径一致，不含 `days` 明细 |
-| GET | `/healthz` | 健康检查，返回已加载年份 |
+| GET | `/healthz` | 健康检查，返回状态、版本、已加载年份与配置加载时间 |
 
 所有日期参数格式均为 `YYYY-MM-DD`。下文示例使用 2026 年假设配置数据（非官方方案）。
 
@@ -216,10 +216,15 @@ curl "http://localhost:8080/healthz"
 ```
 
 ```json
-{"status": "ok", "years": [2025, 2026]}
+{
+  "status": "ok",
+  "version": "0.1.1",
+  "years": [2025, 2026],
+  "loaded_at": "2026-11-20T02:15:04Z"
+}
 ```
 
-`years` 为已加载的年份（升序），可用于部署后确认新年度配置已被加载。
+`years` 为已加载的年份（升序）；`version` 为运行版本（构建期注入，本地/`go install` 构建为 `dev`）；`loaded_at` 为配置加载完成时刻（RFC3339，UTC），可用于部署后确认新年度配置已被加载、以及「新配置是否已随重启生效」。
 
 ---
 

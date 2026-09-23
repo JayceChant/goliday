@@ -187,12 +187,21 @@ func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
 
 // ---- 路由处理器 ----
 
-// handleHealthz 返回服务健康状态与已加载年份。
+// handleHealthz 返回服务健康状态：状态、运行版本（构建期注入，见
+// main.go version）、已加载年份与配置加载完成时间（运维确认「新配置
+// 已生效」的依据）。
 func (s *server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
-		Status string `json:"status"`
-		Years  []int  `json:"years"`
-	}{Status: "ok", Years: s.store.Years()})
+		Status   string `json:"status"`
+		Version  string `json:"version"`
+		Years    []int  `json:"years"`
+		LoadedAt string `json:"loaded_at"`
+	}{
+		Status:   "ok",
+		Version:  version,
+		Years:    s.store.Years(),
+		LoadedAt: s.store.LoadedAt().UTC().Format(time.RFC3339),
+	})
 }
 
 // handleDays 返回日期类型明细与统计。

@@ -258,9 +258,11 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 错误响应统一格式 `{"error":{"code":"...","message":"..."}}`；日期解析统一 `2006-01-02`。错误码：`missing_query`、`invalid_date`、`invalid_range`、`invalid_detailed`、`year_not_loaded`、`not_found`（404）、`method_not_allowed`（405）。
 
+`GET /healthz` SHALL 返回 200 与健康信息：`status`（恒 `"ok"`）、`version`（构建期注入的运行版本，本地/`go install` 构建为 `dev`）、`years`（已加载年份，升序）、`loaded_at`（配置加载完成时刻，RFC3339 UTC；运维确认「新配置已随重启生效」的依据）。
+
 #### Scenario: 健康检查
 - **WHEN** `GET /healthz`
-- **THEN** 返回 200 与 `{"status":"ok","years":[2025,2026]}`（已加载年份）
+- **THEN** 返回 200 与 `{"status":"ok","version":"<版本>","years":[2025,2026],"loaded_at":"<RFC3339>"}`
 
 #### Scenario: 未知路径/方法
 - **WHEN** 访问未注册路径，或对 `/api/v1/days` 使用 POST
@@ -581,6 +583,7 @@ type Adjust    struct { Off, Work []time.Time }
 
 func LoadDir(dir string) (*Store, error)   // 加载 <year>.toml；构建后不可变，并发读安全无锁
 func (s *Store) Has(year int) bool
+func (s *Store) LoadedAt() time.Time       // 配置加载完成时刻（/healthz loaded_at 来源）
 
 type Calendar struct{ /* 由 Store 构造：各年索引 + 组合计数前缀和 */ }
 func NewCalendar(s *Store) *Calendar

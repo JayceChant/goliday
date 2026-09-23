@@ -54,3 +54,4 @@
 - [x] 复查修复：gen.go 排序统一改 slices（SortFunc/SortStableFunc，比较函数改三值返回）；与 AGENTS 现代 Go 基线及全仓其余排序写法（store/handlers 均已用 slices）一致。
 - [x] 复查修复：三份重复的严格日期解析与两份中文星期名收敛——根包导出 ParseDate/WeekdayCN，config.go、handlers.go（invalid_date 错误复用根包错误文案）、goliday-tool gen.go 统一引用；spec 附录 API 形态与测试分层表同步。
 - [x] 复查修复：覆盖年份判定收敛——根包导出 CoveredYears（时间区间重载，空区间返回 nil），HTTP 层 multiQuery.coveredYears 区间部分改调库实现（消除两层各写一份的漂移风险）；黑盒 TestCoveredYears 覆盖空/倒置/同年/跨年/元旦折叠；spec 年份强校验覆盖规则与附录 API 形态同步。
+- [x] 复查修复（healthz 改进）：/healthz 增加 version（构建期注入）与 loaded_at（配置加载完成时刻 RFC3339，确认「新配置已生效」的依据）字段——Store 新增 LoadedAt；docs/API.md、README 双语示例与路由表、spec 健康检查 Requirement 与 Scenario、附录 API 形态同步；handlers 测试断言新字段。

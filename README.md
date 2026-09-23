@@ -103,7 +103,7 @@ docker build -t goliday .
 docker run -p 8080:8080 -v $PWD/configs:/data:ro goliday -config-dir /data
 
 curl "http://localhost:8080/healthz"
-# {"status":"ok","years":[2025,2026]}
+# {"status":"ok","version":"0.1.1","years":[2025,2026],"loaded_at":"2026-11-20T02:15:04Z"}
 ```
 
 Images are published to GHCR by [GitHub Actions](.github/workflows/docker.yml) on every `v*` tag push (multi-arch `linux/amd64` + `linux/arm64`; pushes to the default branch, PRs and manual runs build for verification only, without publishing). Tags are produced automatically by [release-please](.github/workflows/release-please.yml): commits follow Conventional Commits (already adopted in this repo), and merging a release PR creates the `v*` tag, GitHub Release and CHANGELOG entry, then publishes the image — no manual tag push needed:
@@ -118,7 +118,7 @@ docker pull ghcr.io/jaycechant/goliday:latest
 |---|---|---|
 | HTTP | `GET /api/v1/days` | Single-day / range (half-open) / discrete / mixed-union queries with per-day details; range span ≤366 days |
 | HTTP | `GET /api/v1/stats` | Same statistics as `/days`, without details; no span limit |
-| HTTP | `GET /healthz` | Health check, returns loaded years |
+| HTTP | `GET /healthz` | Health check: status, version, loaded years, config load time |
 | gRPC | `GolidayService` | `GetDay` / `QueryDays` / `QueryStats`, one-to-one with HTTP; standard gRPC health checking also registered. Proto definition at [proto/goliday/v1/goliday.proto](proto/goliday/v1/goliday.proto) — non-Go clients can generate their own stubs from it |
 
 Day-type bitmask (`type_label` is exactly `DayType.String()`: legal values look up a static label table, combo labels join two segments with `|`, illegal values yield `invalid`; `|` is all-of semantics across all values, coarse granularity is the base-bit projection):

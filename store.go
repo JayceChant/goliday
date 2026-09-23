@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 )
 
 // Store 持有多个年份的稀疏配置。由 LoadDir 构建后不可变（无任何导出
 // 或未导出的修改途径），并发读取天然安全且无锁开销。
 type Store struct {
-	years map[int]*YearConfig
+	years    map[int]*YearConfig
+	loadedAt time.Time
 }
 
 // Has 报告指定年份的配置是否存在。
@@ -22,6 +24,12 @@ func (s *Store) Has(year int) bool {
 // Get 返回指定年份的配置，不存在时返回 nil。
 func (s *Store) Get(year int) *YearConfig {
 	return s.years[year]
+}
+
+// LoadedAt 返回配置加载完成的时间（LoadDir 结束时刻，各年份同一批次，
+// 无逐年差异）；运维经 /healthz 确认「新配置已生效」的依据。
+func (s *Store) LoadedAt() time.Time {
+	return s.loadedAt
 }
 
 // Years 返回已加载的年份列表，升序排列。
@@ -57,5 +65,6 @@ func LoadDir(dir string) (*Store, error) {
 		s.years[cfg.Year] = cfg
 	}
 
+	s.loadedAt = time.Now()
 	return s, nil
 }
