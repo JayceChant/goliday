@@ -42,3 +42,4 @@
 - [x] 复查修复：Stats 改为内部排序去重副本（防御式归一，放宽「调用方须排序去重」前置契约；修复 prev := 0 哨兵在首日期年份为 0 时跳过加载校验导致的空指针 panic）；spec 单日期查询 Requirement 增补 Stats 核心包条款与决策依据、附录 API 形态注释同步；黑盒回归覆盖乱序/重复输入、入参不变性与年份 0 场景。
 - [x] 复查修复：服务版本号改构建期注入（main.go 硬编码 0.1.0 已落后 release please 发布的 0.1.1）：`var version = "dev"` + Dockerfile `ARG VERSION` + `-ldflags -X main.version`，docker.yml tag 构建去 v 前缀注入；spec 容器 Requirement 构建阶段与工作流步骤、docs/API.md `-v` 行同步。
 - [x] 复查修复：500 兜底错误不再吞因——新增 internalQueryErr 辅助函数（记录操作名与底层错误链后返回统一 errInternalQuery），HTTP handlers 5 处与 gRPC 3 处兜底分支全部改经该函数，日志可排查、对外文案不变。
+- [x] 复查修复：StatsResult.Fine 键由 4/8/16 裸调整位改为五个合法终态组合值（1/2/6/10/17）——裸调整位非合法 DayType 取值，作键打印显示 invalid 且调用方难索引；handlers fillStats 与 grpc statsProto 映射、黑盒 fineKeyOf/一致性基准键、spec 统计导出规则同步；HTTP/gRPC 对外 JSON/proto 键名不变。

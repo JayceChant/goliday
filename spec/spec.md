@@ -497,7 +497,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 **决策依据**：统计 O(覆盖年数) 差分即可完成，故 `/stats` 解除范围限制；days 明细接口保留 366 天上限防响应膨胀。前缀元素以 uint16 存储（uint8 的「工作日至多 248 天」上界估计漏算了无调整年：空 off/work 配置合法，闰年且元旦为周一~周四时普通工作日达 262 天，uint8 累计到 256 回绕会破坏五键之和 == Total 的 MECE 不变量）、数组定长 `[366]` 随年份索引结构体内联（省去切片头与独立堆分配、访问少一次间接寻址；平年尾部闲置 10B 为代价，闭区间下标省去无意义的全零首元素）压缩内存与分配数；uint16 只约束年内单段，跨年累加经 int 转换保持溢出安全。
 
 统计导出规则（由按值计数 `C(v)` 直接映射，语义与逐日统计完全等价）：
-- 细粒度（五键 MECE，之和恒等于 `Total`）：`ordinary=C(1)`、`weekend=C(2)`、`festival=C(6)`、`adjusted_rest=C(10)`、`adjusted_work=C(17)`；
+- 细粒度（五键 MECE，之和恒等于 `Total`）：`ordinary=C(1)`、`weekend=C(2)`、`festival=C(6)`、`adjusted_rest=C(10)`、`adjusted_work=C(17)`；`StatsResult.Fine` 的 map 键 SHALL 为五个合法终态组合值（`DayTypeWork`/`DayTypeRest`/`DayTypeFestivalRest`/`DayTypeAdjustedRestDay`/`DayTypeAdjustedWorkDay`），不得使用 4/8/16 裸调整位（非合法 `DayType` 取值，`String()` 输出 `invalid`，调用方难以索引与打印）；
 - 粗粒度（单次位与归类）：`workday=C(1)+C(17)`、`holiday=C(2)+C(6)+C(10)`；
 - `Total` = 覆盖天数（区间天数或列表长度）。
 

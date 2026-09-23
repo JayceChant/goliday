@@ -80,6 +80,11 @@ func (c *comboTotals) add(o comboCounts) {
 
 // result 将跨年累计计数导出为统计结果：细粒度五键 MECE（之和恒等于
 // total），粗粒度按基本位投影归并。detailed=false 时 Fine 为 nil。
+//
+// Fine 的键为五个合法终态组合值（validFineValues：1/2/6/10/17，即
+// ordinary/weekend/festival/adjusted_rest/adjusted_work 各键），而非
+// 4/8/16 裸调整位——裸调整位非合法 DayType 取值，作键打印时显示
+// "invalid"，调用方也难以直接索引。
 func (c comboTotals) result(total int, detailed bool) StatsResult {
 	r := StatsResult{
 		Total: total,
@@ -90,11 +95,11 @@ func (c comboTotals) result(total int, detailed bool) StatsResult {
 	}
 	if detailed {
 		r.Fine = map[DayType]int{
-			DayTypeWork:         c[comboOrdinary],
-			DayTypeRest:         c[comboWeekend],
-			DayTypeFestival:     c[comboFestival],
-			DayTypeAdjustedRest: c[comboAdjusted],
-			DayTypeAdjustedWork: c[comboCompensate],
+			DayTypeWork:            c[comboOrdinary],
+			DayTypeRest:            c[comboWeekend],
+			DayTypeFestivalRest:    c[comboFestival],
+			DayTypeAdjustedRestDay: c[comboAdjusted],
+			DayTypeAdjustedWorkDay: c[comboCompensate],
 		}
 	}
 	return r
@@ -328,10 +333,13 @@ func (c *Calendar) QueryRange(start, end time.Time) ([]Dated, error) {
 
 // StatsResult 统计结果：
 //
-//	Total  覆盖天数（区间天数或 len(dates)，不做去重）；
+//	Total  覆盖天数（区间天数或去重后的列表长度）；
 //	Coarse 粗粒度计数，键为 DayTypeWork / DayTypeRest；
 //	Fine   细粒度五键 MECE 计数（普通工作日/普通周休/节日放假日/
-//	       调休放假日/补班日），各键之和恒等于 Total；detailed=false 时为 nil。
+//	       调休放假日/补班日），键为五个合法终态组合值
+//	       （DayTypeWork/DayTypeRest/DayTypeFestivalRest/
+//	       DayTypeAdjustedRestDay/DayTypeAdjustedWorkDay），
+//	       各键之和恒等于 Total；detailed=false 时为 nil。
 type StatsResult struct {
 	Total  int
 	Coarse map[DayType]int

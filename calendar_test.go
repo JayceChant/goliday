@@ -176,22 +176,14 @@ func TestCalendarQueryRange(t *testing.T) {
 	}
 }
 
-// fineKeyOf 将细粒度值映射为 Fine 计数键（单 bit 键 {1,2,4,8,16}）：
-// Work(1) 与 Rest(2) 以自身为键，三个组合值折叠为其调整位键。
+// fineKeyOf 将细粒度值映射为 Fine 计数键：键为五个合法终态组合值
+// （1/2/6/10/17），组合值即键本身，普通工作日/周休以基本位单值为键。
 func fineKeyOf(dt goliday.DayType) goliday.DayType {
-	switch dt {
-	case goliday.DayTypeFestivalRest:
-		return goliday.DayTypeFestival
-	case goliday.DayTypeAdjustedRestDay:
-		return goliday.DayTypeAdjustedRest
-	case goliday.DayTypeAdjustedWorkDay:
-		return goliday.DayTypeAdjustedWork
-	}
-	return dt // Work(1)→ordinary 键、Rest(2)→weekend 键
+	return dt // Work(1)/Rest(2) 与三个组合值 6/10/17 本身即 Fine 键
 }
 
 // bruteForceStats 逐日 Query 暴力统计，作为前缀和路径的一致性基准。
-// 细粒度为按值 MECE 计数（键为五个单 bit 值 {1,2,4,8,16}），
+// 细粒度为按值 MECE 计数（键为五个终态组合值 {1,2,6,10,17}），
 // 粗粒度为基本位投影。
 func bruteForceStats(t *testing.T, c *goliday.Calendar, start, end time.Time, detailed bool) goliday.StatsResult {
 	t.Helper()
@@ -225,8 +217,8 @@ func wantSameStats(t *testing.T, name string, got, want goliday.StatsResult) {
 	}
 	if len(want.Fine) > 0 {
 		fineKeys := []goliday.DayType{
-			goliday.DayTypeWork, goliday.DayTypeRest, goliday.DayTypeFestival,
-			goliday.DayTypeAdjustedRest, goliday.DayTypeAdjustedWork,
+			goliday.DayTypeWork, goliday.DayTypeRest, goliday.DayTypeFestivalRest,
+			goliday.DayTypeAdjustedRestDay, goliday.DayTypeAdjustedWorkDay,
 		}
 		for _, k := range fineKeys {
 			if got.Fine[k] != want.Fine[k] {
@@ -257,11 +249,11 @@ func TestCalendarStats(t *testing.T) {
 		t.Fatalf("Fine = %v，期望 5 键（MECE）", r.Fine)
 	}
 	wantFine := map[goliday.DayType]int{
-		goliday.DayTypeFestival:     1,
-		goliday.DayTypeAdjustedWork: 1,
-		goliday.DayTypeWork:         1,
-		goliday.DayTypeRest:         0,
-		goliday.DayTypeAdjustedRest: 0,
+		goliday.DayTypeFestivalRest:    1,
+		goliday.DayTypeAdjustedWorkDay: 1,
+		goliday.DayTypeWork:            1,
+		goliday.DayTypeRest:            0,
+		goliday.DayTypeAdjustedRestDay: 0,
 	}
 	sum := 0
 	for k, v := range r.Fine {
