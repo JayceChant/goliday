@@ -291,13 +291,18 @@ work = [ "2026-01-24", "2026-02-28" ]
 
 ### Requirement: 容器镜像与发布（GitHub 环境）
 
-仓库根 SHALL 提供 `Dockerfile`（多阶段构建）与 `.dockerignore`，GitHub Actions SHALL 提供 `.github/workflows/docker.yml` 自动构建并发布镜像至 GHCR（`ghcr.io/<owner>/goliday`）。
+仓库根 SHALL 提供 `Makefile`（构建入口）、`Dockerfile`（多阶段构建，构建阶段调用 Makefile）与 `.dockerignore`，GitHub Actions SHALL 提供 `.github/workflows/docker.yml` 自动构建并发布镜像至 GHCR（`ghcr.io/<owner>/goliday`）。
+
+Makefile 约定（二进制与镜像**共用同一构建逻辑**，编译命令唯一定义）：
+- 目标：`build`（= `build-server` + `build-tool`，产物到 `bin/`，Windows 交叉编译自动加 `.exe` 后缀）、`download-deps`（`go mod download`，供 Dockerfile 依赖层）、`image`（`docker build --build-arg VERSION=<VERSION>`，缺省 tag `goliday:$(VERSION)`）、`check`（AGENTS.md 提交门禁四件套 build/vet/test/gofmt）、`lint`、`fix`、`clean`；
+- 变量：`VERSION`（缺省 `dev`，经 `-ldflags "-s -w -X main.version=$(VERSION)"` 注入）、`OUT_DIR`（缺省 `bin`）；`GOOS`/`GOARCH` 经环境变量透传供交叉编译；
+- 编译参数唯一定义于 `build-server`（`CGO_ENABLED=0` 静态、`-trimpath`、`-s -w`、版本注入），Dockerfile 与本地 `make build` 调用同一目标，产物出自同一命令。
 
 Dockerfile 约定：
-- 构建阶段：`golang:1.27`（`AS build`），仅复制 `go.mod`/`go.sum` 后 `go mod download`（层缓存友好），再复制源码；`CGO_ENABLED=0` 静态编译 `cmd/goliday-server`（distroless 无动态 loader，必须静态链接）；`ARG VERSION=dev`，编译命令 `-ldflags "-s -w -X main.version=${VERSION}"` 注入二进制版本号（`-v` 与 `/healthz` 输出；本地/`go install` 构建为 `dev`；release-please 的 simple 策略只维护 CHANGELOG/tag 不改代码，版本号不得硬编码常量，否则随发版漂移）。
+- 构建阶段：`golang:1.27`（`AS build`，基于 Debian 须先 `apt-get install make`），仅复制 `Makefile`/`go.mod`/`go.sum` 后 `make download-deps`（层缓存友好），再复制源码，`make build-server VERSION=${VERSION} OUT_DIR=/out` 编译；`ARG VERSION=dev` 透传给 Makefile（版本号注入见 Makefile 约定；本地/`go install` 构建为 `dev`；release-please 的 simple 策略只维护 CHANGELOG/tag 不改代码，版本号不得硬编码常量，否则随发版漂移）。
 - 运行阶段：`gcr.io/distroless/static-debian12:nonroot`；仅复制 server 二进制至 `/goliday-server`；`USER nonroot`（镜像内已内置）；`EXPOSE 8080 50051`；`ENTRYPOINT ["/goliday-server"]`。
 - 不打包 `configs/`：配置与镜像解耦，运行时经 volume 挂载后以 `-config-dir` 指向；distroless 无 shell，容器内一切命令参数走 exec 形式。
-- 构建上下文最小化：`.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`*.md`、`.env*` 等非构建必需内容。
+- 构建上下文最小化：`.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`bin`、覆盖率产物、`*.md`、`.env*` 等非构建必需内容（`Makefile`、Go 源码与 `go.mod`/`go.sum` 保留）。
 
 工作流约定：
 - 触发：`push` 默认分支、`push` tag `v*`、`pull_request`、`workflow_dispatch`；
@@ -306,9 +311,13 @@ Dockerfile 约定：
 - 标签策略（metadata-action）：语义化版本 `v1.2.3` → `1.2.3` / `1.2` / `1`、tag 事件附加 `latest`；分支名 / PR 编号标签仅作非推送事件的构建标识，不发布；
 - 无自定义 secrets：GHCR 认证仅用内置 `GITHUB_TOKEN`。
 
+#### Scenario: 本地构建二进制
+- **WHEN** 在仓库根执行 `make build VERSION=0.2.0`
+- **THEN** `bin/` 下生成 `goliday-server` 与 `goliday-tool` 静态二进制，`./bin/goliday-server -v` 输出 `0.2.0`
+
 #### Scenario: 本地构建镜像
-- **WHEN** 在仓库根执行 `docker build -t goliday .`
-- **THEN** 多阶段构建成功，最终镜像基于 distroless 且以 nonroot 运行，`docker run goliday -v` 输出版本后退出
+- **WHEN** 在仓库根执行 `make image VERSION=0.2.0`（或 `docker build --build-arg VERSION=0.2.0 -t goliday .`）
+- **THEN** 多阶段构建成功（镜像内二进制经 `make build-server` 产出，与本地同一构建逻辑），最终镜像基于 distroless 且以 nonroot 运行，`docker run goliday -v` 输出版本后退出
 
 #### Scenario: 容器启动并挂载配置
 - **WHEN** `docker run -p 8080:8080 -v $PWD/configs:/data:ro goliday -config-dir /data`

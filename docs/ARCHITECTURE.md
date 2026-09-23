@@ -12,6 +12,7 @@ goliday 是一个基于 Go 1.27 的中国法定节假日服务：以**按年组�
 goliday/
 ├── go.mod                          # module github.com/JayceChant/goliday，go 1.27
 ├── go.sum
+├── Makefile                        # 构建入口：二进制与 Docker 镜像共用同一编译命令（make build-server）
 ├── buf.yaml                        # buf 工作区（模块根 proto/，lint STANDARD 零豁免）
 ├── buf.gen.yaml                    # buf generate 插件与参数（本地 protoc-gen-go/go-grpc）
 ├── daytype.go                      # DayType 位掩码枚举、Coarse/String 映射
@@ -95,6 +96,8 @@ goliday/
 | 审计方式 | `go list -deps . | grep google.golang.org` 应无输出（根包零 gRPC）；`go.mod` 直接依赖仅 toml + gRPC 三件套 |
 
 零框架、零 ORM、零数据库：配置纯内存、启动时一次性加载，换来极小的二进制与部署面。gRPC 运行时被隔离在服务入口与生成代码中，核心库的依赖面不受影响。
+
+**构建入口统一（Makefile）**：编译命令唯一定义于 `make build-server`（`CGO_ENABLED=0` 静态、`-trimpath`、`-s -w`、`-X main.version=$(VERSION)` 注入版本号）。本地 `make build` 产出 `bin/` 二进制；Dockerfile 构建阶段执行同一目标（`OUT_DIR=/out`），`make image` 与 `docker build` 的镜像内二进制与本地制品出自同一命令、同一参数，不随时间漂移。`make check`/`make lint`/`make fix` 对应 AGENTS.md 提交门禁四件套、golangci-lint 与 go fix。
 
 ---
 

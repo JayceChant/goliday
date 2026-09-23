@@ -96,7 +96,8 @@ Full API reference via the pkg.go.dev badge at the top.
 Multi-stage build: compiled as a static binary (`CGO_ENABLED=0`), the runtime image is `gcr.io/distroless/static-debian12:nonroot` (no shell, no package manager) and contains only the server binary. Year configs are **not** baked into the image — mount your own config directory read-only at runtime (generate the target year via the [annual config update process](#annual-config-update)).
 
 ```bash
-# Build locally
+# Build locally (or: make image VERSION=0.2.0 — the Dockerfile builds
+# via the same Makefile target as the plain binaries)
 docker build -t goliday .
 
 # Run: HTTP :8080, gRPC :50051; mount the config directory read-only
@@ -163,7 +164,16 @@ Dependencies are tiered per package: the root package uses only `BurntSushi/toml
 ## Development
 
 ```bash
+# Full gate (build/vet/test/gofmt), also what CI runs
 go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .
+# or: make check    (same gate; make lint / make fix for golangci-lint / go fix)
+
+# Build binaries into bin/ (VERSION injected via ldflags; defaults to dev)
+make build VERSION=0.2.0
+
+# Build the container image — the Dockerfile calls the same Makefile target,
+# so binaries and image always come from one build recipe
+make image VERSION=0.2.0
 ```
 
 Test data: `testdata/2025.toml` (real official plan), `testdata/2026.toml` (hypothetical sample), `testdata/invalid/` (invalid samples).

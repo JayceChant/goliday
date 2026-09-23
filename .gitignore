@@ -1,6 +1,7 @@
-# 构建产物 / 二进制（仅忽略仓库根目录，不影响 cmd/ 源码）
+# 构建产物 / 二进制（仅忽略仓库根目录与 bin/，不影响 cmd/ 源码）
 /goliday-server
 /goliday-tool
+/bin/
 *.exe
 *.test
 *.out

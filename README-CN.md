@@ -96,7 +96,8 @@ stats, _ := cal.StatsRange(day, day.AddDate(0, 0, 7), true) // 区间统计（�
 多阶段构建：以静态二进制编译（`CGO_ENABLED=0`），运行镜像基于 `gcr.io/distroless/static-debian12:nonroot`（无 shell、无包管理器），仅包含 server 二进制。年份配置**不打入镜像**，运行时只读挂载自备的配置目录（目标年份可按[年度配置更新](#年度配置更新)生成）。
 
 ```bash
-# 本地构建
+# 本地构建（或：make image VERSION=0.2.0——Dockerfile 经同一 Makefile
+# 目标构建，与纯二进制制品同一构建命令）
 docker build -t goliday .
 
 # 运行：HTTP :8080，gRPC :50051；配置目录只读挂载
@@ -164,7 +165,16 @@ cmd/goliday-server（HTTP + gRPC 入口）   cmd/goliday-tool（gen/validate）
 ## 开发
 
 ```bash
+# 完整门禁（build/vet/test/gofmt），与 CI 一致
 go build ./... && go vet ./... && go test -count=1 ./... && gofmt -l .
+# 或：make check    （同一门禁；make lint / make fix 对应 golangci-lint / go fix）
+
+# 构建二进制到 bin/（VERSION 经 ldflags 注入，缺省 dev）
+make build VERSION=0.2.0
+
+# 构建容器镜像——Dockerfile 调用同一 Makefile 目标，
+# 二进制制品与镜像制品出自同一构建命令
+make image VERSION=0.2.0
 ```
 
 测试数据：`testdata/2025.toml`（真实官方方案）、`testdata/2026.toml`（假设示例）、`testdata/invalid/`（非法样例）。
