@@ -58,6 +58,12 @@ jobs:
             # tag 事件附加 latest
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
 
+      - name: Derive binary version
+        # tag 构建（vX.Y.Z）去掉 v 前缀注入二进制版本号；其余事件不注入
+        # （Dockerfile ARG 缺省 dev），验证构建无发布无影响。
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "VERSION_BUILD_ARG=VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
       - name: Build and push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
@@ -66,6 +72,7 @@ jobs:
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ env.VERSION_BUILD_ARG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false

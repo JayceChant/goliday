@@ -292,16 +292,15 @@ work = [ "2026-01-24", "2026-02-28" ]
 仓库根 SHALL 提供 `Dockerfile`（多阶段构建）与 `.dockerignore`，GitHub Actions SHALL 提供 `.github/workflows/docker.yml` 自动构建并发布镜像至 GHCR（`ghcr.io/<owner>/goliday`）。
 
 Dockerfile 约定：
-- 构建阶段：`golang:1.27`（`AS build`），仅复制 `go.mod`/`go.sum` 后 `go mod download`（层缓存友好），再复制源码；`CGO_ENABLED=0` 静态编译 `cmd/goliday-server`（distroless 无动态 loader，必须静态链接）。
+- 构建阶段：`golang:1.27`（`AS build`），仅复制 `go.mod`/`go.sum` 后 `go mod download`（层缓存友好），再复制源码；`CGO_ENABLED=0` 静态编译 `cmd/goliday-server`（distroless 无动态 loader，必须静态链接）；`ARG VERSION=dev`，编译命令 `-ldflags "-s -w -X main.version=${VERSION}"` 注入二进制版本号（`-v` 与 `/healthz` 输出；本地/`go install` 构建为 `dev`；release-please 的 simple 策略只维护 CHANGELOG/tag 不改代码，版本号不得硬编码常量，否则随发版漂移）。
 - 运行阶段：`gcr.io/distroless/static-debian12:nonroot`；仅复制 server 二进制至 `/goliday-server`；`USER nonroot`（镜像内已内置）；`EXPOSE 8080 50051`；`ENTRYPOINT ["/goliday-server"]`。
 - 不打包 `configs/`：配置与镜像解耦，运行时经 volume 挂载后以 `-config-dir` 指向；distroless 无 shell，容器内一切命令参数走 exec 形式。
 - 构建上下文最小化：`.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`*.md`、`.env*` 等非构建必需内容。
 
 工作流约定：
 - 触发：`push` 默认分支、`push` tag `v*`、`pull_request`、`workflow_dispatch`；
-- 推送策略：仅 `push` tag `v*` 事件发布镜像至 GHCR；`push` 默认分支、`pull_request`、`workflow_dispatch` 仅构建验证不推送（master 滚动镜像无消费场景，保留只会产生冗余版本记录；构建可行性由验证构建保障）；
-- 权限最小化：`contents: read` + `packages: write`；
-- 步骤：checkout → buildx → QEMU（多架构）→ GHCR 登录（`GITHUB_TOKEN`，仅 tag 事件执行）→ metadata 提取标签 → build（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance`/`sbom` 关闭以保持镜像单 manifest；仅 tag 事件 push）；
+- 推送策略：仅 `push` tag `v*` 事件发布镜像至 GHCR；`push` 默认分支、`pull_request`、`workflow_dispatch` 仅构建验证不推送（master 滚动镜像无消费场景，保留只会产生冗余版本记录；构建可行性由验证构建保障）；- 权限最小化：`contents: read` + `packages: write`；
+- 步骤：checkout → buildx → QEMU（多架构）→ 版本号派生（tag 事件去 `v` 前缀为 `VERSION` 构建参数，其余事件不注入）→ GHCR 登录（`GITHUB_TOKEN`，仅 tag 事件执行）→ metadata 提取标签 → build（`linux/amd64` + `linux/arm64`，GHA 缓存，`provenance`/`sbom` 关闭以保持镜像单 manifest；仅 tag 事件 push）；
 - 标签策略（metadata-action）：语义化版本 `v1.2.3` → `1.2.3` / `1.2` / `1`、tag 事件附加 `latest`；分支名 / PR 编号标签仅作非推送事件的构建标识，不发布；
 - 无自定义 secrets：GHCR 认证仅用内置 `GITHUB_TOKEN`。
 

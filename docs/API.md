@@ -17,7 +17,7 @@ go run ./cmd/goliday-server -addr :8080 -grpc-addr :50051 -config-dir ./configs
 | `-addr` | `":8080"` | HTTP 监听地址 |
 | `-grpc-addr` | `":50051"` | gRPC 监听地址；空字符串 `""` 禁用 gRPC |
 | `-config-dir` | `"./configs"` | 年度配置目录（`<year>.toml`，格式见 [CONFIG_FORMAT.md](./CONFIG_FORMAT.md)） |
-| `-v` | — | 输出 `goliday-server version 0.1.0` 后退出 |
+| `-v` | — | 输出 `goliday-server version <版本号>` 后退出（发布镜像经构建注入 tag 版本号；本地 / `go install` 构建为 `dev`） |
 
 启动时全量加载配置目录；任一文件解析或校验失败则启动失败并打印带文件路径的错误。加载成功后输出已加载年份列表日志。收到 SIGINT/SIGTERM 后依次优雅关闭 HTTP 与 gRPC。
 

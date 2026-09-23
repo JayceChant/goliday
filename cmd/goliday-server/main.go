@@ -21,8 +21,11 @@ import (
 	"github.com/JayceChant/goliday"
 )
 
-// version 服务版本号。
-const version = "0.1.0"
+// version 服务版本号：缺省 dev（本地/go install 构建），正式版本经构建期
+// 注入——docker.yml 的 tag 构建以 -ldflags "-X main.version=<semver>"
+// 覆盖（release-please 的 simple 策略只维护 CHANGELOG/tag，不改代码常量，
+// 硬编码会随每次发版漂移）。
+var version = "dev"
 
 // shutdownTimeout 优雅关闭时等待存量请求完成的超时时间。
 const shutdownTimeout = 5 * time.Second
