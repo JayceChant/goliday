@@ -1,15 +1,24 @@
 # govulncheck 依赖漏洞扫描：
-# - 默认分支推送 / 每周定时运行官方 golang.org/x/vuln 扫描
+# - 与 ci.yml 同口径随分支推送/PR 运行：依赖升级引入的可触达漏洞在合入
+#   master 前即暴露（此前仅 master push 后才发现，正是门禁类检查的时滞）
+# - 每周定时兜底：漏洞库新披露对既有依赖的影响
 # - text 输出：发现可被实际调用路径触达的漏洞时作业失败（门禁）
 # - Go 官方工具，无需注册
 name: govulncheck
 
 on:
   push:
-    branches: [master]
+    branches: ["**"]
+  pull_request:
   schedule:
     - cron: "43 3 * * 1"
   workflow_dispatch:
+
+# 冗余抑制：同一分支的 push 与 pull_request 双事件共享并发组，仅保留
+# 最新一次运行（口径与 ci.yml 一致）
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
