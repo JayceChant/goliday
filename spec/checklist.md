@@ -238,3 +238,12 @@
 - [x] spec.md 容器与发布 Requirement 增 Makefile 约定（目标清单/变量/编译命令唯一定义）、Dockerfile 构建阶段改写、`.dockerignore` 条款与「本地构建二进制」「本地构建镜像」Scenario 更新；README 双语开发章节（make check/build/image）与 Docker 章节构建注释、docs/ARCHITECTURE.md 目录树与「构建入口统一」说明同步；执行提交（build: 新增 Makefile 统一二进制与镜像构建入口）
 - [x] 防递归约束注释：Makefile `image` 目标注明「Dockerfile 只允许引用不触碰 docker 的目标，不得引用本目标，否则 make image → docker build → 容器内 make image 构成真实循环」，Dockerfile 构建阶段注释对称注明「只调用 download-deps/build-server，不得调用 make image」——互引是分层委托（执行路径 DAG），本约束是其成立前提；纯注释变更，无代码改动；验证命令全绿；执行提交（docs: Makefile 与 Dockerfile 互注防构建递归约束）
 - [x] 修复 ci.yml proto 作业安装失败：`go install` 的 pkg@version 形式要求实参同一 module 同一版本，buf/protoc-gen-go/protoc-gen-go-grpc 分属三个 module，单条命令必失败（go 1.27 报 "all arguments must refer to packages in the same module"）；拆为逐 module 三条安装命令并注明原因，三条命令本机实测安装成功（buf 1.72.0 / protoc-gen-go v1.36.5 / protoc-gen-go-grpc v1.5.1）；YAML 解析校验通过；验证命令全绿（纯 workflow 变更，无 Go 代码改动）；执行提交（fix: 拆分 go install 逐模块安装 buf 与 protoc 插件）
+
+## 覆盖率修复与门禁成文（v0.2.0 回补）
+
+- [x] `cmd/goliday-server/main.go`：main() 收敛为 `run(os.Args[1:])` 错误包装（log.Fatalf 退出码 1 不变），run 内 flag.NewFlagSet(ContinueOnError) + SetOutput(io.Discard)、加载/监听失败经 fmt.Errorf 返回原语义文案、signal.NotifyContext 提前安装；`-v` 输出与各失败日志语义不变
+- [x] 新增 `cmd/goliday-server/main_test.go`（白盒）：TestRunVersionFlag（stdout 捕获断言 `goliday-server version dev`）、TestRunFlagError、TestRunConfigDirFail、TestRunGRPCListenFail/TestRunHTTPListenFail（端口占用互斥构造）、TestRunServeAndGracefulShutdown（TCP 拨号轮询就绪后 SIGTERM 自身，run 返回 nil）、TestRunGRPCDisabled（-grpc-addr 空串）；日志静默 helper 避免测试输出污染
+- [x] `cmd/goliday-tool/main.go`：main() 改 `os.Exit(dispatch(os.Args[1:]))`，dispatch 覆盖无参/未知子命令/validate/gen 路径；新增 main_test.go（用法错误统一 2、validate 非法 1 合法 0、gen 非 2）
+- [x] 补测：handlers_test.go 增 internalQueryErr（指针同一 errInternalQuery、500/internal_error、日志含操作与底层原因）与 writeJSON 编码失败（failWriter 不 panic 仅记日志）；store_test.go 增 TestStoreLoadedAt（零值零时刻、加载时间窗、重复读取不变）；gen_test.go 增空段落跳过、TODO 排序对偶方向（有日期在前输入序）、裸日无月份放弃
+- [x] 覆盖率结果：手写代码（排 proto）89.2%→98.0%；根包 99.6%（仅 ParseDate 回格式化兜底）、server 95.7%（仅 main 胶手与不可达 500 兜底）、tool 99.3%（仅 Atoi 正则保证分支）；无新增排除项（生成代码 proto/ 既有口径不变）
+- [x] 约定成文：spec.md 测试分层 Requirement 补「main() 胶水下沉」条款、「覆盖率维持」Scenario（≥95% 门禁、例外清单：入口胶手/年份已校验后再报错兜底/正则保证可解析的 Atoi 失败/ParseDate 回格式化兜底）与文件表 main_test.go 行；AGENTS.md 第 5 节补测试覆盖率自查条目；`go fix` 幂等、`golangci-lint run` 0 issues、验证命令全绿；执行提交（test: 回补 v0.2.0 覆盖率并将维持门禁成文）

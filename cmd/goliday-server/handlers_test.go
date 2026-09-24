@@ -3,10 +3,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -474,5 +478,48 @@ func TestMixedStatsMatchesDays(t *testing.T) {
 	if daysBody["total_days"] != statsBody["total_days"] {
 		t.Errorf("混合模式 total_days 不一致: %#v vs %#v",
 			daysBody["total_days"], statsBody["total_days"])
+	}
+}
+
+// 18. internalQueryErr 兜底：记录底层错误（供排查）后返回统一 500 错误，
+// 调用方仅见 errInternalQuery（HTTP 与 gRPC 共用同一兜底语义）。
+func TestInternalQueryErr(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	underlying := errors.New("底层原因")
+	got := internalQueryErr("GetDay Query", underlying)
+	if got != errInternalQuery {
+		t.Errorf("internalQueryErr 返回 %#v, want 同一 errInternalQuery 指针", got)
+	}
+	if got.status != http.StatusInternalServerError || got.code != "internal_error" {
+		t.Errorf("兜底错误 = %d/%s, want 500/internal_error", got.status, got.code)
+	}
+	for _, want := range []string{"GetDay Query", "底层原因"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("日志缺少 %q: %q", want, buf.String())
+		}
+	}
+}
+
+// failWriter 的 Write 恒失败，用于触发 writeJSON 的编码失败日志分支。
+type failWriter struct{ header http.Header }
+
+func (f *failWriter) Header() http.Header { return f.header }
+
+func (f *failWriter) WriteHeader(int) {}
+
+func (f *failWriter) Write([]byte) (int, error) { return 0, errors.New("write boom") }
+
+// 19. writeJSON：响应体写出失败不 panic，仅记录日志（客户端已断开等）。
+func TestWriteJSONEncodeError(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	writeJSON(&failWriter{header: http.Header{}}, http.StatusOK, map[string]string{"k": "v"})
+	if !strings.Contains(buf.String(), "写响应失败") {
+		t.Errorf("写出失败日志缺少「写响应失败」: %q", buf.String())
 	}
 }

@@ -40,6 +40,7 @@
   （`gofmt -l .` 输出必须为空）
 - 自动现代化：**每次有代码改动，提交前先执行 `go fix ./...`，且重复执行直到无任何改动**（到达不动点）；期间实际落地的典型改写，须及时归纳补充到下方"现代 Go 风格基线"。新代码直接采用下述现代写法，避免过时风格。
 - 静态检查：**每次有代码改动，提交前执行** `golangci-lint run ./...`，须零告警（配置见 `.golangci.yml`；本机未安装时可通过 `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` 安装，不要求入库）。
+- 测试覆盖率：新增或修改的生产代码须配套测试，提交前经 `go test -count=1 -cover ./...` 自查：手写代码整体覆盖率（排除 `proto/` 生成代码）不得低于 95%（门禁与允许的例外口径见 `spec/spec.md`「测试分层」的覆盖率维持 Scenario）。入口 `main()` 只保留进程级胶水，逻辑下沉到可测的 `run`/`dispatch` 并测试。
 - 现代 Go 风格基线（go fix 实际落地的改写规则，依 Go 版本；随 go fix 产出持续补充）：
   - 整数计数循环用 range-over-int（Go 1.22+）：`for i := range 366`，不写 `for i := 0; i < 366; i++`。
   - 循环变量每轮迭代独立作用域（Go 1.22+）：禁止 `tc := tc`、`name, keywords := name, keywords` 等影子拷贝（含 `t.Run` 闭包、goroutine 捕获场景）。

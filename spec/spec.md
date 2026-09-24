@@ -436,8 +436,8 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 | 根包 `goliday_test` | `calendar_test.go`（判定/区间/统计契约 + `FuzzQueryConsistency`） | 黑盒 |
 | 根包 `goliday_test` | `config_blackbox_test.go`（LoadYear/LoadDir/Validate 契约 + `FuzzLoadYearTOML`，含黑盒公用 helper 与内联 TOML 常量） | 黑盒 |
 | 根包 `goliday_test` | `store_test.go`（目录加载契约） | 黑盒 |
-| `cmd/goliday-server`（`package main`） | `handlers_test.go`、`grpc_test.go`、`handlers_fuzz_test.go`（`FuzzDaysHandler`） | 白盒 |
-| `cmd/goliday-tool`（`package main`） | `gen_test.go`、`gen_fuzz_test.go`（`FuzzGenDraft`） | 白盒 |
+| `cmd/goliday-server`（`package main`） | `handlers_test.go`、`grpc_test.go`、`main_test.go`（`run` 服务主流程）、`handlers_fuzz_test.go`（`FuzzDaysHandler`） | 白盒 |
+| `cmd/goliday-tool`（`package main`） | `gen_test.go`、`main_test.go`（`dispatch` 子命令分派）、`gen_fuzz_test.go`（`FuzzGenDraft`） | 白盒 |
 
 系统 SHALL 提供原生 fuzz 测试（Go 标准 `testing.F`），种子语料内联于测试（不落盘语料目录），并保证 `go test`（非 fuzz 模式）仅执行种子即全部通过：
 
@@ -454,6 +454,13 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 性能取向的实现（稀疏终态表、按值计数前缀和等）SHALL 以黑盒基准测试（`calendar_bench_test.go`：`BenchmarkQuery`/`BenchmarkQueryCoarse`/`BenchmarkStatsRangeFullYear`/`BenchmarkStatsList`/`BenchmarkQueryRangeFullYear`，`b.Loop` + `ReportAllocs`，testdata 真实配置复用加载）提供回归基线；基准仅在显式 `-bench` 时运行，不进入 CI 门禁。
 
 约束：fuzz 目标不得新增第三方依赖（仅 `testing`/`time`/标准库）；失败语料按 Go 惯例落盘 `testdata/fuzz/<Name>/` 后 SHALL 转写为常规回归用例（普通 Test 或种子）再删除语料文件，保持仓库无 fuzz 语料残留。
+
+补充：入口 `main()` SHALL 仅保留进程级胶水（参数透传与退出码），业务逻辑 SHALL 下沉至可测函数并配套测试（`cmd/goliday-server` 的 `run(args)`、`cmd/goliday-tool` 的 `dispatch(args)`——返回值驱动 `main` 的 `os.Exit`/`log.Fatal`）。
+
+#### Scenario: 覆盖率维持
+- **WHEN** 运行 `go test -count=1 -cover ./...` 统计语句覆盖率
+- **THEN** 手写生产代码整体覆盖率（排除 `proto/` 生成代码，与 Codecov/SonarCloud/`.golangci.yml` 同口径）不低于 **95%**（当前基线约 98%：根包 ≈99.6%、`goliday-server` ≈95.7%、`goliday-tool` ≈99.3%）
+- **AND** 允许不覆盖的例外仅限：入口 `main()` 的退出胶水语句；经论证不可达的防御分支（年份已校验后核心包再报错的 500 兜底、`parseCNNum`/`lunarMarks` 中正则保证可解析的 `Atoi` 失败分支、`ParseDate` 的回格式化比对兜底）。新增生产代码 SHALL 配套测试，不得使整体覆盖率跌破门禁；确需豁免的新例外 SHALL 在本 Scenario 补充记载
 
 #### Scenario: 黑盒仅用导出 API
 - **WHEN** 检查根包外部测试文件 `goliday_test.go` 的导入与引用

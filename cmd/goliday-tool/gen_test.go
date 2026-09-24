@@ -561,3 +561,35 @@ func TestRunGenOutcomes(t *testing.T) {
 		t.Errorf("目录公告退出码 = %d，期望 1", rc)
 	}
 }
+
+// extractDates 对"日"前无月份数字且无法沿用月份的裸日（如句首"6日"）放弃解析。
+func TestExtractDatesBareDayNoMonth(t *testing.T) {
+	if got := extractDates("自6日起放假"); len(got) != 0 {
+		t.Errorf("extractDates(裸日) = %v，期望空", got)
+	}
+}
+
+// parseAnnouncement 对仅含空白/分隔符的段落直接跳过。
+// （lunarMarks 的 Atoi 失败分支为正则保证不可达的防御代码，按 spec
+// 「覆盖率维持」例外口径不为此造测试桩。）
+func TestParseAnnouncementBlankSegments(t *testing.T) {
+	res := parseAnnouncement(2026, "。；\n\r 　\t")
+	if len(res.entries) != 0 || len(res.work) != 0 || len(res.warnings) != 0 {
+		t.Errorf("parseAnnouncement(空段落文本) = %+v，期望全空", res)
+	}
+}
+
+// 排序比较器的对偶面：输入序为「有日期项在前、TODO 在后」时，比较器
+// 以 TODO 侧为 a（返回 1，不交换）——确保 TODO 恒排末尾与两个方向一致。
+func TestFestivalSortTODOAfterDated(t *testing.T) {
+	_, d := genFor(t, 2026, "一、元旦：1月1日至3日放假。二、端午节：6月19日至21日放假。")
+	if len(d.festivals) != 2 {
+		t.Fatalf("festivals = %+v", d.festivals)
+	}
+	if d.festivals[0].Name != "元旦" || d.festivals[0].Date == dateTODO {
+		t.Errorf("首项 = %+v，期望元旦（有日期）", d.festivals[0])
+	}
+	if d.festivals[1].Date != dateTODO {
+		t.Errorf("末项 = %+v，期望 TODO 占位（端午无农历标注）", d.festivals[1])
+	}
+}
