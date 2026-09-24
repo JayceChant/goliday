@@ -338,10 +338,11 @@ resp, err := client.GetDay(ctx, &golidayv1.GetDayRequest{
 
 ### 7.5 proto 再生成
 
-修改 `.proto` 后在仓库根执行 `buf generate`（需 `buf` 与两个本地插件在 PATH；模块与 lint/breaking 配置见 `buf.yaml`，插件与生成参数见 `buf.gen.yaml`；生成文件随仓库提交）：
+修改 `.proto` 后在仓库根执行 `buf generate`（buf 与两个本地插件经 `go install tool` 按 go.mod 的 tool 指令安装，装完即在 PATH；模块与 lint/breaking 配置见 `buf.yaml`，插件与生成参数见 `buf.gen.yaml`；生成文件随仓库提交）：
 
 ```bash
+go install tool   # 按 go.mod/go.sum 锁定的版本安装 buf 与 protoc 插件
 buf generate
 ```
 
-参考版本：buf v1.72.0、protoc-gen-go v1.36.5、protoc-gen-go-grpc v1.5.1。buf 自带编译器、不经 protoc，生成头注释中 protoc 版本显示为 `(unknown)` 属预期。
+工具版本：buf v1.72.0、protoc-gen-go v1.36.12、protoc-gen-go-grpc v1.5.1（以 go.mod `tool` 指令锁定为准）。buf 自带编译器、不经 protoc，生成头注释中 protoc 版本显示为 `(unknown)` 属预期。

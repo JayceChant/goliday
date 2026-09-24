@@ -1,4 +1,5 @@
-# buf 代码生成配置（v2）：本地 protoc 插件（版本固定，与生成代码入库版本一致）。
+# buf 代码生成配置（v2）：本地 protoc 插件（版本经 go.mod tool 指令 +
+# go.sum 锁定，`go install tool` 安装，与生成代码入库版本一致）。
 # 在仓库根执行 `buf generate`；输出与 protoc --go_opt=module=... 完全等价。
 version: v2
 plugins:

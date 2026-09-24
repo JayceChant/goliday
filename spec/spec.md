@@ -16,7 +16,7 @@
 
 #### Scenario: 依赖审计通过
 - **WHEN** 运行 `go list -deps .`（根包）与 `go list -m all`
-- **THEN** 根包导入中无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 `github.com/BurntSushi/toml`、`google.golang.org/grpc`、`google.golang.org/protobuf`，其余第三方模块均为 gRPC 的传递依赖
+- **THEN** 根包导入中无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 `github.com/BurntSushi/toml`、`google.golang.org/grpc`、`google.golang.org/protobuf`，其余第三方模块均为 gRPC 的传递依赖，或 go.mod `tool` 指令锁定的构建工具（buf、protoc-gen-go、protoc-gen-go-grpc）及其传递依赖（任何包均不导入）
 
 ### Requirement: DayType 位掩码枚举（终态双层编码）
 
@@ -338,7 +338,7 @@ ci.yml 约定：
 - 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile` → fuzz 冒烟（仅 `stable` 项：对全部 5 个 fuzz 目标各 `-fuzztime 30s` 短时真实 fuzz，普通测试仅覆盖种子语料）；
 - 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；上传前过滤 profile 中 `proto/goliday/v1` 生成代码的记录，并经仓库根 `codecov.yml`（`ignore: proto/`）在 Codecov 端同步排除——生成代码不设测试目标，避免零覆盖记录拉低统计（与 `.golangci.yml` 对生成代码的豁免同一口径）；
 - lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警；
-- proto 作业：`go install` 固定版本安装 buf（v1.72.0）与 protoc-gen-go（v1.36.5）/protoc-gen-go-grpc（v1.5.1，与 `buf.gen.yaml` 及 proto 头注释参考版本一致）→ `buf lint`（STANDARD 零豁免）→ `buf breaking --against <远端 master,subdir=proto>`（FILE 级，仅 PR 事件——master push 对照自身无意义）→ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`，入库生成代码与 proto 内容不得漂移）。
+- proto 作业：`go install tool` 经 go.mod `tool` 指令 + go.sum 锁定版本安装 buf（v1.72.0）与 protoc-gen-go（v1.36.12）/protoc-gen-go-grpc（v1.5.1，满足 SonarQube 依赖版本可预测性——lock 文件强制）→ `buf lint`（STANDARD 零豁免）→ `buf breaking --against <远端 master,subdir=proto>`（FILE 级，仅 PR 事件——master push 对照自身无意义）→ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`，入库生成代码与 proto 内容不得漂移）。
 
 scorecard.yml 约定（OpenSSF Scorecard，无需注册）：
 - 触发：`push` 默认分支、每周 `schedule`、`branch_protection_rule`；顶层 `permissions: read-all`，作业内最小化（`id-token: write` 供发布 OIDC 认证、`security-events: write` 供 SARIF 上传）；
@@ -396,7 +396,7 @@ proto 内容约定：
 - 消息：`Day{date,type,type_label}`、`Stats{workday,holiday,ordinary,adjusted_work,weekend,festival,adjusted_rest}`（粗粒度字段恒填充，细粒度字段仅 `detailed=true` 时填充，五键 MECE 之和恒等于 `total_days`，与 HTTP 一致；`adjusted_rest`/`adjusted_work` 与根包调整位常量 AdjustedRest/AdjustedWork 逐字对应）、`GetDayRequest{date,detailed}`、`GetDayResponse{date,type,type_label,total_days,stats}`、`QueryDaysRequest{start,end,dates[],detailed}`、`QueryDaysResponse{mode,start,end,total_days,days[],stats}`、`QueryStatsRequest{start,end,dates[],detailed}`（字段与 QueryDaysRequest 同构，独立消息以符合 buf lint 默认规则）、`QueryStatsResponse{mode,start,end,total_days,stats}`；
 - 服务 `GolidayService`：`GetDay`（单日）、`QueryDays`（区间/离散/混合并集，含明细）、`QueryStats`（入参与 QueryDays 同构，不含 days 明细）——语义与 HTTP `/api/v1/days`、`/api/v1/stats` 一一对应；
 - 日期一律 `YYYY-MM-DD` 字符串；`mode` 取 `range`/`list`；
-- proto 头注释写明再生成方式（buf：在仓库根执行 `buf generate`，需 buf 与 protoc-gen-go、protoc-gen-go-grpc 在 PATH；buf 工作区为标准布局——模块根 `proto/`，`buf lint` 默认 STANDARD 规则零豁免）。
+- proto 头注释写明再生成方式（buf：先 `go install tool` 按 go.mod `tool` 指令安装 buf 与 protoc-gen-go、protoc-gen-go-grpc，再在仓库根执行 `buf generate`；buf 工作区为标准布局——模块根 `proto/`，`buf lint` 默认 STANDARD 规则零豁免）。
 
 #### Scenario: proto 可供调用方引用
 - **WHEN** 调用方获取本仓库后查找 `proto/goliday/v1/goliday.proto` 与生成代码
