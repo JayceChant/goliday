@@ -62,7 +62,7 @@ build-tool:
 image:
 	docker build --build-arg VERSION=$(VERSION) -t goliday:$(VERSION) .
 
-# 提交门禁（AGENTS.md 第 5 节四件套；go fix 与 golangci-lint 见 fix/lint 目标）。
+# 提交门禁（AGENTS.md 引用的 agents/go.md 四件套；go fix 与 golangci-lint 见 fix/lint 目标）。
 check:
 	go build ./...
 	go vet ./...

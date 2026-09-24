@@ -1,6 +1,6 @@
 # Checklist
 
-> 历史批次验收记录；新批次验收项追加于本文件，完成勾选须先于提交（见 [AGENTS.md](../AGENTS.md) 第 7 节）。
+> 历史批次验收记录；新批次验收项追加于本文件，完成勾选须先于提交（见 [AGENTS.md](../AGENTS.md) 任务循环与 [agents/general.md](../agents/general.md) 清单勾选纪律）。
 
 ## 首个完整版本（Task 1~8）
 
@@ -247,3 +247,9 @@
 - [x] 补测：handlers_test.go 增 internalQueryErr（指针同一 errInternalQuery、500/internal_error、日志含操作与底层原因）与 writeJSON 编码失败（failWriter 不 panic 仅记日志）；store_test.go 增 TestStoreLoadedAt（零值零时刻、加载时间窗、重复读取不变）；gen_test.go 增空段落跳过、TODO 排序对偶方向（有日期在前输入序）、裸日无月份放弃
 - [x] 覆盖率结果：手写代码（排 proto）89.2%→98.0%；根包 99.6%（仅 ParseDate 回格式化兜底）、server 95.7%（仅 main 胶手与不可达 500 兜底）、tool 99.3%（仅 Atoi 正则保证分支）；无新增排除项（生成代码 proto/ 既有口径不变）
 - [x] 约定成文：spec.md 测试分层 Requirement 补「main() 胶水下沉」条款、「覆盖率维持」Scenario（≥95% 门禁、例外清单：入口胶手/年份已校验后再报错兜底/正则保证可解析的 Atoi 失败/ParseDate 回格式化兜底）与文件表 main_test.go 行；AGENTS.md 第 5 节补测试覆盖率自查条目；`go fix` 幂等、`golangci-lint run` 0 issues、验证命令全绿；执行提交（test: 回补 v0.2.0 覆盖率并将维持门禁成文）
+
+## AGENTS.md 分拆（agents/ 通用规则抽取）
+
+- [x] 分拆后语义无损：原 AGENTS.md 各条款全部落入 AGENTS.md（项目特有：spec/ 三件套口径、模块布局与依赖分级、95% 覆盖率门禁与 spec 口径、任务循环）或 agents/general.md（提交纪律、环境中立与路径、shell 选择、文档与语言、清单勾选纪律与干净工作区检查）或 agents/go.md（门禁四件套、go fix 不动点与基线回补、golangci-lint、配套测试与 main() 下沉、现代 Go 风格基线三条），无条款丢失
+- [x] 交叉引用同步：Makefile 提交门禁注释、spec/tasks.md 与 spec/checklist.md 头部「第 X 节」章节号引用改为文件引用（历史勾选记录中的旧章节号按原样保留）；agents/ 两文件无本地绝对路径，UTF-8 无 BOM、LF
+- [x] 验证命令全绿（纯 Markdown/注释变更，无 Go 代码改动，无本地绝对路径）；执行提交（docs: 分拆 AGENTS.md 为项目规范与 agents/ 通用规则）
