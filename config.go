@@ -36,9 +36,10 @@ type YearConfig struct {
 // dateLayout 配置文件中的日期格式，严格要求 YYYY-MM-DD。
 const dateLayout = "2006-01-02"
 
-// ParseDate 严格解析 YYYY-MM-DD 日期字符串：拒绝格式错误与不存在的
-// 日期（time.Parse 对 "2026-02-30" 会进位而非报错，须回格式化比对）。
-// 配置加载与服务层参数解析共用，保证错误口径一致。
+// ParseDate 严格解析 YYYY-MM-DD 日期字符串：拒绝格式错误与不存在的日期。
+// time.Parse 已拒绝越界日/月（"2026-02-30" 报 day out of range），回格式化
+// 比对保留为双保险（兜底 stdlib 校验口径变化，由 FuzzParseDate 不变量
+// 守护）。配置加载与服务层参数解析共用，保证错误口径一致。
 func ParseDate(s string) (time.Time, error) {
 	t, err := time.Parse(dateLayout, s)
 	if err != nil {

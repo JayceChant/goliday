@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -40,20 +41,35 @@ const (
 )
 
 func main() {
-	addr := flag.String("addr", ":8080", "HTTP 监听地址")
-	grpcAddr := flag.String("grpc-addr", ":50051", "gRPC 监听地址（空字符串禁用 gRPC）")
-	configDir := flag.String("config-dir", "./configs", "年份配置目录")
-	showVersion := flag.Bool("v", false, "打印版本信息后退出")
-	flag.Parse()
+	if err := run(os.Args[1:]); err != nil {
+		log.Fatalf("goliday-server: %v", err)
+	}
+}
+
+// run 服务主流程（main 的可测形态）：解析参数 → 加载配置 → 启动
+// HTTP/gRPC → 等待退出信号并优雅关闭。错误统一返回由 main 以退出码 1
+// 终止；信号监听在启动监听之前安装，提前到达的退出信号也能安全走优雅
+// 关闭路径。
+func run(args []string) error {
+	fs := flag.NewFlagSet("goliday-server", flag.ContinueOnError)
+	// 解析错误的输出只经返回的 error 报告一次，丢弃 FlagSet 自带打印以免重复。
+	fs.SetOutput(io.Discard)
+	addr := fs.String("addr", ":8080", "HTTP 监听地址")
+	grpcAddr := fs.String("grpc-addr", ":50051", "gRPC 监听地址（空字符串禁用 gRPC）")
+	configDir := fs.String("config-dir", "./configs", "年份配置目录")
+	showVersion := fs.Bool("v", false, "打印版本信息后退出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
 	if *showVersion {
 		fmt.Printf("goliday-server version %s\n", version)
-		return
+		return nil
 	}
 
 	store, err := goliday.LoadDir(*configDir)
 	if err != nil {
-		log.Fatalf("加载配置目录 %s 失败: %v", *configDir, err)
+		return fmt.Errorf("加载配置目录 %s 失败: %w", *configDir, err)
 	}
 	calendar := goliday.NewCalendar(store)
 
@@ -70,14 +86,16 @@ func main() {
 		IdleTimeout:       idleTimeout,
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// gRPC 与 HTTP 同进程：-grpc-addr 为空字符串时禁用。
 	var grpcSrv *grpc.Server
-	var grpcLis net.Listener
 	errCh := make(chan error, 2)
 	if *grpcAddr != "" {
-		grpcLis, err = net.Listen("tcp", *grpcAddr)
+		grpcLis, err := net.Listen("tcp", *grpcAddr)
 		if err != nil {
-			log.Fatalf("gRPC 监听 %s 失败: %v", *grpcAddr, err)
+			return fmt.Errorf("gRPC 监听 %s 失败: %w", *grpcAddr, err)
 		}
 		grpcSrv = newGRPCServer(calendar)
 		go func() {
@@ -101,18 +119,13 @@ func main() {
 		errCh <- nil
 	}()
 
-	// 监听 SIGINT/SIGTERM，收到信号后优雅关闭。
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-
 	select {
 	case err := <-errCh:
-		stop()
 		if err != nil {
-			log.Fatalf("服务异常退出: %v", err)
+			return fmt.Errorf("服务异常退出: %w", err)
 		}
-		return
+		return nil
 	case <-ctx.Done():
-		stop()
 	}
 
 	log.Println("收到退出信号，开始优雅关闭……")
@@ -128,4 +141,5 @@ func main() {
 		log.Println("gRPC 服务已关闭")
 	}
 	log.Println("goliday-server 已退出")
+	return nil
 }

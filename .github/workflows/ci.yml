@@ -1,15 +1,27 @@
-# 持续集成：将本地验证门禁（build/vet/gofmt/test/lint）搬上 GitHub Actions：
-# - Go stable/oldstable 双版本矩阵运行测试并生成覆盖率
+# 持续集成：将本地验证门禁（build/vet/gofmt/test/lint/proto）搬上 GitHub Actions：
+# - Go 1.27.x（go.mod 最低要求）/stable 双版本矩阵运行测试并生成覆盖率
 # - stable 矩阵项上报覆盖率至 Codecov（公共仓库无 token 亦可上传，失败不阻塞）
 # - golangci-lint 零告警门禁（配置见 .golangci.yml）
+# - 触发不限定 master：门禁类工作流随分支推送与 PR 全量执行，开发分支
+#   合入 master 前即可确认质量（公共仓库 Actions 免费，concurrency 去重）
 name: ci
 
 on:
   push:
-    branches: [master]
+    # 所有分支（"**" 匹配含斜杠的分支名，且排除 tag 推送）：无需先合入
+    # 或开 PR 即可在开发分支上执行门禁
+    branches: ["**"]
   pull_request:
-    branches: [master]
+    # 不设目标分支过滤：叠加 PR（指向非 master 分支）与 release-please
+    # Release PR 同样接受门禁检查
   workflow_dispatch:
+
+# 冗余抑制：同一分支的 push 与 pull_request 双事件共享并发组（PR 的
+# head_ref 与分支推送的 ref_name 同名），cancel-in-progress 仅保留最新
+# 一次运行，双事件不重复执行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -123,14 +135,11 @@ jobs:
           cache: true
 
       - name: Install buf and protoc plugins
-        # 经 go install 固定版本（模块版本即内容寻址）；版本与 buf.gen.yaml
-        # 及 proto 头注释的参考版本一致（buf v1.72.0、protoc-gen-go v1.36.5、
-        # protoc-gen-go-grpc v1.5.1）。三个包分属不同 module，而 go install
-        # 的 pkg@version 形式要求实参同一 module 同一版本，故逐条安装。
-        run: |
-          go install github.com/bufbuild/buf/cmd/buf@v1.72.0
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+        # 工具依赖经 go.mod tool 指令 + go.sum 锁定（版本校验和一并入库），
+        # `go install tool` 按 lock 文件安装，满足依赖可预测性；版本与
+        # buf.gen.yaml 及 proto 头注释的参考版本一致（buf v1.72.0、
+        # protoc-gen-go v1.36.12、protoc-gen-go-grpc v1.5.1）。
+        run: go install tool
 
       - name: buf lint
         run: buf lint

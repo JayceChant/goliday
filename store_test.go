@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JayceChant/goliday"
 )
@@ -53,6 +54,28 @@ func TestStoreEmptyDir(t *testing.T) {
 	}
 	if c := s.Get(2025); c != nil {
 		t.Errorf("空目录 Get(2025) = %+v，期望 nil", c)
+	}
+}
+
+// TestStoreLoadedAt 验证加载时间契约：LoadDir 完成时刻被记录（运维经
+// /healthz 确认「新配置已生效」的依据）；同批年份同一时刻，再加载更新。
+func TestStoreLoadedAt(t *testing.T) {
+	if got := (&goliday.Store{}).LoadedAt(); !got.IsZero() {
+		t.Errorf("零值 Store LoadedAt() = %v，期望零值", got)
+	}
+
+	before := time.Now()
+	s := mustLoadDir(t, "testdata")
+	after := time.Now()
+	loadedAt := s.LoadedAt()
+	if loadedAt.Before(before) || loadedAt.After(after) {
+		t.Errorf("LoadedAt() = %v，期望落在加载前后时间窗 [%v, %v] 内", loadedAt, before, after)
+	}
+	for _, y := range s.Years() {
+		// LoadedAt 为 Store 级（同批各年份同一时刻），此处仅确认不随查询变化。
+		if again := s.LoadedAt(); !again.Equal(loadedAt) {
+			t.Errorf("年份 %d 二次读取 LoadedAt() = %v，期望不变 %v", y, again, loadedAt)
+		}
 	}
 }
 

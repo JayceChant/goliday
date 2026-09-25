@@ -23,18 +23,24 @@ func usage() {
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	os.Exit(dispatch(os.Args[1:]))
+}
+
+// dispatch 子命令分派（main 的可测形态）：按首个参数路由到 validate/gen，
+// 返回进程退出码（语义同 usageText：0 成功；1 校验/生成失败；2 用法错误）。
+func dispatch(args []string) int {
+	if len(args) == 0 {
 		usage()
-		os.Exit(2)
+		return 2
 	}
-	switch os.Args[1] {
+	switch args[0] {
 	case "validate":
-		os.Exit(runValidate(os.Args[2:]))
+		return runValidate(args[1:])
 	case "gen":
-		os.Exit(runGen(os.Args[2:]))
+		return runGen(args[1:])
 	default:
 		usage()
-		os.Exit(2)
+		return 2
 	}
 }
 

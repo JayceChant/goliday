@@ -16,7 +16,7 @@
 
 #### Scenario: 依赖审计通过
 - **WHEN** 运行 `go list -deps .`（根包）与 `go list -m all`
-- **THEN** 根包导入中无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 `github.com/BurntSushi/toml`、`google.golang.org/grpc`、`google.golang.org/protobuf`，其余第三方模块均为 gRPC 的传递依赖
+- **THEN** 根包导入中无 gRPC/protobuf 模块；`go.mod` 直接依赖仅 `github.com/BurntSushi/toml`、`google.golang.org/grpc`、`google.golang.org/protobuf`，其余第三方模块均为 gRPC 的传递依赖，或 go.mod `tool` 指令锁定的构建工具（buf、protoc-gen-go、protoc-gen-go-grpc）及其传递依赖（任何包均不导入）
 
 ### Requirement: DayType 位掩码枚举（终态双层编码）
 
@@ -334,11 +334,12 @@ Dockerfile 约定：
 仓库 SHALL 提供 `.github/workflows/ci.yml`、`.github/workflows/scorecard.yml` 与 `.github/workflows/sonarcloud.yml`，将本地验证门禁搬上 GitHub Actions，并把结果以徽章与链接接入 README 双语版。
 
 ci.yml 约定：
-- 触发：`push` 默认分支、`pull_request`（默认分支）、`workflow_dispatch`；权限最小化 `contents: read`；
+- 触发：`push` 所有分支（`branches: ["**"]`，匹配含斜杠的分支名并排除 tag——开发分支无需先合入或开 PR 即可执行门禁）、`pull_request`（不设目标分支过滤——叠加 PR 与 release-please Release PR 同受门禁）、`workflow_dispatch`；权限最小化 `contents: read`；
+- 冗余抑制：顶层 `concurrency` 以 `${{ github.workflow }}-${{ github.head_ref || github.ref_name }}` 分组并 `cancel-in-progress: true`——同一分支的 push 与 pull_request 双事件运行共享并发组（PR 的 head_ref 与分支推送的 ref_name 同名），仅保留最新一次，不重复执行；
 - 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（`gofmt -l .` 输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile` → fuzz 冒烟（仅 `stable` 项：对全部 5 个 fuzz 目标各 `-fuzztime 30s` 短时真实 fuzz，普通测试仅覆盖种子语料）；
 - 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；上传前过滤 profile 中 `proto/goliday/v1` 生成代码的记录，并经仓库根 `codecov.yml`（`ignore: proto/`）在 Codecov 端同步排除——生成代码不设测试目标，避免零覆盖记录拉低统计（与 `.golangci.yml` 对生成代码的豁免同一口径）；
 - lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警；
-- proto 作业：`go install` 固定版本安装 buf（v1.72.0）与 protoc-gen-go（v1.36.5）/protoc-gen-go-grpc（v1.5.1，与 `buf.gen.yaml` 及 proto 头注释参考版本一致）→ `buf lint`（STANDARD 零豁免）→ `buf breaking --against <远端 master,subdir=proto>`（FILE 级，仅 PR 事件——master push 对照自身无意义）→ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`，入库生成代码与 proto 内容不得漂移）。
+- proto 作业：`go install tool` 经 go.mod `tool` 指令 + go.sum 锁定版本安装 buf（v1.72.0）与 protoc-gen-go（v1.36.12）/protoc-gen-go-grpc（v1.5.1，满足 SonarQube 依赖版本可预测性——lock 文件强制）→ `buf lint`（STANDARD 零豁免）→ `buf breaking --against <远端 master,subdir=proto>`（FILE 级，仅 PR 事件——master push 对照自身无意义）→ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`，入库生成代码与 proto 内容不得漂移）。
 
 scorecard.yml 约定（OpenSSF Scorecard，无需注册）：
 - 触发：`push` 默认分支、每周 `schedule`、`branch_protection_rule`；顶层 `permissions: read-all`，作业内最小化（`id-token: write` 供发布 OIDC 认证、`security-events: write` 供 SARIF 上传）；
@@ -349,7 +350,7 @@ codeql.yml 约定（CodeQL 静态安全分析，公共仓库免费、无需注�
 - 语言 `go`、`build-mode: autobuild`（新版 CodeQL 已移除 Go 的 none 模式），结果上传 code scanning（Security 标签页）。
 
 govulncheck.yml 约定（Go 官方依赖漏洞扫描，无需注册）：
-- 触发：`push` 默认分支、每周 `schedule`、`workflow_dispatch`；`contents: read`；
+- 触发：与 ci.yml 同口径——`push` 所有分支、`pull_request`（不过滤目标分支，依赖升级引入的可触达漏洞合入 master 前即失败）、每周 `schedule`（兜底：漏洞库新披露对既有依赖的影响）、`workflow_dispatch`；`contents: read`；concurrency 去重同 ci.yml；
 - `golang/govulncheck-action@v1` 以 text 输出扫描 `./...`，仅当存在可被实际调用路径触达的漏洞时作业失败（作为门禁）。
 
 pkg.go.dev 文档为 Go 官方服务自动抓取（模块可解析、可编译即自动建页），仓库无需配置，README SHALL 提供徽章与结果链接。
@@ -361,11 +362,15 @@ sonarcloud.yml 约定（SonarCloud 静态分析：代码异味/安全漏洞/重�
 
 README 双语 SHALL 在标题下接入 CI、Codecov、CodeQL、govulncheck、pkg.go.dev、OpenSSF Scorecard、SonarCloud 徽章；各服务的说明与结果页链接 SHALL 收录于 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)（质量门禁与 CI 章节），README 不设「质量与持续集成」章节——徽章保持可发现性，详细内容仅面向维护者，避免对使用者构成干扰。
 
-**决策依据**：Actions/Codecov/Scorecard/CodeQL/govulncheck/pkg.go.dev 均可直接在仓库内落地且无需注册；SonarCloud 徽章仅依赖其在 SonCloud 端启用项目；Snyk/Socket 需 GitHub App 绑定，不在仓库内预置，避免空配置导致流水线常红。
+**决策依据**：Actions/Codecov/Scorecard/CodeQL/govulncheck/pkg.go.dev 均可直接在仓库内落地且无需注册；SonarCloud 徽章仅依赖其在 SonCloud 端启用项目；Snyk/Socket 需 GitHub App 绑定，不在仓库内预置，避免空配置导致流水线常红。触发分层：门禁类（ci/govulncheck）随分支推送与 PR 全量执行——公共仓库 Actions 免费且经 concurrency 消除双事件重复，问题在合入 master 前暴露，不必进入 master 后才发现；分析与发布类（codeql/sonarcloud/scorecard/docker/release-please）维持默认分支限定——重型扫描与多架构构建不随开发分支推送重复执行（其 PR→master 触发已覆盖合入前检查），Scorecard 评估对象是仓库级实践、发布链路仅对 master/tag 有意义。
 
 #### Scenario: CI 测试矩阵
 - **WHEN** push 或 PR 触发 ci.yml
 - **THEN** `1.27.x` 与 `stable` 两个矩阵项各自完成 build/vet/gofmt/test，lint 作业零告警；任一步骤失败流水线标红
+
+#### Scenario: 开发分支合入前门禁
+- **WHEN** 推送开发分支，或创建目标为非默认分支的 PR（含 release-please Release PR）
+- **THEN** ci.yml 与 govulncheck.yml 照常执行全部门禁；同一分支的 push 与 pull_request 并发运行经 concurrency 组去重，仅保留最新一次
 
 #### Scenario: 覆盖率上报
 - **WHEN** `stable` 矩阵项测试通过
@@ -396,7 +401,7 @@ proto 内容约定：
 - 消息：`Day{date,type,type_label}`、`Stats{workday,holiday,ordinary,adjusted_work,weekend,festival,adjusted_rest}`（粗粒度字段恒填充，细粒度字段仅 `detailed=true` 时填充，五键 MECE 之和恒等于 `total_days`，与 HTTP 一致；`adjusted_rest`/`adjusted_work` 与根包调整位常量 AdjustedRest/AdjustedWork 逐字对应）、`GetDayRequest{date,detailed}`、`GetDayResponse{date,type,type_label,total_days,stats}`、`QueryDaysRequest{start,end,dates[],detailed}`、`QueryDaysResponse{mode,start,end,total_days,days[],stats}`、`QueryStatsRequest{start,end,dates[],detailed}`（字段与 QueryDaysRequest 同构，独立消息以符合 buf lint 默认规则）、`QueryStatsResponse{mode,start,end,total_days,stats}`；
 - 服务 `GolidayService`：`GetDay`（单日）、`QueryDays`（区间/离散/混合并集，含明细）、`QueryStats`（入参与 QueryDays 同构，不含 days 明细）——语义与 HTTP `/api/v1/days`、`/api/v1/stats` 一一对应；
 - 日期一律 `YYYY-MM-DD` 字符串；`mode` 取 `range`/`list`；
-- proto 头注释写明再生成方式（buf：在仓库根执行 `buf generate`，需 buf 与 protoc-gen-go、protoc-gen-go-grpc 在 PATH；buf 工作区为标准布局——模块根 `proto/`，`buf lint` 默认 STANDARD 规则零豁免）。
+- proto 头注释写明再生成方式（buf：先 `go install tool` 按 go.mod `tool` 指令安装 buf 与 protoc-gen-go、protoc-gen-go-grpc，再在仓库根执行 `buf generate`；buf 工作区为标准布局——模块根 `proto/`，`buf lint` 默认 STANDARD 规则零豁免）。
 
 #### Scenario: proto 可供调用方引用
 - **WHEN** 调用方获取本仓库后查找 `proto/goliday/v1/goliday.proto` 与生成代码
@@ -436,8 +441,8 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 | 根包 `goliday_test` | `calendar_test.go`（判定/区间/统计契约 + `FuzzQueryConsistency`） | 黑盒 |
 | 根包 `goliday_test` | `config_blackbox_test.go`（LoadYear/LoadDir/Validate 契约 + `FuzzLoadYearTOML`，含黑盒公用 helper 与内联 TOML 常量） | 黑盒 |
 | 根包 `goliday_test` | `store_test.go`（目录加载契约） | 黑盒 |
-| `cmd/goliday-server`（`package main`） | `handlers_test.go`、`grpc_test.go`、`handlers_fuzz_test.go`（`FuzzDaysHandler`） | 白盒 |
-| `cmd/goliday-tool`（`package main`） | `gen_test.go`、`gen_fuzz_test.go`（`FuzzGenDraft`） | 白盒 |
+| `cmd/goliday-server`（`package main`） | `handlers_test.go`、`grpc_test.go`、`main_test.go`（`run` 服务主流程）、`handlers_fuzz_test.go`（`FuzzDaysHandler`） | 白盒 |
+| `cmd/goliday-tool`（`package main`） | `gen_test.go`、`main_test.go`（`dispatch` 子命令分派）、`gen_fuzz_test.go`（`FuzzGenDraft`） | 白盒 |
 
 系统 SHALL 提供原生 fuzz 测试（Go 标准 `testing.F`），种子语料内联于测试（不落盘语料目录），并保证 `go test`（非 fuzz 模式）仅执行种子即全部通过：
 
@@ -454,6 +459,13 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 性能取向的实现（稀疏终态表、按值计数前缀和等）SHALL 以黑盒基准测试（`calendar_bench_test.go`：`BenchmarkQuery`/`BenchmarkQueryCoarse`/`BenchmarkStatsRangeFullYear`/`BenchmarkStatsList`/`BenchmarkQueryRangeFullYear`，`b.Loop` + `ReportAllocs`，testdata 真实配置复用加载）提供回归基线；基准仅在显式 `-bench` 时运行，不进入 CI 门禁。
 
 约束：fuzz 目标不得新增第三方依赖（仅 `testing`/`time`/标准库）；失败语料按 Go 惯例落盘 `testdata/fuzz/<Name>/` 后 SHALL 转写为常规回归用例（普通 Test 或种子）再删除语料文件，保持仓库无 fuzz 语料残留。
+
+补充：入口 `main()` SHALL 仅保留进程级胶水（参数透传与退出码），业务逻辑 SHALL 下沉至可测函数并配套测试（`cmd/goliday-server` 的 `run(args)`、`cmd/goliday-tool` 的 `dispatch(args)`——返回值驱动 `main` 的 `os.Exit`/`log.Fatal`）。
+
+#### Scenario: 覆盖率维持
+- **WHEN** 运行 `go test -count=1 -cover ./...` 统计语句覆盖率
+- **THEN** 手写生产代码整体覆盖率（排除 `proto/` 生成代码，与 Codecov/SonarCloud/`.golangci.yml` 同口径）不低于 **95%**（当前基线约 98%：根包 ≈99.6%、`goliday-server` ≈95.7%、`goliday-tool` ≈99.3%）
+- **AND** 允许不覆盖的例外仅限：入口 `main()` 的退出胶水语句；经论证不可达的防御分支（年份已校验后核心包再报错的 500 兜底、`parseCNNum`/`lunarMarks` 中正则保证可解析的 `Atoi` 失败分支、`ParseDate` 的回格式化比对兜底）。新增生产代码 SHALL 配套测试，不得使整体覆盖率跌破门禁；确需豁免的新例外 SHALL 在本 Scenario 补充记载
 
 #### Scenario: 黑盒仅用导出 API
 - **WHEN** 检查根包外部测试文件 `goliday_test.go` 的导入与引用
