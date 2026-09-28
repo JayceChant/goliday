@@ -4,7 +4,7 @@
 
 基于 Go 1.27 的中国节假日 API 服务：以按年组织的**稀疏**配置文件记录节假日办对日历的调整（仅写入与默认周休状态不同的日期），配合标准库周休判断，对外提供粗/细两级粒度的日期类型查询与区间统计能力，并在每年官方方案公布后可通过提示词/工具半自动生成新年度配置。
 
-各 Requirement 中的 **决策依据** 记录关键取舍结论，后续修改前先审视，避免反复；完整历史论证、迁出细节与核心包 API 形态清单存档于 [spec.legacy.md](spec.legacy.md)（当前有效契约以本文件为准）。
+各 Requirement 中的 **决策依据** 记录关键取舍结论，后续修改前先审视，避免反复；次要有效细节（完整步骤约定、核心包 API 形态清单）存档于 [spec.detail.md](spec.detail.md)，历史论证与过时内容存档于 [spec.legacy.md](spec.legacy.md)（当前有效契约以本文件为准）。
 
 ## Requirements
 
@@ -56,7 +56,7 @@
 - 「调休」为窄义：原工作日因安排变休息且**非节日当天**；「过节」当日新增假期，「调休」零新增，「补班」为负增量。净增假日 = 过节日数 − 补班数（审计参考，不做硬校验）。
 - 「节日逢周末在他日补休」「挪移与补班成对」为公告层配对关系，单日类型不编码、不做硬校验；自然日不进入类型值，可由日期 `Weekday` 与配置推导。
 
-**决策依据**：旧编码混用 any-of/all-of 双语义致判类歧义、需优先级补丁，本修订统一为 all-of；「自然位」方案因翻转日判类必然误判而否决（完整论证见 legacy）。
+**决策依据**：旧编码混用 any-of/all-of 双语义致判类歧义、需优先级补丁，本修订统一为 all-of；「自然位」方案因翻转日判类必然误判而否决（完整论证见 spec.legacy.md）。
 
 `DayType` SHALL 提供：`IsWork()`（合法值且基本位投影为 Work）、`IsRest()`（含普通周休/节日放假日/调休放假日，不含补班）、`IsFestivalRest()`、`IsAdjustedRestDay()`、`IsAdjustedWorkDay()`（三者与 `IsWork`/`IsRest` 同构：合法值且调整位投影等于对应调整位）、`IsValid()`（∈ {1,2,6,10,17}）、`Coarse()`、`Adjustment()`、`String()`；序列化 SHALL 直接输出 int 数值。任何非法值上五个判类方法 SHALL 均返回 false（各方法内部先做合法性校验再投影判等）。`String()`：合法值与零值 SHALL 查静态标签表直接返回（表按组合常量显式索引、编译期物化；标签与常量名逐字对应：`unknown`、`work`、`rest`、`rest|festival`、`rest|adjusted_rest`、`work|adjusted_work`）；任何非法值 SHALL 统一返回 `"invalid"`——系统不产生非法值，统一词便于调用方兜底。
 
@@ -143,7 +143,7 @@ work = [ "2026-02-28" ]
 
 核心包 SHALL 提供 `Stats(dates []time.Time, detailed bool) (StatsResult, error)` 统计任意日期集合：输入经内部**排序去重副本**归一（调用方无须预处理，入参切片不被修改），`Total` 为归一后的元素数；任一日期所在年份未加载时返回包装 `ErrYearNotLoaded` 的错误（未加载年份升序去重列出），空输入返回全零结果。实现为逐日单日差分，复用前缀和数据。
 
-**决策依据**：曾以哨兵检测年份首见，首个日期恰为 0 年时失效致 panic；改为内部归一的防御式 API（详见 legacy）。
+**决策依据**：曾以哨兵检测年份首见，首个日期恰为 0 年时失效致 panic；改为内部归一的防御式 API（详见 spec.legacy.md）。
 
 服务层 SHALL 暴露 HTTP 单日查询：
 
@@ -222,7 +222,7 @@ work = [ "2026-02-28" ]
 
 仓库根 SHALL 提供 `Makefile`（构建入口，二进制与镜像**共用同一构建逻辑**：目标 `build`/`build-server`/`build-tool`/`download-deps`/`image`/`check`/`lint`/`fix`/`clean`；`VERSION` 经 `-ldflags` 注入、`GOOS`/`GOARCH` 透传、Windows 加 `.exe`；编译参数唯一定义于 `build-server`：`CGO_ENABLED=0` 静态、`-trimpath`、`-s -w`、版本注入）、`Dockerfile`（多阶段：`golang:1.27` 构建阶段调用 `make build-server`，运行阶段 `distroless/static-debian12:nonroot` 仅含 server 二进制；不打包 `configs/`，配置运行时挂载；`.dockerignore` 最小化构建上下文）与 `.github/workflows/docker.yml`（多架构 `linux/amd64`+`linux/arm64`，provenance/sbom 供应链证明，语义化版本标签；**仅 push tag `v*` 发布至 GHCR**，其余事件仅构建验证；`GITHUB_TOKEN` 认证，无自定义 secrets）。
 
-版本号 SHALL 构建期注入，不得硬编码常量（release-please 的 simple 策略只维护 CHANGELOG/tag 不改代码，硬编码随发版漂移）。Makefile 与 Dockerfile 互注防递归约束：Dockerfile 只调用不触碰 docker 的目标（`download-deps`/`build-server`），不得调用 `make image`。完整目标清单、变量约定、步骤级细节与决策依据见 [spec.legacy.md](spec.legacy.md)（存档，当前有效契约以本节为准）。
+版本号 SHALL 构建期注入，不得硬编码常量（release-please 的 simple 策略只维护 CHANGELOG/tag 不改代码，硬编码随发版漂移）。Makefile 与 Dockerfile 互注防递归约束：Dockerfile 只调用不触碰 docker 的目标（`download-deps`/`build-server`），不得调用 `make image`。完整目标清单、变量约定与步骤级细节见 [spec.detail.md](spec.detail.md)（有效存档，当前有效契约以本节为准）。
 
 #### Scenario: 本地构建二进制与镜像
 - **WHEN** 在仓库根执行 `make build VERSION=0.2.0`（或 `make image VERSION=0.2.0` / `docker build --build-arg VERSION=0.2.0`）
@@ -242,7 +242,7 @@ work = [ "2026-02-28" ]
 - **govulncheck.yml**：依赖漏洞门禁，触发同 ci.yml + 每周 schedule 兜底；存在可触达漏洞即失败。
 - **scorecard.yml**（OpenSSF Scorecard，评分发布 scorecard.dev、SARIF 入 code scanning）、**codeql.yml**（Go 静态安全分析，autobuild，告警入 code scanning）、**sonarcloud.yml**（质量门禁，依赖 secret `SONAR_TOKEN` 与根目录 `sonar-project.properties`，覆盖率排除口径同上）：分析类，push 默认分支 + PR 触发（scorecard 为每周 schedule）。
 
-**决策依据**：门禁类（ci/govulncheck）全分支执行——问题在合入 master 前暴露；分析与发布类维持默认分支限定——重型扫描不随开发分支重复，其 PR→master 触发已覆盖合入前检查。Actions 一律固定完整 commit SHA。pkg.go.dev 为官方自动抓取，无需配置，README 提供徽章。各工作流触发/步骤/权限的完整约定见 [spec.legacy.md](spec.legacy.md)（存档，当前有效契约以本节为准）。
+**决策依据**：门禁类（ci/govulncheck）全分支执行——问题在合入 master 前暴露；分析与发布类维持默认分支限定——重型扫描不随开发分支重复，其 PR→master 触发已覆盖合入前检查。Actions 一律固定完整 commit SHA。pkg.go.dev 为官方自动抓取，无需配置，README 提供徽章。各工作流触发/步骤/权限的完整约定与完整决策依据见 [spec.detail.md](spec.detail.md)（有效存档，当前有效契约以本节为准）。
 
 #### Scenario: CI 测试矩阵与合入前门禁
 - **WHEN** push 或 PR 触发 ci.yml；推送开发分支或创建 release-please Release PR
@@ -360,7 +360,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 - 跨年/多段累加 SHALL 先转入 int 宽类型累加器（`comboTotals`）再相加，禁止 uint16 直接跨段累加（会溢出）；
 - 构建成本 O(年天数)，仅在构造时发生一次。
 
-**决策依据**：统计 O(覆盖年数) 差分即可完成，故 `/stats` 解除范围限制；days 明细保留 366 天上限防响应膨胀。uint16 + 定长内联数组为内存/分配优化（完整论证见 legacy）。
+**决策依据**：统计 O(覆盖年数) 差分即可完成，故 `/stats` 解除范围限制；days 明细保留 366 天上限防响应膨胀。uint16 + 定长内联数组为内存/分配优化（完整论证见 spec.legacy.md）。
 
 统计导出规则（由按值计数 `C(v)` 直接映射，语义与逐日统计完全等价）：
 - 细粒度（五键 MECE，之和恒等于 `Total`）：`ordinary=C(1)`、`weekend=C(2)`、`festival=C(6)`、`adjusted_rest=C(10)`、`adjusted_work=C(17)`；`StatsResult.Fine` 的 map 键 SHALL 为五个合法终态组合值，不得使用 4/8/16 裸调整位（非合法 `DayType`，`String()` 输出 `invalid`，调用方难以索引与打印）；
@@ -386,7 +386,7 @@ gRPC 查询语义 SHALL 与 HTTP 完全一致（复用同一查询逻辑）：�
 
 ### Requirement: 自动化版本发布（GitHub 环境）
 
-仓库 SHALL 提供 `.github/workflows/release-please.yml` 与根目录 `.release-please-manifest.json`，基于 Conventional Commits 自动化版本发布（release-please）：`release-type: simple`（Go 模块无内嵌版本文件，仅维护 `CHANGELOG.md` 与 tag/Release）；默认分支累积 `feat`/`fix`/`BREAKING CHANGE` 时生成 Release PR，合并后创建附注 tag 与 GitHub Release；`GITHUB_TOKEN` 的 tag push 不级联触发工作流，故经 `gh workflow run docker.yml --ref <tag>` 显式 dispatch 衔接镜像发布；权限最小化，无自定义 secrets。完整触发/权限/步骤约定见 [spec.legacy.md](spec.legacy.md)（存档，当前有效契约以本节为准）。
+仓库 SHALL 提供 `.github/workflows/release-please.yml` 与根目录 `.release-please-manifest.json`，基于 Conventional Commits 自动化版本发布（release-please）：`release-type: simple`（Go 模块无内嵌版本文件，仅维护 `CHANGELOG.md` 与 tag/Release）；默认分支累积 `feat`/`fix`/`BREAKING CHANGE` 时生成 Release PR，合并后创建附注 tag 与 GitHub Release；`GITHUB_TOKEN` 的 tag push 不级联触发工作流，故经 `gh workflow run docker.yml --ref <tag>` 显式 dispatch 衔接镜像发布；权限最小化，无自定义 secrets。完整触发/权限/步骤约定见 [spec.detail.md](spec.detail.md)（有效存档，当前有效契约以本节为准）。
 
 #### Scenario: Release PR 生成与合并
 - **WHEN** 默认分支合并含 `feat` 的提交后 release-please.yml 运行
