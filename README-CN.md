@@ -107,6 +107,8 @@ curl "http://localhost:8080/healthz"
 # {"status":"ok","version":"0.1.1","years":[2025,2026],"loaded_at":"2026-11-20T02:15:04Z"}
 ```
 
+镜像默认时区为东八区（`TZ=Asia/Shanghai`，与服务管理的中国节假日一致），影响日志时间戳等本地时间展示；启动时可经 `-e TZ=<IANA 时区名>` 覆盖（镜像内置 tzdata，任意 IANA 时区可用，如 `-e TZ=UTC`）。查询语义与进程时区无关：日期均为 `YYYY-MM-DD` 壁钟语义，由客户端字符串直接决定；`/healthz` 的 `loaded_at` 恒为 RFC3339 UTC。
+
 镜像由 [GitHub Actions](.github/workflows/docker.yml) 在推送 `v*` tag 时自动发布至 GHCR（多架构 `linux/amd64` + `linux/arm64`；默认分支、PR 与手动触发仅做构建验证，不发布）。tag 由 [release-please](.github/workflows/release-please.yml) 自动化产生：提交遵循 Conventional Commits（项目已采用），合并 Release PR 后自动打 `v*` tag、创建 GitHub Release、更新 CHANGELOG 并发布镜像，无需手动推送 tag：
 
 ```bash
