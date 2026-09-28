@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/JayceChant/goliday/compare/v0.2.0...v0.2.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* proto 工具链改用 go.mod tool 指令经 go.sum 锁定安装 ([f3282d8](https://github.com/JayceChant/goliday/commit/f3282d8443ea69df984ad6ffa9bb90c459f94bfa))
+
 ## [0.2.0](https://github.com/JayceChant/goliday/compare/v0.1.1...v0.2.0) (2026-09-24)
 
 
