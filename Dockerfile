@@ -2,6 +2,11 @@
 # 构建产物为 CGO_ENABLED=0 静态二进制；年份配置不打入镜像，运行时经
 # volume 挂载并以 -config-dir 指定（配置与镜像解耦）。
 #
+# 时区：distroless static 自带 tzdata（/usr/share/zoneinfo）。本项目面向
+# 中国节假日，默认 TZ=Asia/Shanghai（见运行层 ENV），运行时经
+# -e TZ=<IANA 时区名> 覆盖。TZ 只影响日志时间戳等本地时间展示，API 日期
+# 语义（YYYY-MM-DD 壁钟字段）与时区无关。
+#
 # 构建（与本地 make build 共用同一构建逻辑，见 Makefile）：
 #   make image VERSION=0.2.0        # 等价下方 docker build
 #   docker build --build-arg VERSION=0.2.0 -t goliday:0.2.0 .
@@ -38,6 +43,10 @@ RUN make build-server VERSION=${VERSION} OUT_DIR=/out
 FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=build /out/goliday-server /goliday-server
+
+# 默认时区东八区（覆盖见文件头"时区"说明）：ENV 值是默认值，运行时
+# docker run -e TZ=<IANA名> 可直接覆盖，镜像已含 tzdata 故任意时区可解析。
+ENV TZ=Asia/Shanghai
 
 # HTTP（默认 :8080）与 gRPC（默认 :50051）。
 EXPOSE 8080 50051

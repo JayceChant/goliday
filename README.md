@@ -107,6 +107,8 @@ curl "http://localhost:8080/healthz"
 # {"status":"ok","version":"0.1.1","years":[2025,2026],"loaded_at":"2026-11-20T02:15:04Z"}
 ```
 
+The image defaults to `TZ=Asia/Shanghai` (UTC+8, matching the Chinese holiday data it serves), which affects log timestamps and other local-time display; override at startup with `-e TZ=<IANA name>` (the image ships tzdata, so any IANA zone works, e.g. `-e TZ=UTC`). Query semantics are timezone-independent: dates are `YYYY-MM-DD` wall-clock values determined by the client, and `/healthz`'s `loaded_at` is always RFC3339 UTC.
+
 Images are published to GHCR by [GitHub Actions](.github/workflows/docker.yml) on every `v*` tag push (multi-arch `linux/amd64` + `linux/arm64`; pushes to the default branch, PRs and manual runs build for verification only, without publishing). Tags are produced automatically by [release-please](.github/workflows/release-please.yml): commits follow Conventional Commits (already adopted in this repo), and merging a release PR creates the `v*` tag, GitHub Release and CHANGELOG entry, then publishes the image — no manual tag push needed:
 
 ```bash
