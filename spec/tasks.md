@@ -1,62 +1,28 @@
 # Tasks
 
-> 对应规格：`spec/spec.md`。新任务按批次追加于本文件；完成勾选须先于提交（见 [AGENTS.md](../AGENTS.md) 任务循环与 [agents/general.md](../agents/general.md) 清单勾选纪律）。
+> 对应规格：`spec/spec.md`。spec 改动中即可规划的前瞻性任务以未勾选项写入本文件，执行并验收后改为勾选；仅保留未完成任务、最近已完成批次与长远有影响的批次（精简纪律见 [agents/general.md](../agents/general.md) 第 2 节）。
 
-## 已完成批次总览
+## 历史批次（已完成；更早批次见 git 历史与 `CHANGELOG.md`）
 
-- [x] Task 1~8（首个完整版本）：module 骨架与目录、DayType 位掩码、稀疏 TOML 配置模型/校验/加载、Calendar 判定与区间统计、测试数据（testdata）、HTTP 服务（仅标准库）、goliday-tool（gen/validate）、docs。
-- [x] Task 9~12（gRPC TODO 落地）：`proto/goliday/v1/goliday.proto` 与生成代码入库、同进程 gRPC 服务（`-grpc-addr`，语义与 HTTP 一致）、文档同步、依赖分级审计（根包零 gRPC 导入）。
-- [x] Task 13（测试强化）：根包测试黑盒化（`package goliday_test`，仅用导出 API）、DayType 全 256 取值穷举、已配置年份全年逐日穷举、5 个原生 fuzz 目标（种子内联，无语料残留）。
-- [x] Task 14~19（年份强校验 + 统计前缀和化）：`ErrYearNotLoaded` / `year_not_loaded`（四种查询形态，不再静默回退周休）、构造期组合计数前缀和（统计 O(覆盖年数)）、stats 取消 366 天跨度限制（days 保留上限防响应膨胀）、测试与文档同步。
-- [x] 文档精简：README 改为用户视角并修正过时的「无配置年回退」表述；spec.md 合并 ADDED/MODIFIED 为单一当前契约（保留决策依据）；tasks/checklist 压缩为批次总览；AGENTS.md 轻度精简并同步依赖分级表述；docs 修正过时条目与重复示例。
-- [x] README 双语化：原中文版移至 `README-CN.md`，`README.md` 改为英文版，两文件开头提供语言切换互链；纯文档变更，无代码改动。
-- [x] Task 20（模块路径迁移）：module 由 `goliday` 改为 `github.com/JayceChant/goliday`；同步全部 import 路径、proto `go_package` 与重新生成 pb 代码、spec/AGENTS/docs 引用；验证命令全绿。
-- [x] Task 21（proto 工具链迁移至 buf）：新增 `buf.yaml`（模块/lint/breaking，豁免项附理由）与 `buf.gen.yaml`（本地 protoc-gen-go/go-grpc，版本固定）；再生成命令改为仓库根 `buf generate`，`buf lint` 通过；spec/API.md/ARCHITECTURE.md/proto 头注释同步；产物与 protoc 仅差生成头 protoc 版本行（`(unknown)`，预期）。
-- [x] Task 22（buf lint 豁免收敛）：`buf.yaml` 改为 v2 工作区（模块根 `proto/`，buf 官方标准布局，目录与 package `goliday.v1` 对应），消除 PACKAGE_DIRECTORY_MATCH 豁免；`QueryStats` 拆分独立 `QueryStatsRequest`/`QueryStatsResponse`（字段与 QueryDaysRequest 同构，符合 buf BP「每 RPC 独立消息」），消除 RPC_* 三条豁免；`buf lint` STANDARD 零豁免通过；服务端代码与测试、spec/API 文档同步。
-- [x] 依赖升级巡检：`go list -m -u all` 确认直接依赖（toml v1.6.0 / grpc v1.83.2 / protobuf v1.36.12）均为最新稳定版；仅间接依赖 `google.golang.org/genproto/googleapis/rpc` 升至 `v0.0.0-20260831171406-18b4a7587f8a`；依赖分级不变，无新增依赖；验证命令全绿。
-- [x] golangci-lint 引入：新增 `.golangci.yml`（v2 格式，standard 五件套为基线，按"高价值低噪音"原则补充 errorlint/gocritic/misspell/nolintlint/revive/unconvert/unparam；goimports 以本地前缀分组；proto 生成代码豁免）；按 lint 结果清零 9 处告警；AGENTS.md 验证命令纳入 `golangci-lint run`；验证命令全绿。
-- [x] go fix 现代化巡检：重复执行 `go fix ./...` 至幂等（首轮改写 4 个测试文件共 5 处：range-over-int 循环、删除 Go 1.22 前的循环变量影子拷贝、`strings.Split` 改 `SplitSeq`），每轮验证命令全绿；AGENTS.md 第 5 节写入现代 Go 风格基线（go fix 幂等要求 + 三条改写规则），避免再写过时风格代码。
-- [x] Task 23（容器镜像与发布，GitHub 环境）：`Dockerfile` 多阶段构建（`golang:1.27` CGO_ENABLED=0 静态编译 → `distroless/static-debian12:nonroot`，仅打包 goliday-server，configs 运行时挂载）与 `.dockerignore`；`.github/workflows/docker.yml`（push 默认分支/`v*` tag/PR/workflow_dispatch 触发，buildx + QEMU 多架构发布 GHCR，GITHUB_TOKEN 认证，metadata 标签策略）；spec 新增「容器镜像与发布」Requirement，README 双语 Docker 章节；验证命令全绿。
-- [x] 在线质量门禁与 CI 测试矩阵：spec 新增对应 Requirement；新增 `.github/workflows/ci.yml`（Go stable/oldstable 双版本矩阵 build/vet/gofmt/`go test -race -coverprofile`，stable 项经 codecov-action 上报覆盖率，golangci-lint-action 零告警作业）与 `.github/workflows/scorecard.yml`（OpenSSF Scorecard 每周评分，publish_results 发布 scorecard.dev，SARIF 上传 code scanning）；README 双语接入 CI/Codecov/pkg.go.dev/Scorecard 四枚徽章与「质量与持续集成」章节；SonarCloud/Snyk/Socket 需外部注册绑定，不在仓库内预置（spec 决策依据已记录）。
-- [x] MIT License：仓库根新增 `LICENSE`（MIT 标准文本，Copyright (c) 2026 Jayce Chant（陈思杰））；spec 新增「开源许可证」Requirement；README 双语标题下接入 License 徽章并在「质量与持续集成」表格新增许可证条目；纯文档/法务文件变更，无代码改动。
-- [x] 测试覆盖率提升：根包 98.1%→99.6%（新增白盒 `calendar_internal_test.go`：`comboIndex` 非法组合、`NewCalendar` nil 配置兜底；黑盒补 `toYearConfig` festival/work 日期非法分支）；`cmd/goliday-server` 73.4%→77.2%（`newGRPCServer` 经测试 helper 直挂 0%→100%、recover/日志中间件兜底、start/end 成对性与非法日期参数分支、混合列表全落区间内）；`cmd/goliday-tool` 85.2%→96.1%（`writeOut` stdout、`runGen` 各结果路径全分支、`parseCNNum` 边界穷尽、`lunarMarks` 首次优先、重复条目/重复补班去重、TODO 排序、`selfCheck` 非法日期）。
-- [x] 覆盖率统计排除 proto 生成代码：新增仓库根 `codecov.yml`（`ignore: proto/`，附排除理由注释）；`ci.yml` 上传前新增「Filter coverage profile」步骤剔除 coverage.out 中 `proto/` 记录并自校验过滤结果；spec.md「在线质量门禁」Requirement 的覆盖率上报约定与 Scenario 同步；过滤后全仓口径 89.6%（原 69% 因零覆盖生成代码计入分母被拉低）；YAML 均经解析校验通过。
-- [x] README 精简「质量与持续集成」章节：面向维护者的 CI/质量服务表格迁移至 docs/ARCHITECTURE.md（新增第 7 节），README 双语仅保留标题下徽章；spec.md 对应 Requirement 同步修订；纯文档变更，无代码改动。
-- [x] 镜像发布策略收敛：docker.yml 改为仅 push tag `v*` 推送 GHCR（login 同步收紧至 tag 事件），push 默认分支 / PR / workflow_dispatch 仅构建验证不推送，消除 master 滚动镜像冗余；spec.md「容器镜像与发布」约定与 Scenario、README 双语发布说明同步；纯 workflow YAML 与文档变更，无 Go 代码改动。
-- [x] SonarCloud CI 分析落地：新增 `.github/workflows/sonarcloud.yml`（push 默认分支 / PR opened/synchronize/reopened 触发，checkout 完整历史 + persist-credentials: false，`go test -covermode=atomic` 生成 coverage.txt，sonarqube-scan-action 扫描上报，依赖 secret `SONAR_TOKEN`）与根目录 `sonar-project.properties`（projectKey/organization、测试与覆盖率路径、`proto/` 覆盖率排除与 Codecov/.golangci.yml 同口径）；spec.md「在线质量门禁」Requirement 的 SonarCloud 条款由「不预置 workflow」改为 CI 分析约定、Scenario 与决策依据同步；docs/ARCHITECTURE.md 质量门禁表格 SonarCloud 条目补工作流链接；YAML 解析校验通过；纯 workflow/文档变更，无 Go 代码改动。
-- [x] DayType 终态双层编码重构：粗粒度改为单 bit 基本位（1=上班、2=放假，`t & 3` 投影、位与判类无歧义），调整位 4/8/16（过节/调休/补班）依附基本位，细粒度合法值收敛为五态 MECE {1,2,6,10,17}；消除旧编码 `|` 的 any-of/all-of 双语义与 `Coarse()` 优先级补丁（并集物化值 3/28 删除）；判定算法重排为「节日当天（必放假，不另标调休位）→ work → off → 周休回退」；细粒度统计由五键交叉计数改为五键 MECE（之和恒等于 total_days）；spec.md Requirement/Scenario/校验清单/fuzz 不变量、proto 注释与再生成（buf）、README 双语、docs（API/CONFIG_FORMAT/ARCHITECTURE/holiday_config_example）、configs 与 testdata 头注释、全部相关测试与 invalid 样例（新增 `festival_workday_no_off.toml`）同步；验证命令全绿。
-- [x] DayType 命名与判定方法 API 增强：调整位常量更名 `DayTypeAdjustedRest`（调休）/`DayTypeAdjustedWork`（补班），动宾结构消除「调休/补班」宾语歧义（label 词根 adjusted/compensate 不变）；新增组合值常量 `DayTypeFestivalRest`(6)/`DayTypeAdjustedRestDay`(10)/`DayTypeAdjustedWorkDay`(17)；`IsWorkday/IsHoliday` 更名 `IsWork/IsRest`（与基本位对齐；holiday 与 weekend 为并列概念，旧名口径错位）并修复非法值误报——先 `IsValid()` 再投影判等（3 同含两基本位、5 基本位正确而调整位矛盾等非法值恒 false）；新增 `IsValid`、`IsFestivalRest`、`IsAdjustedRestDay`、`IsAdjustedWorkDay`（组合值精确判等）；Calendar 同名便捷方法同步；spec/proto/docs/测试全量同步；验证命令全绿。
-- [x] 粗粒度掩码常量化：新增未导出常量 `dayTypeCoarseMask = DayTypeWork|DayTypeRest = 3`（仅供投影/判类掩码使用，本身非合法取值，测试断言其 `IsValid()` 为 false；不导出以免被当作类型值使用），`Coarse/IsWork/IsRest` 三处投影改用该常量，消除重复表达式；spec 常量表、docs（API/CONFIG_FORMAT）投影表述同步；验证命令全绿。
-- [x] 组合判断掩码化：新增未导出常量 `dayTypeAdjustMask = DayTypeFestival|DayTypeAdjustedRest|DayTypeAdjustedWork = 28`（调整位掩码，仅供判类使用，本身非合法取值，测试断言其 `IsValid()` 为 false），`IsFestivalRest/IsAdjustedRestDay/IsAdjustedWorkDay` 由组合值精确判等改为与 `IsWork/IsRest` 同构的「合法值 && 调整位投影判等」（`t&dayTypeAdjustMask == 4/8/16`），全部 256 值上行为不变（非法值被 `IsValid()` 前置拦截）；黑盒补非法值（4/5/9/12/18/20）全 false 回归与 28 掩码断言；spec 常量表加行、方法清单与「非法值全拒」「组合判断」Scenario、docs/API.md 判类表述同步；验证命令全绿。
-- [x] 新增与 `Coarse()` 对应的调整位投影方法 `Adjustment()`（`t & dayTypeAdjustMask`，合法值上 ∈ {0, 4, 8, 16} 且幂等，非法值如 12 返回原值本身）；黑盒新增 `TestAdjustment`（五合法值 + 非法值 12 断言）；spec 投影条款、方法清单、附录 API 形态与新增「调整位投影」Scenario，docs（API/CONFIG_FORMAT）投影表述同步；验证命令全绿。
-- [x] 判类与命名语义统一：五个判类方法内部的裸掩码表达式改为 `t.Coarse()`/`t.Adjustment()` 方法调用（投影逻辑变更自动跟随）；`dayTypeNames` 改为按位常量显式索引（`DayTypeWork: "work"` 等，位序调整随编译检查自动跟随），String() 保持手写（位操作特判与无前缀输出为需求，不引入 stringer）；`type_label` 分段名与 stats 五键动宾化，与常量名逐字对应：`adjusted`→`adjusted_rest`、`compensate`→`adjusted_work`（含 proto Stats 字段 `adjusted`/`compensate` → `adjusted_rest`/`adjusted_work`，buf lint 通过再生成；JSON 响应键、handlers/grpc 映射、全部测试断言、spec/docs/README 同步）；验证命令全绿。
-- [x] 零值常量与 String 查表：新增 `DayTypeUnknown = 0`（零值/默认值，非合法取值，判类恒 false，String 输出 unknown；黑盒 `TestUnknown` 全维度断言）；`String()` 重构为初始化期预计算表 `dayTypeStrings`（由 `dayTypeNames` 一次性物化 0~31 全组合域，分段名单一来源不变）+ 域内查表直返（合法值与零值不再逐次运行时构建）+ 域外（≥32）`joinNames` 运行时逐位构建；spec 常量表/非法值条款/String 条款/Scenario、docs（API/CONFIG_FORMAT）常量表与非法值表述同步；验证命令全绿。
-- [x] String 契约收紧：合法值（含零值 Unknown）查静态标签表直返，非法值统一返回 `"invalid"`（系统不产生非法值，逐位拼接的伪标签暗示有效状态，统一词便于调用方兜底）；实现删除 `joinNames` 与按位名表 `dayTypeNames`（标签表改按六个组合常量显式索引，重构自动生效不变）、根包 strings 导入随之移除；穷举测试改为「六标签 ∪ invalid 全收敛断言」（含越界值 33）；spec String 条款/Scenario、docs（API/CONFIG_FORMAT）label 机制说明同步；验证命令全绿。
-- [x] DayType 影响面终检：全仓 grep 确认旧名（dayTypeNames/joinNames/IsWorkday/IsHoliday/compensate/work|compensate 等）仅存于历史勾选记录；补修 5 处遗漏——README 双语 type_label 机制表述、spec fuzz 不变量补充条款（「分段均为合法位名」→「输出收敛于标签 ∪ unknown ∪ invalid」）、docs/ARCHITECTURE.md 穷举不变量描述、calendar_test.go 两处 Fine 计数键注释措辞（位名键→单 bit 键）；验证命令全绿。
-- [x] v0.1.0 发布：打附注 tag `v0.1.0` 并推送（触发 GHCR 镜像发布工作流），生成中英双语 release notes；README 双语补齐用户视角缺失信息——二进制安装（go install server/tool）、启动参数表、configs 内置年份真实性说明、明文服务安全提示、Go 库使用示例、gRPC proto 位置、版本号镜像拉取示例与 Docker 配置自备提示；纯文档变更，无 Go 代码改动；验证命令全绿。
-- [x] 前缀和存储优化：元素改 uint8（年内单一类型天数有界，普通工作日至多 248 天），跨年/多段累加先转 int 宽类型累加器 `comboTotals` 防溢出；数组长度与年天数一致（去掉全零首元素），下标改闭区间 `[元旦, 元旦+i天]`，左闭右开查询转换下标差分（`-1` 视为全零）；spec.md 前缀和 Requirement/Scenario 与 docs（ARCHITECTURE/API）同步；验证命令全绿。
-- [x] 查询索引与前缀和存储再优化：日期键 `normalizeDate` 改返回「(年份, 年内 0-based 天序)」整数对；三张 time.Time 键哈希集合合并为单一稀疏终态表 `map[int]DayType`（构建期按 off→work→festival 覆写烘焙判定优先级，未命中回退周休判断）；前缀和改定长 `[366]comboCounts` 内联数组（平年尾部闲置，每年省独立堆分配与切片头）；区间终点恰为次年元旦时折叠为上一年末（不进入未加载终点年）；spec.md 前缀和条款与决策依据、docs/ARCHITECTURE.md 索引/键规范化/请求流描述同步；判定与统计行为不变（全部测试零改动通过）；验证命令全绿。
-- [x] yearDays 改公历闰年直判（被 4 整除且不被 100 整除，或被 400 整除 → 366，否则 365）：Go time 包为外推公历，除闰年规则外无其他日期调整，与「元旦至次年元旦差值」恒等价；新增白盒回归 `TestYearDaysMatchesTimeCalc` 在 1000~9999 全区间（四位年份文件名全集）逐点断言与 time 包计算一致，等价性固化为测试；验证命令全绿。
-- [x] release-please 自动化发布：新增 `.github/workflows/release-please.yml`（push master/workflow_dispatch 触发，release-please-action v5.0.0 SHA 固定，`release-type: simple` 依 Conventional Commits 维护 Release PR/CHANGELOG.md/tag/GitHub Release，权限最小化含 `actions: write`；`GITHUB_TOKEN` tag 不级联触发工作流，故 release 创建后经 `gh workflow run` dispatch docker.yml 于新 tag 发布镜像）与根目录 `.release-please-manifest.json`（版本基线 0.1.0）；spec.md 新增「自动化版本发布」Requirement（含 2 个 Scenario），README 双语 Docker 章节补 tag 自动化说明，docs/ARCHITECTURE.md 质量门禁表加 release-please 条目；纯 workflow/文档变更，无 Go 代码改动；验证命令全绿。
-- [x] 复查修复（代码审查问题批次）：前缀和计数元素 uint8 改 uint16（无调整年普通工作日可达 262 天 > 255，uint8 累计到 256 回绕破坏 MECE 不变量；黑盒回归以 2024 空调整年固化 ordinary=262/weekend=104/五键之和==Total）；spec 前缀和 Requirement 与决策依据、docs/ARCHITECTURE.md 同步修订。
-- [x] 复查修复：Stats 改为内部排序去重副本（防御式归一，放宽「调用方须排序去重」前置契约；修复 prev := 0 哨兵在首日期年份为 0 时跳过加载校验导致的空指针 panic）；spec 单日期查询 Requirement 增补 Stats 核心包条款与决策依据、附录 API 形态注释同步；黑盒回归覆盖乱序/重复输入、入参不变性与年份 0 场景。
-- [x] 复查修复：服务版本号改构建期注入（main.go 硬编码 0.1.0 已落后 release please 发布的 0.1.1）：`var version = "dev"` + Dockerfile `ARG VERSION` + `-ldflags -X main.version`，docker.yml tag 构建去 v 前缀注入；spec 容器 Requirement 构建阶段与工作流步骤、docs/API.md `-v` 行同步。
-- [x] 复查修复：500 兜底错误不再吞因——新增 internalQueryErr 辅助函数（记录操作名与底层错误链后返回统一 errInternalQuery），HTTP handlers 5 处与 gRPC 3 处兜底分支全部改经该函数，日志可排查、对外文案不变。
-- [x] 复查修复：StatsResult.Fine 键由 4/8/16 裸调整位改为五个合法终态组合值（1/2/6/10/17）——裸调整位非合法 DayType 取值，作键打印显示 invalid 且调用方难索引；handlers fillStats 与 grpc statsProto 映射、黑盒 fineKeyOf/一致性基准键、spec 统计导出规则同步；HTTP/gRPC 对外 JSON/proto 键名不变。
-- [x] 复查修复：Store 移除冗余 RWMutex——加载后无任何修改途径，锁为死开销并暗示可变性；改为不可变声明（注释明确「构建后不可变、并发读天然安全」），Has/Get/Years 去锁，Years 排序顺带改 slices.Sort；docs/ARCHITECTURE.md 并发模型与数据流、spec 附录注释同步。
-- [x] 复查修复：LoadDir 移除库内 log.Printf——库不应直接写日志（嵌入方无法路由/抑制），且服务入口已输出同一信息，启动日志原本重复两行；日志职责收敛到调用方（main 基于 Years() 输出），spec 启动加载 Scenario 与 docs/API.md 启动说明同步。
-- [x] 复查修复：HTTP 服务端补 ReadHeaderTimeout（10s）与 IdleTimeout（120s）——原 http.Server 未设任何超时，直连暴露时慢连接可长期占用（slowloris 式读挂起）；不设整体读写超时（纯内存查询无长请求），spec HTTP 服务子包 Requirement 与 docs/API.md 启动说明同步。
-- [x] 复查修复：ci.yml 新增 proto 作业——buf lint（STANDARD 零豁免）、buf breaking 对照远端 master（FILE 级，仅 PR）、再生成一致性校验（buf generate 后 git diff --exit-code）；工具经 go install 固定版本（与 buf.gen.yaml/proto 头注释参考版本一致），三项检查本机全部实测通过；spec ci.yml 约定同步。
-- [x] 复查修复：ci.yml 测试作业增加 fuzz 冒烟——stable 矩阵项对全部 5 个 fuzz 目标各 30s 短时真实 fuzz（普通 go test 仅跑种子语料），失败即门禁失败；spec 测试作业步骤与「fuzz 种子即回归」Scenario 同步。
-- [x] 复查修复：新增黑盒基准 calendar_bench_test.go（b.Loop + ReportAllocs，testdata 配置复用加载）——Query/QueryCoarse 单日判定、StatsRangeFullYear 前缀和差分、StatsList 排序去重逐日差分、QueryRangeFullYear 逐日明细共 5 个基准，为性能取向实现提供回归基线；spec 测试分层 Requirement 补基准条款。
-- [x] 复查修复：docker.yml checkout 补 persist-credentials: false——其余显式 checkout 的工作流均已设置，唯 docker.yml 遗漏（release-please/govulncheck 无显式 checkout 步骤，动作内部自管）；spec 容器工作流步骤条款同步。
-- [x] 复查修复：docker 镜像构建恢复供应链证明——provenance（mode=min）与 sbom 显式开启，attestation 附着镜像索引（ghcr.io 支持 OCI 1.1 展示）；原为「单 manifest」关闭与仓库 OpenSSF Scorecard 目标相悖；spec 容器工作流 build 条款同步。
-- [x] 复查修复：gen.go 排序统一改 slices（SortFunc/SortStableFunc，比较函数改三值返回）；与 AGENTS 现代 Go 基线及全仓其余排序写法（store/handlers 均已用 slices）一致。
-- [x] 复查修复：三份重复的严格日期解析与两份中文星期名收敛——根包导出 ParseDate/WeekdayCN，config.go、handlers.go（invalid_date 错误复用根包错误文案）、goliday-tool gen.go 统一引用；spec 附录 API 形态与测试分层表同步。
-- [x] 复查修复：覆盖年份判定收敛——根包导出 CoveredYears（时间区间重载，空区间返回 nil），HTTP 层 multiQuery.coveredYears 区间部分改调库实现（消除两层各写一份的漂移风险）；黑盒 TestCoveredYears 覆盖空/倒置/同年/跨年/元旦折叠；spec 年份强校验覆盖规则与附录 API 形态同步。
-- [x] 复查修复（healthz 改进）：/healthz 增加 version（构建期注入）与 loaded_at（配置加载完成时刻 RFC3339，确认「新配置已生效」的依据）字段——Store 新增 LoadedAt；docs/API.md、README 双语示例与路由表、spec 健康检查 Requirement 与 Scenario、附录 API 形态同步；handlers 测试断言新字段。
-- [x] 构建入口统一（Makefile）：新增仓库根 Makefile（build/build-server/build-tool/download-deps/image/check/lint/fix/clean；VERSION 经 -ldflags 注入、GOOS/GOARCH 透传且 Windows 加 .exe）；Dockerfile 构建阶段改为调用 `make build-server VERSION=${VERSION} OUT_DIR=/out`（二进制与镜像同一编译命令，唯一定义）；bin/ 入 .gitignore 与 .dockerignore；spec 容器与发布 Requirement 增 Makefile 约定并改写 Dockerfile 构建阶段、新增「本地构建二进制」Scenario；README 双语开发/Docker 章节与 docs/ARCHITECTURE.md 同步；Makefile image 目标与 Dockerfile 构建阶段互注防递归约束（Dockerfile 只调用不触碰 docker 的目标，不得调用 make image）。
-- [x] 覆盖率修复与门禁成文（v0.2.0 回补）：`cmd/goliday-server` main() 重构为可测 `run(args) error`（错误统一返回、信号监听先于监听安装），新增 main_test.go 覆盖 -v 版本打印/参数错误/配置目录失败/gRPC·HTTP 端口占用/双协议 SIGTERM 优雅关闭/禁用 gRPC；`cmd/goliday-tool` main() 重构为 `dispatch(args) int` + main_test.go（用法错误退出码 2、validate/gen 分派）；补测 internalQueryErr（记日志后返回统一 500）、writeJSON 编码失败分支、Store.LoadedAt 时间窗与幂等、gen.go 空段落跳过/TODO 排序对偶分支/裸日放弃解析；手写代码整体覆盖率 89.2%→98.0%（根包 99.6%、server 95.7%、tool 99.3%），剩余未覆盖仅入口胶水与既有口径的不可达防御分支；「覆盖率维持」Scenario（≥95% 门禁 + 例外清单 + main() 胶水下沉约定）写入 spec.md 测试分层 Requirement 与 AGENTS.md 第 5 节。
-- [x] AGENTS.md 分拆：项目/语言无关的通用协作规则抽取为 `agents/general.md`（提交纪律、环境中立与路径、shell 选择、文档与语言、清单勾选纪律），Go 语言通用工程规则抽取为 `agents/go.md`（门禁四件套、go fix 不动点、golangci-lint、测试与 main() 下沉、现代 Go 风格基线），AGENTS.md 引用两者并仅保留项目特有约束（spec/ 口径、模块布局与依赖分级、95% 覆盖率门禁、项目任务循环），语义无损精简；Makefile 注释与 spec 清单头的「第 X 节」引用同步改为文件引用；纯文档变更，无代码改动。
-- [x] 复查修复：workflow 触发条件按门禁/分析/发布分层——门禁类 ci.yml 与 govulncheck.yml 去掉 master 限定（push 所有分支 `branches: ["**"]`、pull_request 不过滤目标分支），开发分支与 release-please Release PR 合入 master 前即可执行质量检查，govulncheck 新增 pull_request 触发补齐缺口（依赖升级引入的可触达漏洞不再合入后才暴露）；两者新增顶层 concurrency（`${{ github.workflow }}-${{ github.head_ref || github.ref_name }}` 分组 + cancel-in-progress，同一分支 push/PR 双事件共享并发组）消除重复执行；分析类（codeql/sonarcloud）、仓库级评分（scorecard）与发布类（docker/release-please）维持默认分支限定（重型扫描与多架构构建不随开发分支推送重复，其 PR→master 触发已覆盖合入前检查，Scorecard 评估仓库级实践、发布链路仅对 master/tag 有意义）；ci.yml 头注释修正过期口径（矩阵实为 1.27.x/stable 而非 stable/oldstable，门禁清单补 proto）；spec.md ci/govulncheck 触发与冗余抑制约定、决策依据触发分层、新增「开发分支合入前门禁」Scenario 同步。
-- [x] spec 纪律通用化：AGENTS.md 第 1 节「规格文档（spec/）」四条约束视作项目/语言无关的通用规范，移入 agents/general.md 开头（新第 1 节，措辞泛化为「项目以 `spec/` 目录维护规格文档时」，语义无损）；原第 2~5 节顺延为第 2~6 节；AGENTS.md 第 1 节并入 general.md 摘要引用（补「规格文档纪律」），后续章节号顺延，任务循环对 general.md 的章节号引用同步（shell/`.env` → 第 4/3 节、清单纪律 → 第 6 节）；纯文档变更，无代码改动。
+### spec 纪律通用化（spec/ 条款移入 general.md）
+- [x] 原四条逐条落入 general.md 新第 1 节（措辞泛化为「项目以 spec/ 目录维护规格文档时」），语义无损
+- [x] 引用与编号同步（AGENTS.md 章节顺延、任务循环引用更新、全仓 grep 复核无遗留旧章节号）
+- [x] 验证命令全绿（纯 Markdown 变更，无 Go 代码改动）；执行提交（docs: spec 纪律通用化移入 general.md）
+
+### workflow 触发条件按门禁/分析/发布分层
+- [x] 门禁类 ci.yml 与 govulncheck.yml 全分支触发（push `branches: ["**"]`、PR 不过滤目标分支）+ 顶层 concurrency 去重；分析/发布类（codeql/sonarcloud/scorecard/docker/release-please）维持默认分支限定
+- [x] spec.md 触发分层约定、决策依据与新增「开发分支合入前门禁」Scenario 同步
+- [x] 验证命令全绿；执行提交
+
+### AGENTS.md 分拆（agents/ 通用规则抽取）
+- [x] 项目/语言无关条款分拆至 `agents/general.md`，Go 语言通用条款分拆至 `agents/go.md`，AGENTS.md 仅留项目特有约束，无条款丢失
+- [x] 交叉引用同步（章节号引用改文件引用）
+- [x] 验证命令全绿；执行提交（docs: 分拆 AGENTS.md 为项目规范与 agents/ 通用规则）
+
+## spec 纪律 v2（本批次）
+- [x] `spec/tasks.md` 重写：合并原任务/验收双清单用途，spec 改动中即规划前瞻任务（未勾选），验收后勾选；仅保留最近 3 个已完成批次，其余删除
+- [x] `spec/checklist.md` 重写为固定验收动作清单（有序列表、无勾选框、随项目状态动态调整）
+- [x] `spec/spec.md` 首次精简 619→397 行（≤400 达标）：GitHub 环境类 Requirement 收敛为要点、相关 Scenario 合并、历史决策依据与完整约定迁出，新建 `spec/spec.legacy.md`（160 行）承接存档
+- [x] `agents/general.md` 新增第 2 节「spec 目录精简纪律」（spec.md ≤400 行、tasks.md 保留策略、checklist.md 动态调整），原第 2~6 节顺延为第 3~7 节，第 1/7 节改新分工表述
+- [x] `AGENTS.md`（第 1 节摘要、任务循环第 2/4 步、章节号引用）与 README 双语目录表 spec/ 描述同步
+- [x] 验证命令全绿（纯 Markdown 变更，无 Go 代码改动；交叉引用与本地路径复核通过）；执行提交（docs: 重定义 spec 三件套分工并建立精简纪律）

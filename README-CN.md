@@ -189,4 +189,4 @@ make image VERSION=0.2.0
 | [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | 配置格式选型、稀疏表原则、校验规则、判定算法 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 目录结构、分层、依赖约束、数据流、测试分层、质量门禁与 CI |
 | [docs/generate_prompt.md](docs/generate_prompt.md) | 官方公告 → 年度配置的 LLM 提示词模板 |
-| [spec/](spec/) | 需求规格、任务清单与验收清单（遵循 [AGENTS.md](AGENTS.md)） |
+| [spec/](spec/) | 需求规格、任务清单与固定验收清单（遵循 [AGENTS.md](AGENTS.md)） |

@@ -4,7 +4,7 @@
 
 ## 1. 通用协作规范（项目无关、语言无关）
 
-见 [agents/general.md](agents/general.md)，必须遵守：规格文档纪律（spec/ 三件套口径、实现与 spec 冲突时先改 spec）、Git 提交纪律（中文 Conventional Commits、一变更一提交）、环境中立与路径规范（禁本地绝对路径、`.env.*` 不入库）、Shell 环境选择（Windows 兼容）、文档与语言（中文）、清单勾选纪律（先勾选后提交）。
+见 [agents/general.md](agents/general.md)，必须遵守：规格文档纪律（spec/ 三件套口径与精简纪律、实现与 spec 冲突时先改 spec）、Git 提交纪律（中文 Conventional Commits、一变更一提交）、环境中立与路径规范（禁本地绝对路径、`.env.*` 不入库）、Shell 环境选择（Windows 兼容）、文档与语言（中文）、清单勾选纪律（先勾选后提交）。
 
 ## 2. Go 工程规范（语言相关、项目无关）
 
@@ -19,9 +19,9 @@
 ## 4. 每次任务循环（Loop）流程
 
 1. 读本文件与 `spec/`（含任务清单），确认任务范围与验收标准。
-2. 按 [agents/general.md](agents/general.md) 第 4 节选择 shell 环境，按第 3 节读取/创建 `.env.<os/platform>`。
+2. 按 [agents/general.md](agents/general.md) 第 5 节选择 shell 环境，按第 4 节读取/创建 `.env.<os/platform>`。
 3. 实现遵循 spec；最小改动，不做 spec 之外的发挥。
-4. **有代码改动时**：先跑 `go fix ./...`（重复直到无改动，典型改写回补到 [agents/go.md](agents/go.md) 第 4 节基线）与 `golangci-lint run ./...`，再运行提交前门禁；全绿后更新 `spec/tasks.md`、`spec/checklist.md` 勾选。
+4. **有代码改动时**：先跑 `go fix ./...`（重复直到无改动，典型改写回补到 [agents/go.md](agents/go.md) 第 4 节基线）与 `golangci-lint run ./...`，再运行提交前门禁；按 `spec/checklist.md` 完成固定验收动作，全绿后勾选 `spec/tasks.md` 对应项。
 5. 按提交纪律规范提交 commit（一个被接受的变更对应一次提交）。
 
-勾选与提交的次序约束、循环结束检查见 [agents/general.md](agents/general.md) 第 6 节。
+勾选与提交的次序约束、循环结束检查见 [agents/general.md](agents/general.md) 第 7 节。
