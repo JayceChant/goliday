@@ -253,3 +253,9 @@
 - [x] 分拆后语义无损：原 AGENTS.md 各条款全部落入 AGENTS.md（项目特有：spec/ 三件套口径、模块布局与依赖分级、95% 覆盖率门禁与 spec 口径、任务循环）或 agents/general.md（提交纪律、环境中立与路径、shell 选择、文档与语言、清单勾选纪律与干净工作区检查）或 agents/go.md（门禁四件套、go fix 不动点与基线回补、golangci-lint、配套测试与 main() 下沉、现代 Go 风格基线三条），无条款丢失
 - [x] 交叉引用同步：Makefile 提交门禁注释、spec/tasks.md 与 spec/checklist.md 头部「第 X 节」章节号引用改为文件引用（历史勾选记录中的旧章节号按原样保留）；agents/ 两文件无本地绝对路径，UTF-8 无 BOM、LF
 - [x] 验证命令全绿（纯 Markdown/注释变更，无 Go 代码改动，无本地绝对路径）；执行提交（docs: 分拆 AGENTS.md 为项目规范与 agents/ 通用规则）
+
+## spec 纪律通用化（spec/ 条款移入 general.md）
+
+- [x] 语义无损：原 AGENTS.md「规格文档（spec/）」四条（三件套分工、以 spec/tasks/checklist 为准、冲突先改 spec、完成同步勾选）逐条落入 agents/general.md 新第 1 节，仅措辞泛化为「项目以 `spec/` 目录维护规格文档时」，无条款丢失或收紧/放宽
+- [x] 引用与编号同步：general.md 原第 2~5 节顺延为第 2~6 节（第 2 节内「见第 2 节」改「见第 3 节」）；AGENTS.md 删除原第 1 节、后续章节顺延，第 1 节 general.md 摘要补「规格文档纪律」，任务循环两处 general.md 章节号引用同步（第 3/2 节 → 第 4/3 节、第 5 节 → 第 6 节）；spec/tasks.md、spec/checklist.md 头部与历史勾选记录不受影响（均为文件级引用或按原样保留）；全仓 grep 复核无遗留旧章节号活动引用
+- [x] 验证命令全绿（纯 Markdown 变更，无 Go 代码改动，无本地绝对路径，UTF-8 无 BOM、LF）；执行提交（docs: spec 纪律通用化移入 general.md）
