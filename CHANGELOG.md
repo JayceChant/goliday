@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/JayceChant/goliday/compare/v0.2.1...v0.3.0) (2026-11-06)
+
+
+### Features
+
+* 容器默认时区设为 Asia/Shanghai 并支持 TZ 覆盖 ([c13aeea](https://github.com/JayceChant/goliday/commit/c13aeea15ebc4653bf0fcba497ae6cac80b2e8be))
+
+
+### Bug Fixes
+
+* 修复 govulncheck 发现的可触达依赖漏洞 ([8cc97d8](https://github.com/JayceChant/goliday/commit/8cc97d85477ef1ed59ded0a7cc109fdd9e04b113))
+
 ## [0.2.1](https://github.com/JayceChant/goliday/compare/v0.2.0...v0.2.1) (2026-09-25)
 
 
