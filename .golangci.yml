@@ -1,6 +1,6 @@
 # golangci-lint v2 配置：以默认五件套（errcheck/govet/ineffassign/staticcheck/unused）
 # 为基线，仅补充高价值、低噪音的检查项，平衡代码质量与维护开销。
-# 运行：golangci-lint run（需 v2.x，本仓库以 v2.13 验证）。
+# 运行：golangci-lint run（需 v2.x，本仓库以 v2.15.0 验证）。
 version: "2"
 
 linters:

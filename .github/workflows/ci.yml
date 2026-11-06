@@ -116,8 +116,10 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          # 与 .golangci.yml（version: "2"）匹配的 v2.x
-          version: v2.13
+          # 与 .golangci.yml（version: "2"）匹配的 v2.x。v2.13 的 gcimporter
+          # 无法解码 Go 1.27.3 的 export data v5（typecheck 全量报错），
+          # v2.15.0 已验证通过；升级 Go 时须同步确认该版本仍兼容。
+          version: v2.15.0
 
   proto:
     name: proto (buf)

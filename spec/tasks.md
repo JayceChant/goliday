@@ -2,14 +2,22 @@
 
 > 对应规格：`spec/spec.md`。spec 改动中即可规划的前瞻性任务以未勾选项写入本文件，执行并验收后改为勾选；仅保留未完成任务、最近已完成批次与长远有影响的批次（精简纪律见 [agents/general.md](../agents/general.md) 第 2 节）。
 
-## govulncheck 热修复：golang.org/x/net 升级至 v0.62.0（本批次）
+## ci 热修复：golangci-lint 升级至 v2.15.0（本批次）
+
+- [x] 定位 lint 作业失败根因：v2.13 的 gcimporter 无法解码 Go 1.27.3 的 export data v5，typecheck 全量报错
+- [x] `ci.yml` lint 作业版本由 `v2.13` 升至 `v2.15.0`，并注明与 Go 升级的联动约束
+- [x] `.golangci.yml` 验证版本口径与 `spec.detail.md` lint 作业约定同步
+- [x] 本地复现 v2.13 失败、验证 v2.15.0 零告警；workflow YAML 解析通过
+- [x] 执行提交（ci: 升级 golangci-lint 至 v2.15.0 修复 lint 作业）
+
+## 已完成批次（最近 3 个；更早批次见 git 历史与 `CHANGELOG.md`）
+
+### govulncheck 热修复：golang.org/x/net 升级至 v0.62.0
 
 - [x] 传递依赖 `golang.org/x/net` v0.58.0 → v0.62.0：清除 GO-2026-6603/6611/6612/6617 四项可触达漏洞，并一并覆盖 GO-2026-6860/6866 两项当前未触达漏洞
 - [x] `go mod tidy` 后依赖分级口径不变（`golang.org/x/net` 仍为 `// indirect`，直接依赖仅 toml/grpc/protobuf）
 - [x] 本地 govulncheck 复扫无可触达漏洞；`go fix` 不动点、lint 零告警、提交门禁与覆盖率 95% 全绿
 - [x] 执行提交（fix: 修复 govulncheck 发现的可触达依赖漏洞）
-
-## 已完成批次（最近 3 个；更早批次见 git 历史与 `CHANGELOG.md`）
 
 ### 构建环境提升至 Go 1.27.3
 
@@ -26,8 +34,3 @@
 - [x] `agents/general.md` 第 2 节精简纪律同步三层存档口径（detail=有效次要细节 / legacy=过时历史 / 每轮仍需引用的内容即使超长也留 spec.md）
 - [x] 已完成批次按「最近 3 个」收敛（补入 spec 纪律 v2，移除 workflow 触发分层与 AGENTS.md 分拆两节）
 - [x] 验证命令全绿（纯 Markdown 变更，无 Go 代码改动；指针与本地路径复核通过）；执行提交（docs: spec 存档分拆为 detail 与 legacy）
-
-### spec 纪律 v2（三件套重分工与首次精简）
-- [x] `tasks.md` 合并原任务/验收双清单用途（前瞻任务未勾选、验收后勾选）；`checklist.md` 改为固定验收动作清单（有序列表、动态调整）
-- [x] `spec.md` 首次精简 619→397 行（≤400 达标）：GitHub 环境类 Requirement 收敛为要点、相关 Scenario 合并、历史细节迁出存档
-- [x] `agents/general.md` 新增第 2 节精简纪律（原 2~6 节顺延为 3~7 节）；AGENTS.md 与 README 双语同步；验证全绿；执行提交（docs: 重定义 spec 三件套分工并建立精简纪律）
