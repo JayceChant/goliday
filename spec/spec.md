@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-基于 Go 1.27 的中国节假日 API 服务：以按年组织的**稀疏**配置文件记录节假日办对日历的调整（仅写入与默认周休状态不同的日期），配合标准库周休判断，对外提供粗/细两级粒度的日期类型查询与区间统计能力，并在每年官方方案公布后可通过提示词/工具半自动生成新年度配置。
+基于 Go 1.27.3 的中国节假日 API 服务：以按年组织的**稀疏**配置文件记录节假日办对日历的调整（仅写入与默认周休状态不同的日期），配合标准库周休判断，对外提供粗/细两级粒度的日期类型查询与区间统计能力，并在每年官方方案公布后可通过提示词/工具半自动生成新年度配置。
 
 各 Requirement 中的 **决策依据** 记录关键取舍结论，后续修改前先审视，避免反复；次要有效细节（完整步骤约定、核心包 API 形态清单）存档于 [spec.detail.md](spec.detail.md)，历史论证与过时内容存档于 [spec.legacy.md](spec.legacy.md)（当前有效契约以本文件为准）。
 
@@ -10,7 +10,7 @@
 
 ### Requirement: 模块结构与依赖约束
 
-系统 SHALL 在仓库根创建 Go module（module 名 `github.com/JayceChant/goliday`，go 指令 1.27）；核心逻辑 SHALL 位于根包 `goliday`（导入路径 `github.com/JayceChant/goliday`）；服务与工具 SHALL 分别位于 `cmd/goliday-server`、`cmd/goliday-tool`。依赖按包分级：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**，不得导入 gRPC/protobuf；HTTP 处理仅标准库；gRPC 三件套（`google.golang.org/grpc`、`google.golang.org/protobuf` 及传递依赖）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包。
+系统 SHALL 在仓库根创建 Go module（module 名 `github.com/JayceChant/goliday`，go 指令 1.27.3）；核心逻辑 SHALL 位于根包 `goliday`（导入路径 `github.com/JayceChant/goliday`）；服务与工具 SHALL 分别位于 `cmd/goliday-server`、`cmd/goliday-tool`。依赖按包分级：**根包（核心包）仅引入 `github.com/BurntSushi/toml`**，不得导入 gRPC/protobuf；HTTP 处理仅标准库；gRPC 三件套（`google.golang.org/grpc`、`google.golang.org/protobuf` 及传递依赖）仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包。
 
 **决策依据**：核心库保持最小依赖面，gRPC 运行时隔离在入口与生成代码中。
 
@@ -220,7 +220,7 @@ work = [ "2026-02-28" ]
 
 ### Requirement: 容器镜像与发布（GitHub 环境）
 
-仓库根 SHALL 提供 `Makefile`（构建入口，二进制与镜像**共用同一构建逻辑**：目标 `build`/`build-server`/`build-tool`/`download-deps`/`image`/`check`/`lint`/`fix`/`clean`；`VERSION` 经 `-ldflags` 注入、`GOOS`/`GOARCH` 透传、Windows 加 `.exe`；编译参数唯一定义于 `build-server`：`CGO_ENABLED=0` 静态、`-trimpath`、`-s -w`、版本注入）、`Dockerfile`（多阶段：`golang:1.27` 构建阶段调用 `make build-server`，运行阶段 `distroless/static-debian12:nonroot` 仅含 server 二进制；不打包 `configs/`，配置运行时挂载；`.dockerignore` 最小化构建上下文）与 `.github/workflows/docker.yml`（多架构 `linux/amd64`+`linux/arm64`，provenance/sbom 供应链证明，语义化版本标签；**仅 push tag `v*` 发布至 GHCR**，其余事件仅构建验证；`GITHUB_TOKEN` 认证，无自定义 secrets）。
+仓库根 SHALL 提供 `Makefile`（构建入口，二进制与镜像**共用同一构建逻辑**：目标 `build`/`build-server`/`build-tool`/`download-deps`/`image`/`check`/`lint`/`fix`/`clean`；`VERSION` 经 `-ldflags` 注入、`GOOS`/`GOARCH` 透传、Windows 加 `.exe`；编译参数唯一定义于 `build-server`：`CGO_ENABLED=0` 静态、`-trimpath`、`-s -w`、版本注入）、`Dockerfile`（多阶段：`golang:1.27.3` 构建阶段调用 `make build-server`，运行阶段 `distroless/static-debian12:nonroot` 仅含 server 二进制；不打包 `configs/`，配置运行时挂载；`.dockerignore` 最小化构建上下文）与 `.github/workflows/docker.yml`（多架构 `linux/amd64`+`linux/arm64`，provenance/sbom 供应链证明，语义化版本标签；**仅 push tag `v*` 发布至 GHCR**，其余事件仅构建验证；`GITHUB_TOKEN` 认证，无自定义 secrets）。
 
 版本号 SHALL 构建期注入，不得硬编码常量（release-please 的 simple 策略只维护 CHANGELOG/tag 不改代码，硬编码随发版漂移）。Makefile 与 Dockerfile 互注防递归约束：Dockerfile 只调用不触碰 docker 的目标（`download-deps`/`build-server`），不得调用 `make image`。完整目标清单、变量约定与步骤级细节见 [spec.detail.md](spec.detail.md)（有效存档，当前有效契约以本节为准）。
 
@@ -238,7 +238,7 @@ work = [ "2026-02-28" ]
 
 仓库 SHALL 提供以下工作流，将本地验证门禁搬上 GitHub Actions，结果以徽章与链接接入 README 双语（详细说明收录于 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) 质量门禁与 CI 章节）：
 
-- **ci.yml**：触发覆盖**所有分支 push 与全部 PR**（开发分支与 release-please Release PR 合入 master 前即受门禁），顶层 concurrency 按 `workflow-分支` 分组 + `cancel-in-progress` 去重双事件；测试作业 `1.27.x`（go.mod 最低要求）+ `stable` 双版本矩阵执行 build/vet/gofmt/`go test -race -coverprofile` 与 fuzz 冒烟（仅 stable 项，全部 5 个 fuzz 目标各 30s）；覆盖率仅 stable 项经 codecov-action 上传（`proto/` 生成代码经仓库根 `codecov.yml` 与上传前过滤双重排除，与 `.golangci.yml` 豁免同口径）；lint 作业 golangci-lint 零告警；proto 作业 buf lint（STANDARD 零豁免）/ buf breaking（仅 PR，对照远端 master）/ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`）。
+- **ci.yml**：触发覆盖**所有分支 push 与全部 PR**（开发分支与 release-please Release PR 合入 master 前即受门禁），顶层 concurrency 按 `workflow-分支` 分组 + `cancel-in-progress` 去重双事件；测试作业 `1.27.3`（go.mod 最低要求）+ `stable` 双版本矩阵执行 build/vet/gofmt/`go test -race -coverprofile` 与 fuzz 冒烟（仅 stable 项，全部 5 个 fuzz 目标各 30s）；覆盖率仅 stable 项经 codecov-action 上传（`proto/` 生成代码经仓库根 `codecov.yml` 与上传前过滤双重排除，与 `.golangci.yml` 豁免同口径）；lint 作业 golangci-lint 零告警；proto 作业 buf lint（STANDARD 零豁免）/ buf breaking（仅 PR，对照远端 master）/ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`）。
 - **govulncheck.yml**：依赖漏洞门禁，触发同 ci.yml + 每周 schedule 兜底；存在可触达漏洞即失败。
 - **scorecard.yml**（OpenSSF Scorecard，评分发布 scorecard.dev、SARIF 入 code scanning）、**codeql.yml**（Go 静态安全分析，autobuild，告警入 code scanning）、**sonarcloud.yml**（质量门禁，依赖 secret `SONAR_TOKEN` 与根目录 `sonar-project.properties`，覆盖率排除口径同上）：分析类，push 默认分支 + PR 触发（scorecard 为每周 schedule）。
 
@@ -246,7 +246,7 @@ work = [ "2026-02-28" ]
 
 #### Scenario: CI 测试矩阵与合入前门禁
 - **WHEN** push 或 PR 触发 ci.yml；推送开发分支或创建 release-please Release PR
-- **THEN** `1.27.x` 与 `stable` 两矩阵项各自完成 build/vet/gofmt/test，lint 作业零告警，任一步骤失败流水线标红；ci.yml 与 govulncheck.yml 照常执行全部门禁，同一分支 push 与 PR 并发运行经 concurrency 组去重仅保留最新一次
+- **THEN** `1.27.3` 与 `stable` 两矩阵项各自完成 build/vet/gofmt/test，lint 作业零告警，任一步骤失败流水线标红；ci.yml 与 govulncheck.yml 照常执行全部门禁，同一分支 push 与 PR 并发运行经 concurrency 组去重仅保留最新一次
 
 #### Scenario: 覆盖率上报
 - **WHEN** `stable` 矩阵项测试通过

@@ -1,5 +1,5 @@
 # 持续集成：将本地验证门禁（build/vet/gofmt/test/lint/proto）搬上 GitHub Actions：
-# - Go 1.27.x（go.mod 最低要求）/stable 双版本矩阵运行测试并生成覆盖率
+# - Go 1.27.3（go.mod 最低要求）/stable 双版本矩阵运行测试并生成覆盖率
 # - stable 矩阵项上报覆盖率至 Codecov（公共仓库无 token 亦可上传，失败不阻塞）
 # - golangci-lint 零告警门禁（配置见 .golangci.yml）
 # - 触发不限定 master：门禁类工作流随分支推送与 PR 全量执行，开发分支
@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ["1.27.x", stable]
+        go: ["1.27.3", stable]
         os: [ubuntu-latest]
     steps:
       - name: Checkout
@@ -131,7 +131,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.x'
+          go-version: '1.27.3'
           cache: true
 
       - name: Install buf and protoc plugins

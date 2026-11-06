@@ -15,7 +15,7 @@ Makefile 约定（二进制与镜像**共用同一构建逻辑**，编译命令�
 - 防递归约束：`image` 目标注明 Dockerfile 只允许引用不触碰 docker 的目标（`download-deps`/`build-server`），不得引用 `make image`，否则构成 make image → docker build → 容器内 make image 的真实循环。
 
 Dockerfile 约定：
-- 构建阶段：`golang:1.27`（`AS build`，基于 Debian 须先 `apt-get install make`），仅复制 `Makefile`/`go.mod`/`go.sum` 后 `make download-deps`（层缓存友好），再复制源码，`make build-server VERSION=${VERSION} OUT_DIR=/out` 编译；`ARG VERSION=dev` 透传给 Makefile（本地/`go install` 构建为 `dev`）。
+- 构建阶段：`golang:1.27.3`（`AS build`，基于 Debian 须先 `apt-get install make`），仅复制 `Makefile`/`go.mod`/`go.sum` 后 `make download-deps`（层缓存友好），再复制源码，`make build-server VERSION=${VERSION} OUT_DIR=/out` 编译；`ARG VERSION=dev` 透传给 Makefile（本地/`go install` 构建为 `dev`）。
 - 运行阶段：`gcr.io/distroless/static-debian12:nonroot`；仅复制 server 二进制至 `/goliday-server`；`USER nonroot`（镜像内已内置）；`EXPOSE 8080 50051`；`ENTRYPOINT ["/goliday-server"]`。
 - 不打包 `configs/`：配置与镜像解耦，运行时经 volume 挂载后以 `-config-dir` 指向；distroless 无 shell，容器内一切命令参数走 exec 形式。
 - 构建上下文最小化：`.dockerignore` 排除 `.git`、`.github`、`docs`、`spec`、`testdata`、`bin`、覆盖率产物、`*.md`、`.env*` 等非构建必需内容（`Makefile`、Go 源码与 `go.mod`/`go.sum` 保留）。
@@ -41,7 +41,7 @@ docker.yml 工作流约定：
 ci.yml 约定：
 - 触发：`push` 所有分支（`branches: ["**"]`，匹配含斜杠的分支名并排除 tag——开发分支无需先合入或开 PR 即可执行门禁）、`pull_request`（不设目标分支过滤——叠加 PR 与 release-please Release PR 同受门禁）、`workflow_dispatch`；权限最小化 `contents: read`；
 - 冗余抑制：顶层 `concurrency` 以 `${{ github.workflow }}-${{ github.head_ref || github.ref_name }}` 分组并 `cancel-in-progress: true`——同一分支的 push 与 pull_request 双事件运行共享并发组（PR 的 head_ref 与分支推送的 ref_name 同名），仅保留最新一次，不重复执行；
-- 测试作业：`1.27.x`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile` → fuzz 冒烟（仅 `stable` 项：对全部 5 个 fuzz 目标各 `-fuzztime 30s` 短时真实 fuzz，普通测试仅覆盖种子语料）；
+- 测试作业：`1.27.3`（go.mod 最低要求）与 `stable` 双版本矩阵（`actions/setup-go` 自带模块缓存；不用 `oldstable`——其版本低于 go.mod 要求且 runner 默认 `GOTOOLCHAIN=local` 不自动升级工具链，必然编译失败），步骤 checkout → setup-go → `go build ./...` → `go vet ./...` → `gofmt` 检查（输出非空即失败）→ `go test -count=1 -race -covermode=atomic -coverprofile` → fuzz 冒烟（仅 `stable` 项：对全部 5 个 fuzz 目标各 `-fuzztime 30s` 短时真实 fuzz，普通测试仅覆盖种子语料）；
 - 覆盖率上报：仅 `stable` 矩阵项经 `codecov/codecov-action` 上传 `coverage.out`（secrets `CODECOV_TOKEN`；公共仓库可不配置 token，上传失败不阻塞流水线）；上传前过滤 profile 中 `proto/goliday/v1` 生成代码的记录，并经仓库根 `codecov.yml`（`ignore: proto/`）在 Codecov 端同步排除——生成代码不设测试目标，避免零覆盖记录拉低统计（与 `.golangci.yml` 对生成代码的豁免同一口径）；
 - lint 作业：`golangci/golangci-lint-action` 运行 `golangci-lint`（v2，配置见 `.golangci.yml`）零告警；
 - proto 作业：`go install tool` 经 go.mod `tool` 指令 + go.sum 锁定版本安装 buf（v1.72.0）与 protoc-gen-go（v1.36.12）/protoc-gen-go-grpc（v1.5.1，满足 SonarQube 依赖版本可预测性——lock 文件强制；三个工具分属三个 module，`go install` 须逐 module 三条命令）→ `buf lint`（STANDARD 零豁免）→ `buf breaking --against <远端 master,subdir=proto>`（FILE 级，仅 PR 事件——master push 对照自身无意义）→ 再生成一致性（`buf generate` 后 `git diff --exit-code -- proto/`，入库生成代码与 proto 内容不得漂移）。

@@ -12,7 +12,7 @@
 
 ## 3. 技术约束（遵循 spec）
 
-- Go 1.27；模块名 `github.com/JayceChant/goliday`；核心逻辑位于根包 `goliday`，服务 `cmd/goliday-server`，工具 `cmd/goliday-tool`。
+- Go 1.27.3；模块名 `github.com/JayceChant/goliday`；核心逻辑位于根包 `goliday`，服务 `cmd/goliday-server`，工具 `cmd/goliday-tool`。
 - 依赖按包分级：根包仅 `github.com/BurntSushi/toml`（不得导入 gRPC/protobuf）；gRPC 三件套仅限 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包；HTTP 服务仅标准库。新增依赖前必须先在 spec 中论证并获准。
 - 测试覆盖率门禁：手写代码（排除 `proto/` 生成代码）整体覆盖率不得低于 95%（门禁与允许的例外口径见 `spec/spec.md`「测试分层」的覆盖率维持 Scenario）。
 

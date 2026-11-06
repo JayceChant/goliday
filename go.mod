@@ -1,6 +1,6 @@
 module github.com/JayceChant/goliday
 
-go 1.27
+go 1.27.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0

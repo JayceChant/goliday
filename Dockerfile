@@ -19,7 +19,7 @@
 # （download-deps/build-server），不得调用 make image——否则与 Makefile
 # 的 image 目标互引构成真实构建循环。golang 镜像基于 buildpack-deps 的
 # scm 变体，不含 make，须先安装。
-FROM golang:1.27 AS build
+FROM golang:1.27.3 AS build
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends make \

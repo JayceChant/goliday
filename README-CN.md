@@ -11,7 +11,7 @@
 [![SonarCloud](https://sonarcloud.io/api/project_badges/quality_gate?project=JayceChant_goliday)](https://sonarcloud.io/summary/new_code?id=JayceChant_goliday)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-基于 Go 1.27 的节假日查询服务：以**按年组织的稀疏配置文件**记录国务院假日办公布的放假与补班安排，其余日期由标准库周休规则推导，对外提供语义一致的 **HTTP 与 gRPC 双协议**接口，支持粗/细两级粒度的日期类型查询与区间统计。
+基于 Go 1.27.3 的节假日查询服务：以**按年组织的稀疏配置文件**记录国务院假日办公布的放假与补班安排，其余日期由标准库周休规则推导，对外提供语义一致的 **HTTP 与 gRPC 双协议**接口，支持粗/细两级粒度的日期类型查询与区间统计。
 
 ## 核心设计
 
@@ -23,10 +23,10 @@
 
 ## 快速开始
 
-环境要求：Go 1.27+。
+环境要求：Go 1.27.3+。
 
 ```bash
-# 安装二进制（Go 1.27+）
+# 安装二进制（Go 1.27.3+）
 go install github.com/JayceChant/goliday/cmd/goliday-server@latest
 go install github.com/JayceChant/goliday/cmd/goliday-tool@latest
 

@@ -11,7 +11,7 @@
 [![SonarCloud](https://sonarcloud.io/api/project_badges/quality_gate?project=JayceChant_goliday)](https://sonarcloud.io/summary/new_code?id=JayceChant_goliday)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A holiday lookup service built on Go 1.27: it records the holiday and workday-swap arrangements published by China's State Council in **sparse, per-year config files**, derives all other dates from standard-library weekend rules, and exposes semantically identical **HTTP and gRPC** interfaces supporting date-type queries and range statistics at both coarse and fine granularity.
+A holiday lookup service built on Go 1.27.3: it records the holiday and workday-swap arrangements published by China's State Council in **sparse, per-year config files**, derives all other dates from standard-library weekend rules, and exposes semantically identical **HTTP and gRPC** interfaces supporting date-type queries and range statistics at both coarse and fine granularity.
 
 ## Core Design
 
@@ -23,10 +23,10 @@ A holiday lookup service built on Go 1.27: it records the holiday and workday-sw
 
 ## Quick Start
 
-Requires Go 1.27+.
+Requires Go 1.27.3+.
 
 ```bash
-# Install the binaries (Go 1.27+)
+# Install the binaries (Go 1.27.3+)
 go install github.com/JayceChant/goliday/cmd/goliday-server@latest
 go install github.com/JayceChant/goliday/cmd/goliday-tool@latest
 

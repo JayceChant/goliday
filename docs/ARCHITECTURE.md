@@ -1,6 +1,6 @@
 # goliday 架构说明（ARCHITECTURE）
 
-goliday 是一个基于 Go 1.27 的中国法定节假日服务：以**按年组织的稀疏 TOML 配置**记录节假日办对日历的调整，配合标准库周休判断，对外提供粗/细两级粒度的日期类型查询与统计。
+goliday 是一个基于 Go 1.27.3 的中国法定节假日服务：以**按年组织的稀疏 TOML 配置**记录节假日办对日历的调整，配合标准库周休判断，对外提供粗/细两级粒度的日期类型查询与统计。
 
 相关文档：[CONFIG_FORMAT.md](./CONFIG_FORMAT.md)（配置格式）、[API.md](./API.md)（HTTP 接口）、[generate_prompt.md](./generate_prompt.md)（配置生成提示词）。
 
@@ -10,7 +10,7 @@ goliday 是一个基于 Go 1.27 的中国法定节假日服务：以**按年组�
 
 ```
 goliday/
-├── go.mod                          # module github.com/JayceChant/goliday，go 1.27
+├── go.mod                          # module github.com/JayceChant/goliday，go 1.27.3
 ├── go.sum
 ├── Makefile                        # 构建入口：二进制与 Docker 镜像共用同一编译命令（make build-server）
 ├── buf.yaml                        # buf 工作区（模块根 proto/，lint STANDARD 零豁免）
@@ -88,7 +88,7 @@ goliday/
 
 | 项 | 约束 |
 |---|---|
-| Go 版本 | `go 1.27` |
+| Go 版本 | `go 1.27.3` |
 | 根包（核心库） | 仅一个三方依赖：`github.com/BurntSushi/toml v1.6.0`（TOML 解析）；**不得导入 gRPC/protobuf** |
 | gRPC 三件套 | `google.golang.org/grpc`、`google.golang.org/protobuf`（+ 其传递依赖如 `genproto/googleapis/rpc`、`golang.org/x/*`），**仅允许出现在 `proto/goliday/v1/` 生成代码包与 `cmd/` 子包** |
 | HTTP 处理 | 仅标准库（`net/http`、`flag`、`log` 等），不引入任何 Web 框架 |
@@ -206,7 +206,7 @@ JSON 序列化返回
 
 | 服务 | 说明 |
 |---|---|
-| [GitHub Actions](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | Go 1.27.x（go.mod 最低要求）+ stable 双版本矩阵：build、vet、gofmt、`go test -race`，另设 golangci-lint 零告警作业；随所有分支推送与 PR 执行，开发分支合入 master 前即出结果（[工作流](../.github/workflows/ci.yml)） |
+| [GitHub Actions](https://github.com/JayceChant/goliday/actions/workflows/ci.yml) | Go 1.27.3（go.mod 最低要求）+ stable 双版本矩阵：build、vet、gofmt、`go test -race`，另设 golangci-lint 零告警作业；随所有分支推送与 PR 执行，开发分支合入 master 前即出结果（[工作流](../.github/workflows/ci.yml)） |
 | [Codecov](https://codecov.io/gh/JayceChant/goliday) | `go test -coverprofile` 覆盖率上报，逐行查看覆盖详情 |
 | [CodeQL](https://github.com/JayceChant/goliday/security/code-scanning) | GitHub 官方静态安全分析，每周定时 + push/PR 触发，告警见 code scanning（[工作流](../.github/workflows/codeql.yml)） |
 | [govulncheck](https://github.com/JayceChant/goliday/actions/workflows/govulncheck.yml) | Go 官方漏洞扫描（golang.org/x/vuln），仅可被调用路径触达的漏洞会阻塞；随所有分支推送与 PR 执行，每周定时兜底（[工作流](../.github/workflows/govulncheck.yml)） |
